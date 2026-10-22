@@ -86,6 +86,8 @@ resource "aws_db_instance" "postgres" {
   vpc_security_group_ids  = [aws_security_group.db.id]
   publicly_accessible     = false
   backup_retention_period = 7 # SOP: 7-day point-in-time recovery
+
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
   deletion_protection     = true
   skip_final_snapshot     = false
   final_snapshot_identifier = "${var.name}-final"

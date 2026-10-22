@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
+const TAG_LENGTH = 16;
+
 /** App-level AES-256-GCM for MFA secrets and provider keys (SOP: Data protection). Key = 32 bytes, base64. */
 export function parseKey(base64Key: string): Buffer {
   const key = Buffer.from(base64Key, "base64");
@@ -9,15 +11,15 @@ export function parseKey(base64Key: string): Buffer {
 
 export function encryptSecret(plain: string, key: Buffer): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: TAG_LENGTH });
   const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   return [iv, cipher.getAuthTag(), ct].map((b) => b.toString("base64")).join(".");
 }
 
 export function decryptSecret(boxed: string, key: Buffer): string {
   const [iv, tag, ct] = boxed.split(".").map((p) => Buffer.from(p, "base64"));
-  if (!iv || !tag || !ct) throw new Error("malformed secret");
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  if (!iv || !tag || !ct || tag.length !== TAG_LENGTH) throw new Error("malformed secret");
+  const decipher = createDecipheriv("aes-256-gcm", key, iv, { authTagLength: TAG_LENGTH });
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
 }

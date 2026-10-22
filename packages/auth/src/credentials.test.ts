@@ -42,5 +42,9 @@ describe("password and secret box", () => {
     const boxed = encryptSecret("JBSWY3DPEHPK3PXP", key);
     expect(decryptSecret(boxed, key)).toBe("JBSWY3DPEHPK3PXP");
     expect(() => decryptSecret(boxed, randomBytes(32))).toThrow();
+    // A truncated auth tag must be rejected, not accepted as a weaker check.
+    const [iv, tag, ct] = boxed.split(".");
+    const short = [iv, Buffer.from(tag!, "base64").subarray(0, 4).toString("base64"), ct].join(".");
+    expect(() => decryptSecret(short, key)).toThrow();
   });
 });

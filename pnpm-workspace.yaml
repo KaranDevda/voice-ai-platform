@@ -6,3 +6,10 @@ allowBuilds:
   msgpackr-extract: true
 overrides:
   postcss: ">=8.5.23"
+# Supply-chain hardening
+minimumReleaseAge: 1440
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+# undici-types 6.21.0 (via @types/node 22) trips the downgrade heuristic; reviewed, legitimate Node types.
+trustPolicyExclude:
+  - undici-types@6.21.0
