@@ -1,0 +1,19 @@
+{
+  "name": "voice-ai-platform",
+  "private": true,
+  "packageManager": "pnpm@12.11.2",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "db:generate": "pnpm --filter @voiceai/db generate",
+    "db:migrate": "pnpm --filter @voiceai/db migrate",
+    "db:seed": "pnpm --filter @voiceai/db seed"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.9.0"
+  }
+}

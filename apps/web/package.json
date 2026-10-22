@@ -1,0 +1,29 @@
+{
+  "name": "@voiceai/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.0.0",
+    "@voiceai/auth": "workspace:*",
+    "@voiceai/db": "workspace:*",
+    "@voiceai/shared": "workspace:*",
+    "jose": "^6.0.0",
+    "next": "^15.5.28",
+    "pg": "^8.16.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "server-only": "^0.0.1",
+    "zod": "^3.25.0",
+    "@voiceai/providers": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@voiceai/voice",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "tsx watch src/index.ts", "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@voiceai/auth": "workspace:*",
+    "@voiceai/db": "workspace:*",
+    "@voiceai/providers": "workspace:*",
+    "@voiceai/shared": "workspace:*",
+    "express": "^5.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": { "@types/express": "^5.0.0", "@types/node": "^22.0.0", "@types/ws": "^8.18.0", "tsx": "^4.20.0" }
+}
