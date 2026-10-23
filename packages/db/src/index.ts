@@ -5,3 +5,5 @@ export * from "./scoped";
 export * from "./audit";
 export * from "./voice-profiles";
 export * from "./login";
+export * from "./queries";
+export * from "./studio";

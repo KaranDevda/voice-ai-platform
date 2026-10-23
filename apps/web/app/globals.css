@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* Studio look: dark first, warm "recording" accent, teal waveforms. [data-theme="light"] switches it. */
+:root {
+  --background: #0a0c12;
+  --foreground: #e8ebf4;
+  --card: #11141d;
+  --muted: #181c28;
+  --muted-foreground: #8a92a8;
+  --border: #232838;
+  --primary: #ff7a45;
+  --primary-foreground: #14100d;
+  --primary-soft: #2a1a14;
+  --success: #3ddc97;
+  --success-soft: #0f2a21;
+  --warning: #f5b942;
+  --warning-soft: #2e2410;
+  --danger: #ff6b6b;
+  --danger-soft: #331618;
+  --info: #4cc9f0;
+  --info-soft: #0f2630;
+  --wave: #35d0ba;
+  --wave-dim: #2a3a44;
+  --chart-ai: #ff7a45;
+  --chart-human: #35d0ba;
+  --chart-mobile: #8b8cf8;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --background: #f5f4f1;
+  --foreground: #17181c;
+  --card: #ffffff;
+  --muted: #efede8;
+  --muted-foreground: #6b6f7b;
+  --border: #e4e0d8;
+  --primary: #e8531d;
+  --primary-foreground: #ffffff;
+  --primary-soft: #fdece4;
+  --success: #12805a;
+  --success-soft: #e3f5ec;
+  --warning: #a8620a;
+  --warning-soft: #fbf0d9;
+  --danger: #c0392b;
+  --danger-soft: #fbe9e6;
+  --info: #0c6e91;
+  --info-soft: #e1f2f8;
+  --wave: #0f9d8a;
+  --wave-dim: #cfd8d6;
+  --chart-ai: #e8531d;
+  --chart-human: #0f9d8a;
+  --chart-mobile: #6366f1;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-wave: var(--wave);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+*:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--primary) 35%, transparent); }
+@keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.rec-dot { animation: rec-pulse 1.1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }

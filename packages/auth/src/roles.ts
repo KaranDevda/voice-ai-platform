@@ -46,6 +46,10 @@ export const ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = {
     "devices.revoke.all",
     "reports.read.all",
     "audit.read",
+    "logs.read",
+    "studio.use",
+    "projects.read.all",
+    "projects.delete.all",
     "org_settings.read",
     "org_settings.write",
   ],
@@ -65,6 +69,9 @@ export const ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = {
     "users.read.team",
     "devices.revoke.team",
     "reports.read.team",
+    "studio.use",
+    "projects.read.own",
+    "projects.delete.own",
   ],
   agent: [
     "leads.read.own",
@@ -77,11 +84,9 @@ export const ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = {
     "transcripts.read.own",
     "reports.read.own",
   ],
-  // The SOP matrix does not say whether QA sees unmasked numbers; granted because QA reviews calls
-  // against real leads. Confirm with the client.
+  // Client decision: QA auditors never see unmasked phone numbers (no leads.pii.read).
   qa_auditor: [
     "leads.read.team",
-    "leads.pii.read",
     "calls.read.team",
     "recordings.play.team",
     "transcripts.read.team",

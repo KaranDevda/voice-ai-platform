@@ -2,10 +2,25 @@ import { and, eq } from "drizzle-orm";
 import { assertAuthorized, type AuthUser } from "@voiceai/auth";
 import { consentRecordInputSchema, voiceProfileInputSchema, type VoiceGender } from "@voiceai/shared";
 import { writeAudit } from "./audit";
-import { withOrg, type Db } from "./client";
+import { withOrg, type Db, type DbTx } from "./client";
 import { consentRecords, voiceProfiles } from "./schema";
 
 export class VoiceProfileError extends Error {}
+
+async function checkConsent(tx: DbTx, donorUserId: string, consentRecordId: string) {
+  const [consent] = await tx.select().from(consentRecords).where(eq(consentRecords.id, consentRecordId));
+  if (!consent) throw new VoiceProfileError("consent record not found");
+  if (consent.subjectType !== "staff" || consent.subjectId !== donorUserId) throw new VoiceProfileError("consent record does not belong to the donor");
+  if (consent.revokedAt) throw new VoiceProfileError("consent has been withdrawn");
+  const [used] = await tx.select({ id: voiceProfiles.id }).from(voiceProfiles).where(eq(voiceProfiles.consentRecordId, consentRecordId));
+  if (used) throw new VoiceProfileError("consent is already linked to a voice");
+}
+
+/** Checks a consent is valid and unused BEFORE any provider call, so no clone is created without one. */
+export async function assertConsentUsable(db: Db, actor: AuthUser, donorUserId: string, consentRecordId: string) {
+  assertAuthorized(actor, "voice_profiles.manage");
+  await withOrg(db, actor.orgId, (tx) => checkConsent(tx, donorUserId, consentRecordId));
+}
 
 /** Creates a cloned-voice profile; refuses unless a live staff consent for the donor exists. */
 export async function createVoiceProfile(db: Db, actor: AuthUser, rawInput: unknown) {
@@ -13,12 +28,7 @@ export async function createVoiceProfile(db: Db, actor: AuthUser, rawInput: unkn
   const input = voiceProfileInputSchema.parse(rawInput);
 
   return withOrg(db, actor.orgId, async (tx) => {
-    const [consent] = await tx.select().from(consentRecords).where(eq(consentRecords.id, input.consentRecordId));
-    if (!consent) throw new VoiceProfileError("consent record not found");
-    if (consent.subjectType !== "staff" || consent.subjectId !== input.donorUserId) {
-      throw new VoiceProfileError("consent record does not belong to the donor");
-    }
-    if (consent.revokedAt) throw new VoiceProfileError("consent has been withdrawn");
+    await checkConsent(tx, input.donorUserId, input.consentRecordId);
 
     const [profile] = await tx.insert(voiceProfiles).values({ ...input, orgId: actor.orgId }).returning();
     await writeAudit(tx, {

@@ -54,3 +54,35 @@ export const voiceProfileInputSchema = z.object({
   donorUserId: z.string().uuid(),
   consentRecordId: z.string().uuid(),
 });
+
+export const DEFAULT_DISCLOSURE =
+  "Hello, you are speaking with an AI assistant. This call is recorded for quality and service purposes.";
+
+/** Stored in organizations.settings_json. Every field has a default so older rows still parse. */
+export const orgSettingsSchema = z.object({
+  ai: z
+    .object({
+      greeting: z.string().max(500).default("Thanks for calling. How can I help you today?"),
+      disclosure: z.string().min(1).max(500).default(DEFAULT_DISCLOSURE),
+      systemPrompt: z.string().max(8000).default("You are a helpful, concise phone assistant. Answer only from the knowledge base."),
+      handoffMessage: z.string().max(300).default("Let me connect you with a colleague."),
+      handoffOnComplaint: z.boolean().default(true),
+      handoffOnPayment: z.boolean().default(true),
+      handoffAfterLowConfidence: z.number().int().min(1).max(5).default(2),
+      handoffTimeoutSeconds: z.number().int().min(10).max(120).default(30),
+    })
+    .default({}),
+  calling: z
+    .object({
+      windowStart: z.string().regex(/^\d{2}:\d{2}$/).default("09:00"),
+      windowEnd: z.string().regex(/^\d{2}:\d{2}$/).default("21:00"),
+    })
+    .default({}),
+});
+export type OrgSettings = z.infer<typeof orgSettingsSchema>;
+
+export const orgSettingsUpdateSchema = z.object({
+  settings: orgSettingsSchema,
+  dataRetentionDays: z.number().int().min(30).max(3650),
+  recordingRetentionDays: z.number().int().min(7).max(3650),
+});

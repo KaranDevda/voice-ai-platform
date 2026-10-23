@@ -28,7 +28,8 @@ export const kbChunks = pgTable(
     documentId: uuid("document_id").notNull().references(() => kbDocuments.id, { onDelete: "cascade" }),
     chunkIndex: integer("chunk_index").notNull(),
     content: text("content").notNull(),
-    embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
+    /** Null until the embedding service is connected; retrieval falls back to keyword search meanwhile. */
+    embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }),
     createdAt: createdAt(),
   },
   (t) => [

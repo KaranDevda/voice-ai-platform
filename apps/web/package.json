@@ -9,17 +9,23 @@
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.0",
+    "@tailwindcss/postcss": "^4.3.3",
     "@voiceai/auth": "workspace:*",
     "@voiceai/db": "workspace:*",
+    "@voiceai/providers": "workspace:*",
     "@voiceai/shared": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "jose": "^6.0.0",
+    "lucide-react": "^1.61.0",
     "next": "^15.5.28",
     "pg": "^8.16.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "server-only": "^0.0.1",
-    "zod": "^3.25.0",
-    "@voiceai/providers": "workspace:*"
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

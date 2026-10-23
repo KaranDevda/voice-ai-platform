@@ -2,7 +2,6 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { createDb, loadAuthUser, type Db } from "@voiceai/db";
 import { parseKey, type AuthUser } from "@voiceai/auth";
-import { createElevenLabsTts } from "@voiceai/providers";
 import { SESSION_COOKIE, verifyToken, type SessionClaims } from "./session";
 
 const g = globalThis as unknown as { __db?: Db };
@@ -41,10 +40,4 @@ export async function clientMeta() {
 export async function requireUser(): Promise<AuthUser | Response> {
   const user = await getAuthUser();
   return user ?? Response.json({ error: "unauthenticated" }, { status: 401 });
-}
-
-export function getTts() {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) throw new Error("ELEVENLABS_API_KEY is required");
-  return createElevenLabsTts({ apiKey, baseUrl: process.env.ELEVENLABS_BASE_URL, modelId: process.env.ELEVENLABS_MODEL_ID });
 }

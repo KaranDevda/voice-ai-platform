@@ -10,7 +10,9 @@
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed-demo": "tsx src/seed-demo.ts",
+    "demo:code": "tsx src/demo-code.ts"
   },
   "dependencies": {
     "@voiceai/auth": "workspace:*",

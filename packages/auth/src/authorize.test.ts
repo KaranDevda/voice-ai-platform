@@ -55,10 +55,29 @@ describe("authorize", () => {
     expect(authorize(sa, "leads.read", res).allowed).toBe(true);
   });
 
+  it("keeps phone numbers masked for QA auditors but still lets them review team calls", () => {
+    const qa = userWith("qa_auditor");
+    expect(authorize(qa, "leads.pii.read").allowed).toBe(false);
+    expect(authorize(qa, "recordings.play", { orgId: "org1", teamId: "teamA" }).allowed).toBe(true);
+  });
+
   it("resolves the widest scope held", () => {
     expect(resolveScope(userWith("org_admin"), "leads.read")).toBe("all");
     expect(resolveScope(userWith("manager"), "leads.read")).toBe("team");
     expect(resolveScope(userWith("agent"), "leads.read")).toBe("own");
     expect(resolveScope(userWith("viewer"), "leads.read")).toBeNull();
+  });
+
+  it("gives studio access only to Org Admins and Managers, with project scope own vs all", () => {
+    for (const role of ["agent", "qa_auditor", "viewer", "super_admin"] as const) expect(authorize(userWith(role), "studio.use").allowed).toBe(false);
+    expect(authorize(userWith("manager"), "studio.use").allowed).toBe(true);
+    const mine = { orgId: "org1", teamId: "teamA", ownerUserId: "u1" };
+    const theirs = { orgId: "org1", teamId: "teamA", ownerUserId: "u2" };
+    expect(authorize(userWith("manager"), "projects.read", mine).allowed).toBe(true);
+    expect(authorize(userWith("manager"), "projects.read", theirs).allowed).toBe(false);
+    expect(authorize(userWith("org_admin"), "projects.read", theirs).allowed).toBe(true);
+    expect(authorize(userWith("manager"), "projects.delete", mine)).toMatchObject({ allowed: true, audit: true });
+    expect(authorize(userWith("manager"), "logs.read").allowed).toBe(false);
+    expect(authorize(userWith("org_admin"), "logs.read").allowed).toBe(true);
   });
 });

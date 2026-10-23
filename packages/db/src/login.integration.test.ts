@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ROLE_PERMISSIONS, hashPassword, hotp, TOTP_STEP_S } from "@voiceai/auth";
@@ -13,7 +13,7 @@ describe.skipIf(!ownerUrl || !appUrl)("login", () => {
   const owner = createDb(ownerUrl ?? "");
   const app = createDb(appUrl ?? "");
   const encryptionKey = randomBytes(32);
-  const tag = Date.now();
+  const tag = randomUUID().slice(0, 8);
   const ids = {} as Record<string, string>;
   const PW = "correct horse battery";
 

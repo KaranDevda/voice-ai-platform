@@ -16,7 +16,11 @@ import { devices, organizations, teams, users } from "./org";
 import { leads } from "./crm";
 import { voiceProfiles } from "./voice";
 
-/** One row per call from any source (AI, web dialer, mobile SIM). */
+/**
+ * One row per call from any source (AI, web dialer, mobile SIM).
+ * team_id rule: a call made by an agent belongs to the AGENT's team; an AI call takes the lead's team.
+ * Team-scoped reports and reads depend on this, so ingest code must set it that way.
+ */
 export const callLogs = pgTable(
   "call_logs",
   {

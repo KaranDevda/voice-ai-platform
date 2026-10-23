@@ -20,6 +20,9 @@ export const SCOPED_PERMISSIONS = {
   "users.read": ["all", "team"],
   "devices.revoke": ["all", "team"],
   "reports.read": ["all", "team", "own", "aggregate"],
+  /** Studio projects: saved generated speech and transcripts. */
+  "projects.read": ["all", "own"],
+  "projects.delete": ["all", "own"],
 } as const satisfies Record<string, readonly Scope[]>;
 
 export const FLAG_PERMISSIONS = [
@@ -34,6 +37,10 @@ export const FLAG_PERMISSIONS = [
   "audit.read",
   "org_settings.read",
   "org_settings.write",
+  /** Voice studio: text-to-speech, transcription, voice cloning wizard, agent console. */
+  "studio.use",
+  /** Provider usage and error log. */
+  "logs.read",
   /** Platform (Super Admin) staff: may act across orgs. */
   "platform.admin",
 ] as const;
@@ -54,4 +61,5 @@ export const AUDITED_PERMISSIONS: ReadonlySet<string> = new Set([
   "voice_profiles.manage",
   "users.write",
   "audit.read",
+  "projects.delete",
 ]);
