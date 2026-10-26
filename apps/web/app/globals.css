@@ -1,54 +1,54 @@
 @import "tailwindcss";
 
-/* Studio look: dark first, warm "recording" accent, teal waveforms. [data-theme="light"] switches it. */
+/* Studio look: dark first, deep navy surfaces with a blue accent and sky waveforms. [data-theme="light"] switches it. */
 :root {
-  --background: #0a0c12;
-  --foreground: #e8ebf4;
-  --card: #11141d;
-  --muted: #181c28;
-  --muted-foreground: #8a92a8;
-  --border: #232838;
-  --primary: #ff7a45;
-  --primary-foreground: #14100d;
-  --primary-soft: #2a1a14;
+  --background: #070b17;
+  --foreground: #e6edfb;
+  --card: #0d1426;
+  --muted: #141d36;
+  --muted-foreground: #8b9bbd;
+  --border: #1f2c4d;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --primary-soft: #11204a;
   --success: #3ddc97;
   --success-soft: #0f2a21;
   --warning: #f5b942;
   --warning-soft: #2e2410;
   --danger: #ff6b6b;
   --danger-soft: #331618;
-  --info: #4cc9f0;
-  --info-soft: #0f2630;
-  --wave: #35d0ba;
-  --wave-dim: #2a3a44;
-  --chart-ai: #ff7a45;
-  --chart-human: #35d0ba;
-  --chart-mobile: #8b8cf8;
+  --info: #7dd3fc;
+  --info-soft: #0e2638;
+  --wave: #60a5fa;
+  --wave-dim: #25365e;
+  --chart-ai: #3b82f6;
+  --chart-human: #38bdf8;
+  --chart-mobile: #818cf8;
   color-scheme: dark;
 }
 
 [data-theme="light"] {
-  --background: #f5f4f1;
-  --foreground: #17181c;
+  --background: #f3f7fe;
+  --foreground: #0f1a33;
   --card: #ffffff;
-  --muted: #efede8;
-  --muted-foreground: #6b6f7b;
-  --border: #e4e0d8;
-  --primary: #e8531d;
+  --muted: #e9f0fc;
+  --muted-foreground: #5a6b8c;
+  --border: #d8e3f5;
+  --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --primary-soft: #fdece4;
+  --primary-soft: #e3edff;
   --success: #12805a;
   --success-soft: #e3f5ec;
   --warning: #a8620a;
   --warning-soft: #fbf0d9;
   --danger: #c0392b;
   --danger-soft: #fbe9e6;
-  --info: #0c6e91;
-  --info-soft: #e1f2f8;
-  --wave: #0f9d8a;
-  --wave-dim: #cfd8d6;
-  --chart-ai: #e8531d;
-  --chart-human: #0f9d8a;
+  --info: #0369a1;
+  --info-soft: #e0f2fe;
+  --wave: #2563eb;
+  --wave-dim: #c7d6f0;
+  --chart-ai: #2563eb;
+  --chart-human: #0284c7;
   --chart-mobile: #6366f1;
   color-scheme: light;
 }
@@ -82,3 +82,13 @@ body { background: var(--background); color: var(--foreground); font-family: var
 @keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .rec-dot { animation: rec-pulse 1.1s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
+
+/*
+ * Grids size their column to the widest content by default, so one long line, a waveform or a wide table can push a card past
+ * the screen. Base layer, so any explicit grid-cols-* or min-w-* class still wins.
+ */
+@layer base {
+  .grid:not([class*="grid-cols"]) { grid-template-columns: minmax(0, 1fr); }
+  .grid > * { min-width: 0; }
+  audio, video, canvas, img, svg { max-width: 100%; }
+}

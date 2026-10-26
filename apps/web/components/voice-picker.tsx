@@ -3,12 +3,13 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Select } from "./ui/form";
 
-export interface VoiceChoice { ref: string; name: string; gender: string; group: "cloned" | "stock"; provider: string; detail: string }
+export interface VoiceChoice { ref: string; name: string; gender: string; group: "cloned" | "stock"; provider: string; detail: string; hindi?: boolean; hindiOwn?: boolean }
 
-export function VoicePicker({ voices, value, onChange, id }: { voices: VoiceChoice[]; value: string; onChange: (ref: string) => void; id?: string }) {
+export function VoicePicker({ voices, value, onChange, id, language = "en" }: { voices: VoiceChoice[]; value: string; onChange: (ref: string) => void; id?: string; /** The language being written. Voices that cannot speak it are marked, and Hindi-capable ones come first. */ language?: "en" | "hi" | "hinglish" }) {
   const [gender, setGender] = useState<"all" | "female" | "male">("all");
   const shown = useMemo(() => voices.filter((v) => gender === "all" || v.gender === gender || v.ref === value), [voices, gender, value]);
-  const cloned = shown.filter((v) => v.group === "cloned");
+  const needsHindi = language !== "en";
+  const cloned = shown.filter((v) => v.group === "cloned").sort((a, b) => (needsHindi ? Number(!!b.hindi) - Number(!!a.hindi) : 0));
   const stock = shown.filter((v) => v.group === "stock");
   const current = voices.find((v) => v.ref === value);
 
@@ -21,8 +22,8 @@ export function VoicePicker({ voices, value, onChange, id }: { voices: VoiceChoi
         ))}
       </div>
       <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} aria-label="Voice">
-        {cloned.length > 0 && <optgroup label="Cloned staff voices">{cloned.map((v) => <option key={v.ref} value={v.ref}>{v.name} · {v.gender}</option>)}</optgroup>}
-        <optgroup label="Stock voices (Deepgram)">{stock.map((v) => <option key={v.ref} value={v.ref}>{v.name} · {v.gender} · {v.detail}</option>)}</optgroup>
+        {cloned.length > 0 && <optgroup label="Cloned staff voices">{cloned.map((v) => <option key={v.ref} value={v.ref}>{v.name} · {v.gender}{needsHindi && !v.hindi ? " · no Hindi yet" : ""}</option>)}</optgroup>}
+        <optgroup label={needsHindi ? "Stock voices (English only)" : "Stock voices (Deepgram)"}>{stock.map((v) => <option key={v.ref} value={v.ref}>{v.name} · {v.gender} · {v.detail}</option>)}</optgroup>
       </Select>
       {current && <p className="text-xs text-muted-foreground">{current.group === "cloned" ? "Cloned staff voice (consent on file)" : current.detail}</p>}
     </div>

@@ -3,3 +3,8 @@ export * from "./elevenlabs";
 export * from "./deepgram";
 export * from "./askg1";
 export * from "./voices";
+export * from "./pockettts";
+export * from "./deepgram-live";
+export * from "./vad";
+export * from "./whisper-local";
+export * from "./hinglish";

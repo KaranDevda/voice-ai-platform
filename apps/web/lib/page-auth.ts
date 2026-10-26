@@ -41,6 +41,7 @@ export function navFor(u: AuthUser): NavGroup[] {
         { href: "/studio", label: "Studio", icon: "studio", visible: studio },
         { href: "/clone", label: "Voice clone", icon: "clone", visible: studio && can(u, "voice_profiles.manage") },
         { href: "/transcribe", label: "Transcribe", icon: "transcribe", visible: studio },
+        { href: "/live", label: "Live conversation", icon: "live", visible: studio },
         { href: "/agent-console", label: "Agent console", icon: "agent", visible: studio },
         { href: "/library", label: "Voice library", icon: "library", visible: studio },
         { href: "/projects", label: "Projects", icon: "projects", visible: !!resolveScope(u, "projects.read") },

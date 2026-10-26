@@ -14,17 +14,22 @@ export class ProviderError extends Error {
 
 /** Streaming TTS for live calls: abort the signal on barge-in. */
 export interface TtsAdapter {
-  synthesize(input: { text: string; providerVoiceId: string; signal?: AbortSignal }): AsyncIterable<MulawFrame>;
+  synthesize(input: { text: string; providerVoiceId: string; /** Built-in Hindi voice to use for Hindi text, if the engine has one (matched to the speaker's gender). */ hindiVoice?: string; signal?: AbortSignal }): AsyncIterable<MulawFrame>;
   /** Must complete within 24 h of consent withdrawal (SOP). */
   deleteVoice(providerVoiceId: string): Promise<void>;
 }
 
 export type AudioFormat = "mp3" | "mulaw8k";
-export interface SpeechResult { audio: Uint8Array; mime: string }
+export interface SpeechResult {
+  audio: Uint8Array;
+  mime: string;
+  /** For Hindi and Hinglish from the self-hosted engine: "converted" = changed to the person's own voice, "built-in" = the built-in Hindi voice. */
+  hindiVoice?: "converted" | "built-in";
+}
 
 /** Whole-clip TTS for the studio, library previews and the agent console. */
 export interface SpeechSynthesizer {
-  speak(input: { text: string; voiceId: string; format?: AudioFormat; signal?: AbortSignal }): Promise<SpeechResult>;
+  speak(input: { text: string; voiceId: string; hindiVoice?: string; format?: AudioFormat; signal?: AbortSignal }): Promise<SpeechResult>;
 }
 
 export interface TranscriptSegmentOut { speaker: number; startMs: number; endMs: number; text: string }
@@ -58,9 +63,9 @@ export interface SttSession {
   close(): Promise<void>;
 }
 
-/** Live streaming STT for calls (Phase 2). */
+/** Live streaming STT for calls (Phase 2). Telephony sends 8 kHz µ-law; the browser test sends 16 kHz linear PCM. */
 export interface SttAdapter {
-  open(input: { language: "en" | "hi" | "en-hi" }): Promise<SttSession>;
+  open(input: { language: "en" | "hi" | "en-hi"; encoding?: "mulaw" | "linear16"; sampleRate?: number }): Promise<SttSession>;
 }
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }

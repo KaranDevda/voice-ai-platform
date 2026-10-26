@@ -1,3 +1,4 @@
+import { cloningReady } from "@/lib/providers";
 import { Forbidden } from "@/components/forbidden";
 import { StudioEditor } from "@/components/studio-editor";
 import { PageHeader } from "@/components/ui/page";
@@ -7,11 +8,12 @@ import { voiceOptionsFor } from "@/lib/voices";
 export default async function StudioPage({ searchParams }: { searchParams: Promise<{ voice?: string }> }) {
   const user = await requirePageUser();
   if (!user.permissions.includes("studio.use")) return <Forbidden />;
-  const [voices, sp] = [await voiceOptionsFor(user), await searchParams];
+  // Seeded placeholder voices have no audio behind them, so they are not offered.
+  const [voices, sp] = [(await voiceOptionsFor(user)).filter((v) => !v.detail.startsWith("Demo")), await searchParams];
   return (
     <>
       <PageHeader title="Studio" description="Turn a script into speech in any stock or cloned staff voice." />
-      <StudioEditor voices={voices} initialVoice={sp.voice} elevenConfigured={!!process.env.ELEVENLABS_API_KEY?.trim()} />
+      <StudioEditor voices={voices} initialVoice={sp.voice} cloningReady={cloningReady()} />
     </>
   );
 }

@@ -51,7 +51,7 @@ export function createElevenLabsTts(config: ElevenLabsConfig): TtsAdapter & Spee
       const res = await doFetch(`${base}/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${fmt}`, {
         method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ text, model_id: modelId }), signal,
       });
-      if (!res.ok) throw new ElevenLabsError(`ElevenLabs TTS failed: ${res.status}`, res.status);
+      if (!res.ok) throw new ElevenLabsError(`ElevenLabs TTS failed: ${res.status} ${(await res.text()).slice(0, 200)}`, res.status);
       return { audio: new Uint8Array(await res.arrayBuffer()), mime: format === "mp3" ? "audio/mpeg" : "audio/basic" };
     },
 

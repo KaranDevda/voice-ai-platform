@@ -1,6 +1,6 @@
-# Voice AI & Call Intelligence Platform
+# Bizfy Voice AI
 
-A multi-tenant platform for AI voice agents, call tracking and voice studio tooling. AskG1 is the reasoning engine, Deepgram handles speech-to-text and stock voices, ElevenLabs handles cloned staff voices, and a carrier (Plivo or Exotel) will provide telephony.
+A multi-tenant platform for AI voice agents, call tracking and voice studio tooling. AskG1 is the reasoning engine, Deepgram handles speech-to-text and stock voices, cloned staff voices come from the free self-hosted Pocket TTS (see [docs/POCKET_TTS.md](docs/POCKET_TTS.md)) or ElevenLabs, and a carrier (Plivo or Exotel) will provide telephony.
 
 ## Status
 
@@ -8,11 +8,11 @@ A multi-tenant platform for AI voice agents, call tracking and voice studio tool
 |---|---|---|
 | 0–1 | Monorepo, schema, RBAC, login with 2FA, voice profiles and consent | Done |
 | Studio | 18-page web app: Studio, Clone, Transcribe, Agent Console, Library, Projects, Logs, Knowledge, Leads, Calls, Dialer, Reports, Voices, Team, Audit, Settings | Done, runs locally |
-| 2 | Live call loop (streaming STT → AskG1 → TTS with barge-in) | Not started |
+| 2 | Live conversation loop (streaming STT → AskG1 → TTS with barge-in), tested in the browser; carrier (Plivo or Exotel) not connected | Core built |
 | 3 | Android and iOS agent app, dialer calls | Not started |
 | 4 | Post-call automation (worker, BullMQ) | Not started |
 
-`apps/voice` and `apps/worker` are stubs, and `apps/agent-android` is only a README. No telephony carrier is connected yet.
+`apps/worker` is a stub, and `apps/agent-android` is only a README. `apps/voice` runs the live conversation (see [docs/VOICE_PIPELINE.md](docs/VOICE_PIPELINE.md)). No telephony carrier is connected yet.
 
 ## Stack
 

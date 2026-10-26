@@ -26,7 +26,7 @@ fi
 # The app connects as a non-owner role so Postgres row-level security applies, exactly as in production.
 psql -d postgres -qc "drop role if exists $APP_ROLE" 2>/dev/null || true
 psql -d postgres -qc "create role $APP_ROLE login password 'app'"
-psql -d "$DB" -qc "grant all on all tables in schema public to $APP_ROLE" -c "grant execute on function auth_find_user(text) to $APP_ROLE"
+psql -d "$DB" -qc "grant all on all tables in schema public to $APP_ROLE" -c "grant execute on function auth_find_user(text) to $APP_ROLE" -c "grant execute on function auth_claim_pairing_code(text) to $APP_ROLE" -c "grant execute on function auth_find_device(text) to $APP_ROLE"
 
 DATABASE_URL="$OWNER_URL" MFA_ENCRYPTION_KEY="$KEY" pnpm exec tsx src/seed-demo.ts
 echo "Done. Make sure apps/web/.env.local has DATABASE_URL=postgres://$APP_ROLE:app@localhost:5432/$DB"

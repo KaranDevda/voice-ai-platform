@@ -1,5 +1,6 @@
 "use client";
 import { Bot, Check, Delete, Phone, UserRound, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { normalizePhone } from "@voiceai/shared";
 import { Button } from "./ui/button";
@@ -7,6 +8,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Select } from "./ui/form";
 import { Input } from "./ui/form";
 import { Notice } from "./ui/page";
+import { apiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 interface LeadOption { id: string; name: string | null; phone: string; dnd: boolean }
@@ -25,6 +27,16 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
   const [leadId, setLeadId] = useState("");
   const [mode, setMode] = useState<"human" | "ai">("human");
   const [now, setNow] = useState<Date | null>(null);
+  const router = useRouter();
+  const [voiceId, setVoiceId] = useState(voices[0]?.id ?? "");
+  // idle -> (checked) -> dialling (a person is on the call; timer runs) -> finishing (they say how it went) -> saved
+  const [phase, setPhase] = useState<"idle" | "checking" | "dialling" | "finishing" | "saved">("idle");
+  const [startedAt, setStartedAt] = useState<Date | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [outcome, setOutcome] = useState<"connected" | "missed" | "rejected" | "failed">("connected");
+  const [minutesText, setMinutesText] = useState("0");
+  const [secondsText, setSecondsText] = useState("0");
+  const [problem, setProblem] = useState("");
   useEffect(() => {
     setNow(new Date());
     const t = setInterval(() => setNow(new Date()), 30_000);
@@ -40,6 +52,40 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
     { ok: inWindow, label: inWindow === false ? `Outside the calling window (${win.windowStart}–${win.windowEnd} IST)` : `Inside the calling window (${win.windowStart}–${win.windowEnd} IST)` },
   ];
   const blocked = checks.some((c) => c.ok === false);
+
+  useEffect(() => {
+    if (phase !== "dialling" || !startedAt) return;
+    const t = setInterval(() => setElapsed(Math.round((Date.now() - startedAt.getTime()) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [phase, startedAt]);
+
+  /** The server decides (and records a blocked attempt); the checks shown above are only a preview. */
+  async function press() {
+    setProblem(""); setPhase("checking");
+    const res = await fetch("/api/calls/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(leadId ? { leadId } : { number }) });
+    if (!res.ok) { setPhase("idle"); return setProblem((await apiError(res)).message); }
+    const r = (await res.json()) as { allowed: boolean; message?: string };
+    if (!r.allowed) { setPhase("idle"); return setProblem(r.message ?? "This call is not allowed."); }
+    if (mode === "ai") return router.push(`/live?lead=${leadId}&voice=${encodeURIComponent(`profile:${voiceId}`)}`);
+    setStartedAt(new Date()); setElapsed(0); setPhase("dialling");
+  }
+
+  function finish() {
+    setMinutesText(String(Math.floor(elapsed / 60))); setSecondsText(String(elapsed % 60));
+    setOutcome(elapsed > 0 ? "connected" : "missed");
+    setPhase("finishing");
+  }
+
+  async function save() {
+    setProblem("");
+    const durationS = outcome === "connected" ? Math.max(0, Math.round(Number(minutesText) || 0)) * 60 + Math.max(0, Math.round(Number(secondsText) || 0)) : 0;
+    const res = await fetch("/api/calls/log", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ number, status: outcome, durationS, startedAt: startedAt!.toISOString() }) });
+    if (!res.ok) return setProblem((await apiError(res)).message);
+    setPhase("saved");
+  }
+
+  const reset = () => { setPhase("idle"); setStartedAt(null); setProblem(""); };
+  const aiNeedsLead = mode === "ai" && !leadId;
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -76,7 +122,7 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
             </div>
             {mode === "ai" && (
               <Field label="AI voice" hint={voices.length ? "The AI always says it is an AI assistant first." : "No active voices. An Org Admin must register one."}>
-                <Select defaultValue={voices[0]?.id}>{voices.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</Select>
+                <Select value={voiceId} onChange={(e) => setVoiceId(e.target.value)}>{voices.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</Select>
               </Field>
             )}
           </CardBody>
@@ -91,8 +137,42 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
                 <span className={cn(c.ok === false && "text-danger")}>{c.label}</span>
               </div>
             ))}
-            <Button disabled className="mt-3" size="lg"><Phone className="h-4 w-4" aria-hidden /> {blocked ? "Cannot call" : "Call"}</Button>
-            <Notice tone="warning">Calling is not connected yet. It needs a Plivo phone number, which is waiting on KYC. The checks above already work.</Notice>
+            {aiNeedsLead && <p className="text-xs text-muted-foreground">Choose a lead on the left: the AI call follows that lead's Do Not Disturb and consent.</p>}
+            {phase === "idle" || phase === "checking" ? (
+              <Button className="mt-3" size="lg" disabled={blocked || phase === "checking" || !number || aiNeedsLead || (mode === "ai" && !voiceId)} onClick={press}>
+                <Phone className="h-4 w-4" aria-hidden /> {phase === "checking" ? "Checking…" : blocked ? "Cannot call" : mode === "ai" ? "Start AI practice call" : "Call"}
+              </Button>
+            ) : phase === "dialling" ? (
+              <div className="mt-3 grid gap-3 rounded-xl border border-primary bg-primary-soft p-4">
+                <div className="text-sm font-semibold">Cleared to call {e164 ?? number}</div>
+                <a href={`tel:${e164 ?? number}`} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"><Phone className="h-4 w-4" aria-hidden /> Open in my phone app</a>
+                <div className="text-xs text-muted-foreground">Time since cleared: {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}. Press Finish when the call ends, then log how it went.</div>
+                <Button variant="outline" onClick={finish}>Finish call</Button>
+              </div>
+            ) : phase === "finishing" ? (
+              <div className="mt-3 grid gap-3 rounded-xl border border-border p-4">
+                <div className="text-sm font-semibold">How did the call go?</div>
+                <Select value={outcome} onChange={(e) => setOutcome(e.target.value as typeof outcome)} aria-label="Outcome">
+                  <option value="connected">Connected, we spoke</option><option value="missed">No answer</option><option value="rejected">Declined</option><option value="failed">Could not connect</option>
+                </Select>
+                {outcome === "connected" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Minutes"><Input inputMode="numeric" value={minutesText} onChange={(e) => setMinutesText(e.target.value.replace(/\D/g, ""))} /></Field>
+                    <Field label="Seconds"><Input inputMode="numeric" value={secondsText} onChange={(e) => setSecondsText(e.target.value.replace(/\D/g, ""))} /></Field>
+                  </div>
+                )}
+                <Button onClick={save}>Save to call logs</Button>
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-3 rounded-xl border border-success p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold"><Check className="h-4 w-4 text-success" aria-hidden /> Saved to the call logs</div>
+                <Button variant="outline" onClick={() => { reset(); setNumber(""); setLeadId(""); }}>Make another call</Button>
+              </div>
+            )}
+            {problem && <Notice tone="warning">{problem}</Notice>}
+            <Notice tone="info">{mode === "ai"
+              ? "AI calls run as practice calls in this browser: you play the lead. Calling real numbers needs the company phone line, which is waiting on the carrier's KYC."
+              : "Your call goes out from your own phone or this computer, because the company phone line is not connected yet. It is checked first and logged after, so it shows on the lead."}</Notice>
           </CardBody>
         </Card>
       </div>

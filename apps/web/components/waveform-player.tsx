@@ -102,7 +102,7 @@ export function WaveformPlayer({ src, lazy = false, controllerRef, onTime, downl
   };
 
   return (
-    <div className={cn("rounded-xl border border-border bg-muted/40 p-3", className)}>
+    <div className={cn("w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-muted/40 p-3", className)}>
       <audio
         ref={audioRef}
         preload="metadata"
@@ -112,7 +112,7 @@ export function WaveformPlayer({ src, lazy = false, controllerRef, onTime, downl
         onLoadedMetadata={(e) => { const d = e.currentTarget.duration; if (Number.isFinite(d) && d > 0) setTotal(d * 1000); }}
         onTimeUpdate={(e) => { const ms = e.currentTarget.currentTime * 1000; setNow(ms); onTime?.(ms); }}
       />
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={() => void toggle()}
@@ -131,13 +131,13 @@ export function WaveformPlayer({ src, lazy = false, controllerRef, onTime, downl
           aria-valuenow={Math.round(now / 1000)}
           onKeyDown={onKey}
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); if (ready && total) seekTo(((e.clientX - r.left) / r.width) * total); else void toggle(); }}
-          className="flex h-12 flex-1 cursor-pointer items-center gap-[2px]"
+          className="flex h-12 min-w-0 flex-1 cursor-pointer items-center gap-px overflow-hidden"
         >
           {peaks.map((p, i) => (
-            <span key={i} className="min-w-[2px] flex-1 rounded-full" style={{ height: `${p * 100}%`, background: i / BARS <= ratio && ready ? "var(--wave)" : "var(--wave-dim)" }} />
+            <span key={i} className="min-w-0 flex-1 rounded-full" style={{ height: `${p * 100}%`, background: i / BARS <= ratio && ready ? "var(--wave)" : "var(--wave-dim)" }} />
           ))}
         </div>
-        <div className="w-24 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+        <div className="w-[5.25rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground">
           {loading ? "Loading…" : `${clockMs(now)} / ${total ? clockMs(total) : "--:--"}`}
         </div>
         {downloadName && ready && objectUrl.current && (

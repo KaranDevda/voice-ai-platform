@@ -15,10 +15,12 @@ Two terminals in the repo root.
 pnpm --filter @voiceai/web dev
 ```
 
-**Terminal 2: voice service** at http://localhost:4001 (only `/healthz` for now; the live call loop is Phase 2)
+**Terminal 2: voice service** at http://localhost:4001 (live conversation: see [VOICE_PIPELINE.md](VOICE_PIPELINE.md))
 ```bash
 pnpm --filter @voiceai/voice dev
 ```
+
+**Terminal 3 (free voice engine, optional)**: `pnpm dev:tts`. Setup and cloning: [POCKET_TTS.md](POCKET_TTS.md).
 
 ## Demo logins
 Password for all: `Passw0rd-long!`

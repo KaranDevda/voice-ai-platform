@@ -10,4 +10,6 @@ psql -v ON_ERROR_STOP=1 <<'SQL'
 CREATE ROLE voiceai_app LOGIN PASSWORD 'app';
 GRANT ALL ON ALL TABLES IN SCHEMA public TO voiceai_app;
 GRANT EXECUTE ON FUNCTION auth_find_user(text) TO voiceai_app;
+GRANT EXECUTE ON FUNCTION auth_claim_pairing_code(text) TO voiceai_app;
+GRANT EXECUTE ON FUNCTION auth_find_device(text) TO voiceai_app;
 SQL

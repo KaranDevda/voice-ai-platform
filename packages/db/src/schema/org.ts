@@ -44,6 +44,9 @@ export const users = pgTable(
     orgId: uuid("org_id").notNull().references(() => organizations.id),
     teamId: uuid("team_id").references((): AnyPgColumn => teams.id, { onDelete: "set null" }),
     email: text("email").notNull(),
+    /** Names are optional on staff accounts, and the way a voice donor with no login is identified. */
+    firstName: text("first_name"),
+    lastName: text("last_name"),
     phone: text("phone"),
     passwordHash: text("password_hash").notNull(),
     /** Encrypted at app level (SOP: Data protection). */
@@ -92,10 +95,31 @@ export const devices = pgTable(
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     platform: devicePlatform("platform").notNull().default("android"),
     deviceFingerprint: text("device_fingerprint").notNull(),
+    /** A readable name for the phone ("Priya's Pixel"), shown in Team & devices. */
+    name: text("name"),
+    appVersion: text("app_version"),
+    /** SHA-256 of the device's secret token. The token itself is shown to the phone once and never stored. */
+    tokenHash: text("token_hash"),
     workSimSlot: integer("work_sim_slot"),
     lastSyncAt: tstz("last_sync_at"),
     revokedAt: tstz("revoked_at"),
     createdAt: createdAt(),
   },
-  (t) => [unique("devices_user_fingerprint_uq").on(t.userId, t.deviceFingerprint), orgIsolationPolicy()],
+  (t) => [unique("devices_user_fingerprint_uq").on(t.userId, t.deviceFingerprint), unique("devices_token_hash_uq").on(t.tokenHash), orgIsolationPolicy()],
+).enableRLS();
+
+/** One-time codes a signed-in person generates and types into the phone app to link it to their account (10 minutes, single use). */
+export const devicePairingCodes = pgTable(
+  "device_pairing_codes",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** SHA-256 of the code; the code itself is shown once. */
+    codeHash: text("code_hash").notNull().unique(),
+    expiresAt: tstz("expires_at").notNull(),
+    usedAt: tstz("used_at"),
+    createdAt: createdAt(),
+  },
+  () => [orgIsolationPolicy()],
 ).enableRLS();

@@ -1,6 +1,6 @@
-import { AudioLines } from "lucide-react";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
+import { BizfyMark } from "@/components/brand";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -19,9 +19,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen md:flex">
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-card md:flex">
         <div className="flex items-center gap-2.5 px-5 py-4">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground"><AudioLines className="h-5 w-5" aria-hidden /></span>
+          <BizfyMark className="h-9 w-9" />
           <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight">Voice AI Studio</div>
+            <div className="text-sm font-semibold tracking-tight">Bizfy Voice AI</div>
             <div className="text-xs text-muted-foreground">Calls · voices · agents</div>
           </div>
         </div>

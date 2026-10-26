@@ -3,14 +3,26 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "tsx watch src/index.ts", "typecheck": "tsc -p tsconfig.json" },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "load-test": "tsx src/load-test.ts"
+  },
   "dependencies": {
     "@voiceai/auth": "workspace:*",
     "@voiceai/db": "workspace:*",
     "@voiceai/providers": "workspace:*",
     "@voiceai/shared": "workspace:*",
     "express": "^5.1.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^3.25.76"
   },
-  "devDependencies": { "@types/express": "^5.0.0", "@types/node": "^22.0.0", "@types/ws": "^8.18.0", "tsx": "^4.20.0" }
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.0",
+    "tsx": "^4.20.0",
+    "vitest": "^4.1.12"
+  }
 }

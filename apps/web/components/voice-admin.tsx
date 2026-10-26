@@ -9,7 +9,7 @@ import { Table, Td, Th, Tr } from "./ui/table";
 import { PostButton } from "./post-button";
 import { formatDate, titleCase } from "@/lib/utils";
 
-interface Profile { id: string; label: string; gender: string; provider: string; status: string; donorEmail: string; consentGrantedAt: string; consentPurpose: string; consentWithdrawn: string | null }
+interface Profile { id: string; label: string; gender: string; provider: string; status: string; donorFirst?: string | null; donorLast?: string | null; donorEmail: string; consentGrantedAt: string; consentPurpose: string; consentWithdrawn: string | null }
 interface Consent { id: string; email: string | null; purpose: string; method: string; grantedAt: string; revokedAt: string | null; inUse: boolean }
 interface Staff { id: string; email: string }
 
@@ -38,6 +38,52 @@ function useAction() {
   return { error, busy, run };
 }
 
+/** Name and gender of a voice, editable in place. Gender decides which built-in Hindi voice is used, so it must be right. */
+function VoiceRow({ p }: { p: Profile }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(p.label);
+  const [gender, setGender] = useState(p.gender);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const donor = [p.donorFirst, p.donorLast].filter(Boolean).join(" ") || p.donorEmail;
+
+  async function save() {
+    setBusy(true); setError("");
+    const res = await fetch(`/api/voices/${p.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ label, gender }) });
+    setBusy(false);
+    if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Could not save");
+    setEditing(false);
+    router.refresh();
+  }
+
+  if (editing) {
+    return (
+      <Tr>
+        <Td><Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} aria-label="Voice name" /></Td>
+        <Td><Select value={gender} onChange={(e) => setGender(e.target.value)} aria-label="Gender"><option value="female">Female</option><option value="male">Male</option></Select></Td>
+        <Td>{donor}</Td>
+        <Td colSpan={2} className="text-xs text-muted-foreground">{error ? <span role="alert" className="text-danger">{error}</span> : "Gender picks the built-in Hindi voice, so set it to the speaker's."}</Td>
+        <Td className="text-right whitespace-nowrap">
+          <Button size="sm" onClick={() => void save()} disabled={busy || !label.trim()}>Save</Button>{" "}
+          <Button size="sm" variant="outline" onClick={() => { setEditing(false); setLabel(p.label); setGender(p.gender); setError(""); }}>Cancel</Button>
+        </Td>
+      </Tr>
+    );
+  }
+  return (
+    <Tr>
+      <Td className="font-medium">{p.label}</Td><Td>{titleCase(p.gender)}</Td><Td>{donor}</Td>
+      <Td className="text-muted-foreground">{formatDate(p.consentGrantedAt)}{p.consentWithdrawn ? " · withdrawn" : ""}</Td>
+      <Td><Badge tone={p.status === "active" ? "success" : "danger"}>{titleCase(p.status)}</Badge></Td>
+      <Td className="text-right whitespace-nowrap">
+        {p.status === "active" && <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>}{" "}
+        {p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}>Revoke</PostButton>}
+      </Td>
+    </Tr>
+  );
+}
+
 export function VoiceAdmin({ profiles, consents, staff }: { profiles: Profile[]; consents: Consent[]; staff: Staff[] }) {
   const consentForm = useAction();
   const voiceForm = useAction();
@@ -51,14 +97,7 @@ export function VoiceAdmin({ profiles, consents, staff }: { profiles: Profile[];
         <Table>
           <thead><tr><Th>Voice</Th><Th>Gender</Th><Th>Donor</Th><Th>Consent</Th><Th>Status</Th><Th /></tr></thead>
           <tbody>
-            {profiles.map((p) => (
-              <Tr key={p.id}>
-                <Td className="font-medium">{p.label}</Td><Td>{titleCase(p.gender)}</Td><Td>{p.donorEmail}</Td>
-                <Td className="text-muted-foreground">{formatDate(p.consentGrantedAt)}{p.consentWithdrawn ? " · withdrawn" : ""}</Td>
-                <Td><Badge tone={p.status === "active" ? "success" : "danger"}>{titleCase(p.status)}</Badge></Td>
-                <Td className="text-right">{p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}>Revoke</PostButton>}</Td>
-              </Tr>
-            ))}
+            {profiles.map((p) => <VoiceRow key={p.id} p={p} />)}
           </tbody>
         </Table>
       </Card>

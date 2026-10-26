@@ -20,7 +20,7 @@ export const CONSENT_SUBJECT_TYPES = ["staff", "caller"] as const;
 export const USER_STATUSES = ["active", "suspended", "disabled"] as const;
 export const SENTIMENT_LABELS = ["positive", "neutral", "negative"] as const;
 export const STATUS_CHANGERS = ["user", "ai"] as const;
-export const DEVICE_PLATFORMS = ["android"] as const;
+export const DEVICE_PLATFORMS = ["android", "ios"] as const;
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 export type CallSource = (typeof CALL_SOURCES)[number];

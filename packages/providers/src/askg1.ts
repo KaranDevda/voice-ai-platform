@@ -1,6 +1,10 @@
 import { ProviderError, type ChatMessage, type LlmAdapter } from "./types";
 
 export interface AskG1Config {
+  /** Caps the length of a reply. Spoken answers should be short. */
+  maxTokens?: number;
+  /** Lower is more focused and repeatable. */
+  temperature?: number;
   /** e.g. http://100.64.0.2:8080 (reachable only on the company VPN). */
   baseUrl: string;
   apiKey: string;
@@ -32,7 +36,7 @@ export function createAskG1(config: AskG1Config): LlmAdapter {
       res = await doFetch(`${base}/v1/chat/completions`, {
         method: "POST",
         headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({ model, messages, stream: true }),
+        body: JSON.stringify({ model, messages, stream: true, ...(config.maxTokens ? { max_tokens: config.maxTokens } : {}), ...(config.temperature !== undefined ? { temperature: config.temperature } : {}) }),
         signal: ctl.signal,
       });
     } catch (err) {

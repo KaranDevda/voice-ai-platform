@@ -24,7 +24,9 @@ export function AgentConsole({ greeting, disclosure, voices, askg1Reachable, has
   const [transcribing, setTranscribing] = useState(false);
   const [useKb, setUseKb] = useState(hasKb);
   const [speak, setSpeak] = useState(false);
-  const [voice, setVoice] = useState(voices.find((v) => v.ref === "dg:aura-2-thalia-en")?.ref ?? voices[0]?.ref ?? "");
+  // A staff voice that speaks Hindi is the best default, because the AI answers in the caller's language.
+  const [voice, setVoice] = useState(voices.find((v) => v.group === "cloned" && v.hindi && !v.detail.startsWith("Demo"))?.ref ?? voices.find((v) => v.ref === "dg:aura-2-thalia-en")?.ref ?? voices[0]?.ref ?? "");
+  const [speakNote, setSpeakNote] = useState("");
   const [last, setLast] = useState<Timing | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -40,8 +42,18 @@ export function AgentConsole({ greeting, disclosure, voices, askg1Reachable, has
 
   async function say(text: string): Promise<number | undefined> {
     const t0 = Date.now();
-    const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice, save: false }) });
-    if (!res.ok) return undefined;
+    // Stock voices speak English only: for a Hindi or Hinglish reply, use a staff voice that can speak Hindi instead.
+    let useVoice = voice;
+    if (/[\u0900-\u097F]/.test(text)) {
+      const cur = voices.find((v) => v.ref === voice);
+      if (!cur || cur.group === "stock" || cur.hindi === false) {
+        const alt = voices.find((v) => v.group === "cloned" && v.hindi && !v.detail.startsWith("Demo"));
+        if (alt) { useVoice = alt.ref; setSpeakNote(`This reply is in Hindi, so ${alt.name}'s voice is speaking it. Stock voices speak English only.`); }
+        else { setSpeakNote("This reply is in Hindi, and no voice that speaks Hindi is available. Clone a staff voice under Voice clone."); return undefined; }
+      } else setSpeakNote("");
+    } else setSpeakNote("");
+    const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: useVoice, save: false }) });
+    if (!res.ok) { setSpeakNote("The reply could not be spoken. Check the voice servers (pnpm dev:stack)."); return undefined; }
     const url = URL.createObjectURL(await res.blob());
     const ms = Date.now() - t0;
     const a = new Audio(url);
@@ -158,7 +170,8 @@ export function AgentConsole({ greeting, disclosure, voices, askg1Reachable, has
           <CardBody className="grid gap-4">
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={useKb} disabled={!hasKb} onChange={(e) => setUseKb(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" /><span>Answer from the knowledge base{!hasKb && <span className="block text-xs text-muted-foreground">No documents yet. Add some in Knowledge base.</span>}</span></label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={speak} onChange={(e) => { setSpeak(e.target.checked); if (!e.target.checked) stopSpeaking(); }} className="h-4 w-4 accent-[var(--primary)]" /><Volume2 className="h-4 w-4 text-muted-foreground" aria-hidden />Speak the replies</label>
-            {speak && <VoicePicker voices={voices} value={voice} onChange={setVoice} />}
+            {speak && <VoicePicker voices={voices} value={voice} onChange={setVoice} language="hinglish" />}
+            {speak && speakNote && <p role="status" className="text-xs text-muted-foreground">{speakNote}</p>}
           </CardBody>
         </Card>
         <Card>

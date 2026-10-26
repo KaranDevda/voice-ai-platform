@@ -1,4 +1,4 @@
-import { ArrowUpRight, BarChart3, Bot, FileText, FolderOpen, Fingerprint, Library, LayoutDashboard, Mic2, Phone, PhoneCall, Users, type LucideIcon } from "lucide-react";
+import { AudioLines, ArrowUpRight, BarChart3, Bot, FileText, FolderOpen, Fingerprint, Library, LayoutDashboard, Mic2, Phone, PhoneCall, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { dashboardStats, listAssets, usageToday } from "@voiceai/db";
 import { resolveScope } from "@voiceai/auth";
@@ -36,6 +36,7 @@ export default async function Launchpad() {
   const tiles: Tile[] = [
     { href: "/studio", title: "Studio", text: "Turn a script into speech in any voice", icon: Mic2, tone: "text-primary bg-primary-soft", show: studio },
     { href: "/transcribe", title: "Transcribe", text: "Recordings to searchable text", icon: FileText, tone: "text-info bg-info-soft", show: studio },
+    { href: "/live", title: "Live conversation", text: "Talk to the AI by voice and watch it respond", icon: AudioLines, tone: "text-primary bg-primary-soft", show: studio },
     { href: "/agent-console", title: "Agent console", text: "Test your AI agent by text or voice", icon: Bot, tone: "text-success bg-success-soft", show: studio },
     { href: "/clone", title: "Voice clone", text: "Clone a staff voice, with consent", icon: Fingerprint, tone: "text-warning bg-warning-soft", show: studio && has("voice_profiles.manage") },
     { href: "/library", title: "Voice library", text: "Audition every voice", icon: Library, tone: "text-primary bg-primary-soft", show: studio },

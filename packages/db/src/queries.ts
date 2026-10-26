@@ -289,7 +289,7 @@ export async function listVoiceAdmin(db: Db, user: AuthUser) {
       .select({
         id: voiceProfiles.id, label: voiceProfiles.label, gender: voiceProfiles.gender, provider: voiceProfiles.provider,
         status: voiceProfiles.status, createdAt: voiceProfiles.createdAt, revokedAt: voiceProfiles.revokedAt,
-        donorEmail: donor.email, consentId: voiceProfiles.consentRecordId, consentGrantedAt: consentRecords.grantedAt,
+        donorEmail: donor.email, donorFirst: donor.firstName, donorLast: donor.lastName, consentId: voiceProfiles.consentRecordId, consentGrantedAt: consentRecords.grantedAt,
         consentPurpose: consentRecords.purpose, consentWithdrawn: consentRecords.revokedAt,
       })
       .from(voiceProfiles)
@@ -341,16 +341,17 @@ export async function listTeam(db: Db, user: AuthUser) {
         roles: sql<string[]>`coalesce((select array_agg(r.key order by r.key) from user_roles ur join roles r on r.id = ur.role_id where ur.user_id = "users"."id"), '{}')`,
       })
       .from(users)
-      .where(where)
+      // Voice donors (people whose voice is cloned, who cannot sign in) are not team members.
+      .where(and(where, sql`${users.email} not like '%@voice-donor.invalid'`))
       .orderBy(users.email);
 
     const deviceRows = await tx
-      .select({ id: devices.id, email: users.email, platform: devices.platform, workSimSlot: devices.workSimSlot, lastSyncAt: devices.lastSyncAt, revokedAt: devices.revokedAt })
+      .select({ id: devices.id, email: users.email, name: devices.name, platform: devices.platform, workSimSlot: devices.workSimSlot, lastSyncAt: devices.lastSyncAt, revokedAt: devices.revokedAt })
       .from(devices)
       .innerJoin(users, eq(users.id, devices.userId))
       .where(where)
       .orderBy(users.email);
-    return { members, devices: deviceRows, canRevoke: !!resolveScope(user, "devices.revoke") };
+    return { members, devices: deviceRows, canRevoke: !!resolveScope(user, "devices.revoke"), canPair: user.permissions.includes("calls.place") };
   });
 }
 

@@ -15,7 +15,10 @@
     "db:seed": "pnpm --filter @voiceai/db seed",
     "db:seed-demo": "pnpm --filter @voiceai/db seed-demo",
     "demo:code": "pnpm --filter @voiceai/db demo:code",
-    "dev:db": "bash packages/db/scripts/dev-db.sh"
+    "dev:db": "bash packages/db/scripts/dev-db.sh",
+    "dev:tts": "bash scripts/dev-tts.sh",
+    "dev:stack": "bash scripts/dev-voice-stack.sh",
+    "dev:voice-demo": "bash scripts/dev-voice-demo.sh"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { saveAsset } from "@voiceai/db";
-import { resolveVoice, timed } from "@/lib/providers";
+import { spellOutHindiNumbers } from "@voiceai/shared";
+import { builtInHindi, resolveVoice, timed } from "@/lib/providers";
 import { getDb } from "@/lib/server";
 import { studioRoute } from "@/lib/studio-route";
 
@@ -10,9 +11,17 @@ const body = z.object({ text: z.string().trim().min(1).max(MAX_CHARS), voice: z.
 export const POST = (req: Request) =>
   studioRoute({ mutation: true }, async (user) => {
     const input = body.parse(await req.json().catch(() => null));
-    const { speak, voiceId, provider } = await resolveVoice(user, input.voice);
+    const { speak, voiceId, provider, hindiVoice } = await resolveVoice(user, input.voice);
     const t0 = Date.now();
-    const result = await timed(user, provider, "speech", () => speak.speak({ text: input.text, voiceId, format: "mp3", signal: AbortSignal.timeout(60_000) }), () => input.text.length);
+    const result = await timed(user, provider, "speech", () => speak.speak({ text: spellOutHindiNumbers(input.text), voiceId, hindiVoice, format: "mp3", signal: AbortSignal.timeout(60_000) }), () => input.text.length);
+
+    // Be plain about who is speaking, from what actually happened (a conversion that failed falls back to the built-in voice).
+    const gender = hindiVoice?.startsWith("hm_") ? "male" : "female";
+    const voiceNote = result.hindiVoice === "converted"
+      ? "Hindi and Hinglish parts were changed into this person's own voice. English parts use the clone."
+      : result.hindiVoice === "built-in" || (provider === "pocket_tts" && /[\u0900-\u097F]/.test(input.text) && builtInHindi())
+        ? `Hindi and Hinglish parts are spoken by a built-in ${gender} Hindi voice, not this person's own voice. English parts use the clone. To use their own voice for Hindi, clone them again, or use Add Hindi to an existing voice.`
+        : "";
 
     let assetId = "";
     if (input.save) {
@@ -22,6 +31,6 @@ export const POST = (req: Request) =>
       assetId = saved.id;
     }
     return new Response(result.audio as unknown as BodyInit, {
-      headers: { "content-type": result.mime, "cache-control": "private, no-store", "x-asset-id": assetId, "x-latency-ms": String(Date.now() - t0), "x-chars": String(input.text.length) },
+      headers: { "content-type": result.mime, "cache-control": "private, no-store", "x-asset-id": assetId, "x-latency-ms": String(Date.now() - t0), "x-voice-note": encodeURIComponent(voiceNote), "x-chars": String(input.text.length) },
     });
   });

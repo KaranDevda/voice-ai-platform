@@ -1,6 +1,7 @@
 import { Smartphone } from "lucide-react";
 import { listTeam } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
+import { AddPhone } from "@/components/add-phone";
 import { PostButton } from "@/components/post-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -38,16 +39,16 @@ export default async function TeamPage() {
         </Card>
 
         <Card>
-          <CardHeader title="Agent phones" description="Revoking a device stops it syncing immediately" />
+          <CardHeader title="Agent phones" description="Android and iPhone. Revoking a device stops it syncing immediately." action={data.canPair ? <AddPhone /> : undefined} />
           {data.devices.length === 0 ? (
-            <EmptyState icon={Smartphone} title="No devices registered" />
+            <EmptyState icon={Smartphone} title="No phones linked" description="Press Add a phone, then type the code into the Bizfy Voice AI app." />
           ) : (
             <Table>
-              <thead><tr><Th>Agent</Th><Th>Platform</Th><Th>Work SIM</Th><Th>Last sync</Th><Th>Status</Th><Th /></tr></thead>
+              <thead><tr><Th>Agent</Th><Th>Phone</Th><Th>Platform</Th><Th>Work SIM</Th><Th>Last sync</Th><Th>Status</Th><Th /></tr></thead>
               <tbody>
                 {data.devices.map((d) => (
                   <Tr key={d.id}>
-                    <Td className="font-medium">{d.email}</Td><Td>{titleCase(d.platform)}</Td><Td>SIM {(d.workSimSlot ?? 0) + 1}</Td>
+                    <Td className="font-medium">{d.email}</Td><Td>{d.name ?? "Phone"}</Td><Td>{d.platform === "ios" ? "iPhone" : "Android"}</Td><Td>{d.platform === "ios" ? "n/a" : `SIM ${(d.workSimSlot ?? 0) + 1}`}</Td>
                     <Td>{d.lastSyncAt ? formatDateTime(d.lastSyncAt) : "Never"}</Td>
                     <Td>{d.revokedAt ? <Badge tone="danger">Revoked</Badge> : <Badge tone="success">Active</Badge>}</Td>
                     <Td className="text-right">

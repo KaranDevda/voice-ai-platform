@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const ICONS: Record<string, LucideIcon> = {
-  launchpad: Rocket, studio: Mic2, clone: Fingerprint, transcribe: FileText, agent: Bot, library: Library, projects: FolderOpen,
+  launchpad: Rocket, studio: Mic2, clone: Fingerprint, transcribe: FileText, agent: Bot, live: AudioLines, library: Library, projects: FolderOpen,
   dashboard: LayoutDashboard, leads: Users, calls: PhoneCall, dialer: Phone, reports: BarChart3,
   voices: AudioLines, knowledge: BookOpen, team: UserCog, audit: ScrollText, logs: Activity, settings: Settings,
 };

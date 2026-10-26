@@ -1,7 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookieOptions, SESSION_COOKIE, SESSION_TTL_S, signToken, verifyToken, type SessionClaims } from "./lib/session";
 
-const PUBLIC = [/^\/login$/, /^\/api\/auth\/(login|mfa\/.*)$/];
+// Brand images are static and shown on the login page, so they must load before sign-in.
+// The phone app has no browser session: it sends its own device token, which each /api/mobile route checks itself.
+// Voice files are fetched by the TTS server, not a browser; the route itself checks a signed address.
+const PUBLIC = [/^\/login$/, /^\/api\/auth\/(login|mfa\/.*)$/, /^\/brand\/[\w.-]+\.png$/, /^\/icon\.png$/, /^\/worklets\/[\w.-]+\.js$/, /^\/api\/mobile\/(register|me|calls|leads|check-call)$/, /^\/api\/internal\/voice-files\/[0-9a-f]{64}\/[0-9a-f-]{36}(\.[a-z]{2})?\.safetensors$/];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
