@@ -8,7 +8,7 @@
     "@voiceai/db": "workspace:*",
     "@voiceai/providers": "workspace:*",
     "@voiceai/shared": "workspace:*",
-    "bullmq": "^5.56.0"
+    "bullmq": "^6.3.17"
   },
   "devDependencies": { "@types/node": "^22.0.0", "tsx": "^4.20.0" }
 }
