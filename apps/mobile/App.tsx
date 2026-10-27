@@ -1,9 +1,9 @@
 import { StatusBar } from "expo-status-bar";
 import * as Device from "expo-device";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { createApi, NetworkError, RequestError, SyncQueue, UnpairedError, type LeadOption, type Pairing } from "../../packages/mobile-core/src";
-import { askPermission, collectNewCalls, getWorkSim, hasPermission, setWorkSim, simsSeen, type SimChoice } from "./src/androidCalls";
+import { askPermission, collectNewCalls, getWorkSim, hasPermission, setWorkSim, sharingStartedAt, simsSeen, startSharing, stopSharing, type SimChoice } from "./src/androidCalls";
 import { startBackgroundSync, stopBackgroundSync } from "./src/background";
 import { clearPairing, fingerprint, loadPairing, savePairing, store } from "./src/session";
 
@@ -62,6 +62,7 @@ function Home({ pairing, onUnpaired }: { pairing: Pairing; onUnpaired: () => voi
   const [sims, setSims] = useState<SimChoice[]>([]);
   const [workSim, setWork] = useState<string | null>(null);
   const [allowedLog, setAllowedLog] = useState(false);
+  const [sharing, setSharing] = useState<number | null>(null);
   const [window_, setWindow] = useState("");
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [number, setNumber] = useState("");
@@ -87,6 +88,7 @@ function Home({ pairing, onUnpaired }: { pairing: Pairing; onUnpaired: () => voi
   useEffect(() => {
     void (async () => {
       setWork(await getWorkSim());
+      setSharing(await sharingStartedAt());
       setAllowedLog(await hasPermission());
       try { const m = await api.me(); setWindow(`${m.calling.windowStart} to ${m.calling.windowEnd} India time`); setLeads(await api.leads()); }
       catch (e) { if (e instanceof UnpairedError) { await clearPairing(); onUnpaired(); } }
@@ -97,6 +99,30 @@ function Home({ pairing, onUnpaired }: { pairing: Pairing; onUnpaired: () => voi
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void sync(); });
     return () => { clearInterval(timer); sub.remove(); };
   }, [api, onUnpaired, sync]);
+
+  /** Turning sharing on is a deliberate act: it says exactly what is sent, and only calls made from now on are ever read. */
+  function turnOnSharing() {
+    Alert.alert(
+      "Share work calls with Bizfy?",
+      "What is sent: the number, time, length and direction (incoming, outgoing, missed) of calls made or received on your work SIM, from now on.\n\nWhat is never sent: calls before now, calls on any other SIM, messages, WhatsApp or other chats, contacts, recordings, or anything else on this phone.\n\nYou can stop at any time, and delete everything already sent.",
+      [{ text: "Not now", style: "cancel" }, { text: "Turn on sharing", onPress: async () => { await startSharing(); setSharing(await sharingStartedAt()); setStatus("Sharing is on. Calls from now on will be uploaded."); await sync(); } }],
+    );
+  }
+  async function turnOffSharing() {
+    await stopSharing(); await queue.clear(); setSharing(null); setPending(0);
+    setStatus("Sharing is off. Nothing more will be read or sent. Calls already uploaded stay until you delete them below.");
+  }
+  function stopAndDelete() {
+    Alert.alert(
+      "Stop sharing and delete everything?",
+      "This deletes every call this phone has uploaded, and the phone's link to Bizfy. It cannot be undone.",
+      [{ text: "Cancel", style: "cancel" }, { text: "Delete everything", style: "destructive", onPress: async () => {
+        try { await api.forgetMe(); }
+        catch (e) { if (!(e instanceof UnpairedError)) return setStatus("Could not reach the server, so nothing was deleted. Check the connection and try again."); }
+        await stopSharing(); await queue.clear(); await stopBackgroundSync(); await clearPairing(); onUnpaired();
+      } }],
+    );
+  }
 
   async function chooseSim() {
     if (!(await askPermission())) { setAllowedLog(false); return setStatus("Call history permission is needed to sync work calls."); }
@@ -136,6 +162,7 @@ function Home({ pairing, onUnpaired }: { pairing: Pairing; onUnpaired: () => voi
 
       <View style={s.card}>
         <Text style={s.h2}>Sync</Text>
+        {Platform.OS === "android" ? <Text style={sharing ? s.ok : s.muted}>{sharing ? `Sharing is ON (since ${new Date(sharing).toLocaleString()}).` : "Sharing is OFF: nothing is read or sent from your call history."}</Text> : null}
         <Text>{pending} call{pending === 1 ? "" : "s"} waiting to upload{lastSync ? `. Last sync ${lastSync}.` : "."}</Text>
         {status ? <Text style={s.muted}>{status}</Text> : null}
         <Button title="Sync now" onPress={sync} kind="plain" />
@@ -148,6 +175,9 @@ function Home({ pairing, onUnpaired }: { pairing: Pairing; onUnpaired: () => voi
           <Text>{workSim ? "A work SIM is chosen." : "No work SIM chosen yet, so nothing is uploaded."}{allowedLog ? "" : " Call history permission is off."}</Text>
           {sims.map((m) => <Button key={m.id} title={`Use ${m.label} for work${workSim === m.id ? " (chosen)" : ""}`} kind="plain" onPress={async () => { await setWorkSim(m.id); setWork(m.id); setSims([]); await sync(); }} />)}
           <Button title={workSim ? "Change work SIM" : "Choose work SIM"} onPress={chooseSim} kind="plain" />
+          <Text style={s.muted}>Choosing the SIM only lets the app tell your SIMs apart on this phone. Nothing is sent until you turn sharing on below.</Text>
+          {sharing ? <Button title="Turn off sharing" onPress={turnOffSharing} kind="plain" /> : <Button title="Turn on sharing…" onPress={turnOnSharing} disabled={!workSim || !allowedLog} />}
+          {!sharing && (!workSim || !allowedLog) ? <Text style={s.muted}>First choose the work SIM and allow call history.</Text> : null}
         </View>
       ) : (
         <View style={s.card}>
@@ -171,7 +201,8 @@ function Home({ pairing, onUnpaired }: { pairing: Pairing; onUnpaired: () => voi
         ) : null}
       </View>
 
-      <Button title="Unlink this phone" kind="plain" onPress={async () => { await stopBackgroundSync(); await clearPairing(); onUnpaired(); }} />
+      <Button title="Unlink this phone" kind="plain" onPress={async () => { await stopSharing(); await queue.clear(); await stopBackgroundSync(); await clearPairing(); onUnpaired(); }} />
+      <Button title="Stop sharing and delete everything I uploaded" kind="plain" onPress={stopAndDelete} />
     </ScrollView>
   );
 }

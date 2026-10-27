@@ -21,9 +21,9 @@
   --info-soft: #0e2638;
   --wave: #60a5fa;
   --wave-dim: #25365e;
-  --chart-ai: #3b82f6;
-  --chart-human: #38bdf8;
-  --chart-mobile: #818cf8;
+  --chart-ai: #4c8dff;
+  --chart-human: #14a89a;
+  --chart-mobile: #d2791a;
   color-scheme: dark;
 }
 
@@ -48,8 +48,8 @@
   --wave: #2563eb;
   --wave-dim: #c7d6f0;
   --chart-ai: #2563eb;
-  --chart-human: #0284c7;
-  --chart-mobile: #6366f1;
+  --chart-human: #0d9488;
+  --chart-mobile: #d97706;
   color-scheme: light;
 }
 

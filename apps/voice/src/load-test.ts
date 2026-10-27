@@ -69,7 +69,7 @@ async function speech(text: string): Promise<Int16Array> {
   return out;
 }
 
-interface Stages { llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number }
+interface Stages { llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number; groundMs?: number }
 interface TurnResult { firstWordMs: number | null; serverMs: number | null; stages?: Stages }
 interface CallResult { ok: boolean; why?: string; turns: TurnResult[] }
 

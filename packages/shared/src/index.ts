@@ -5,3 +5,4 @@ export * from "./transcript";
 export * from "./hindi";
 export * from "./call-rules";
 export * from "./mobile";
+export * from "./post-call";

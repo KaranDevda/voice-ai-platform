@@ -50,6 +50,20 @@
       "when": 1793009275342,
       "tag": "0006_device_platform_ios",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793107296534,
+      "tag": "0007_post_call_analysis",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793108722024,
+      "tag": "0008_analysis_rerun_and_retention",
+      "breakpoints": true
     }
   ]
 }

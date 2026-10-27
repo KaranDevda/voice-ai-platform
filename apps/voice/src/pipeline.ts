@@ -2,11 +2,14 @@ import type { ChatMessage, LlmAdapter, SttAdapter, SttEvent, SttSession } from "
 import { SentenceChunker } from "./sentences";
 import { knowledgeBlock } from "./prompt";
 import { forVoice } from "./speech-text";
+import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, type HandoffEnabled, type HandoffReason } from "./handoff";
 import type { TranscriptSegment } from "@voiceai/shared";
 
 /** Speaks text as audio chunks in the engine's native format. Abort the signal to stop mid-sentence. */
 export interface TtsEngine {
+  /** Who is speaking, so Hindi uses the right verb forms ("कर सकती हूँ" for a woman). */
+  gender?: Gender;
   encoding: "linear16" | "mulaw";
   rate: number;
   speak(text: string, signal: AbortSignal): AsyncIterable<Uint8Array>;
@@ -20,7 +23,7 @@ export type ServerEvent =
   | { type: "user"; text: string; turn: number; /** the caller kept talking: this replaces their previous line */ replace?: boolean }
   | { type: "assistant"; text: string; turn: number }
   | { type: "clear" }
-  | { type: "timing"; turn: number; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number }
+  | { type: "timing"; turn: number; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number; /** how long the company-knowledge search took (part of llmFirstTokenMs) */ groundMs?: number }
   | { type: "barge_in"; turn: number }
   | { type: "handoff"; reason: HandoffReason; message: string }
   | { type: "blocked"; reason: string; message: string }
@@ -253,11 +256,11 @@ export class Conversation {
   private async run(turn: number, ac: AbortController, tFinal: number, scripted?: string) {
     const { signal } = ac;
     const spoken: { text: string; playStart: number }[] = [];
-    let tFirstToken = 0, tFirstSentence = 0, tSpeakStart = 0, tFirstAudio = 0, failed = false;
+    let tFirstToken = 0, tFirstSentence = 0, tSpeakStart = 0, tFirstAudio = 0, failed = false, groundMs = 0;
     this.setState("thinking");
 
     const say = async (raw: string): Promise<void> => {
-      const sentence = forVoice(raw);
+      const sentence = this.o.tts.gender ? matchGender(forVoice(raw), this.o.tts.gender) : forVoice(raw);
       if (!sentence || !/[\p{L}\p{N}]/u.test(sentence)) return; // nothing left to say once markup is removed
       if (!tSpeakStart) tSpeakStart = this.now();
       let playStart = -1;
@@ -284,7 +287,9 @@ export class Conversation {
         const chunker = new SentenceChunker();
         const lastUser = [...this.history].reverse().find((m) => m.role === "user")?.content ?? "";
         // Knowledge lookup must never stop a reply: if it fails the model answers without it and is told nothing matched.
+        const tGround = this.now();
         const passages = this.o.ground ? await this.o.ground(lastUser).catch(() => []) : [];
+        groundMs = this.now() - tGround;
         if (signal.aborted) return;
         const userLines = this.history.filter((m) => m.role === "user");
         const note = this.o.turnNote?.(lastUser, userLines.length > 1 ? userLines[userLines.length - 2]!.content : undefined) ?? "";
@@ -335,7 +340,7 @@ export class Conversation {
       if (tFirstAudio && !scripted && !failed) {
         this.o.send({
           type: "timing", turn,
-          llmFirstTokenMs: Math.round(tFirstToken - tFinal),
+          llmFirstTokenMs: Math.round(tFirstToken - tFinal), groundMs: Math.round(groundMs),
           firstSentenceMs: Math.round(tFirstSentence - tFinal),
           ttsFirstAudioMs: Math.round(tFirstAudio - tSpeakStart),
           totalMs: Math.round(tFirstAudio - tFinal),

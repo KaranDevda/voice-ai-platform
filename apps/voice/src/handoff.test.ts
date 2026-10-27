@@ -31,3 +31,13 @@ describe("detectHandoff", () => {
     expect(reason("speak to a human", { ...ALL, person: false })).toBeNull();
   });
 });
+
+describe("Hindi spellings of 'a person'", () => {
+  const on = { person: true, complaint: true, payment: true };
+  it("hands over for each spelling Whisper may write", () => {
+    for (const q of ["क्या मैं किसी इंसान से बात कर सकता हूँ", "क्या मैं किसी इनसान से बात कर सकता हूं।", "मुझे किसी इन्सान से बात करनी है", "किसी व्यक्ति से बात करवाइए"]) expect(detectHandoff(q, on)).toBe("person");
+  });
+  it("does not hand over for an ordinary question", () => {
+    expect(detectHandoff("प्लान की कीमत क्या है", on)).toBeNull();
+  });
+});

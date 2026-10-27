@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, real, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, real, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { TranscriptSegment } from "@voiceai/shared";
 import {
   callDirection,
@@ -92,4 +92,23 @@ export const callInsights = pgTable(
     ),
     orgIsolationPolicy(),
   ],
+).enableRLS();
+
+/**
+ * Post-call analysis bookkeeping: how many times a call's analysis failed and when to try again, so one bad call is retried a few
+ * times with growing pauses and then left alone, instead of blocking the queue or being retried forever.
+ */
+export const callAnalysisAttempts = pgTable(
+  "call_analysis_attempts",
+  {
+    callLogId: uuid("call_log_id").primaryKey().references(() => callLogs.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    nextTryAt: tstz("next_try_at").notNull(),
+    /** A person asked for the analysis to run again: the new result replaces the old one and changes nothing else (no status, no Do Not Disturb). */
+    rerun: boolean("rerun").notNull().default(false),
+    updatedAt: tstz("updated_at").notNull().defaultNow(),
+  },
+  () => [orgIsolationPolicy()],
 ).enableRLS();

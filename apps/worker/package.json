@@ -3,12 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "tsx watch src/index.ts", "typecheck": "tsc -p tsconfig.json" },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "once": "tsx src/index.ts --once",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
   "dependencies": {
     "@voiceai/db": "workspace:*",
     "@voiceai/providers": "workspace:*",
-    "@voiceai/shared": "workspace:*",
-    "bullmq": "^5.56.0"
+    "@voiceai/shared": "workspace:*"
   },
-  "devDependencies": { "@types/node": "^22.0.0", "tsx": "^4.20.0" }
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "vitest": "^4.1.12"
+  }
 }

@@ -404,3 +404,25 @@ describe("Conversation: handing the call to a person", () => {
     await convo.close();
   });
 });
+
+describe("Conversation: the speaker's gender", () => {
+  it("says a woman's Hindi forms in a female voice, even if the model wrote a man's", async () => {
+    const tts = { ...fakeTts(), gender: "female" as const };
+    const { convo, stt, events } = setup({ llm: fakeLlm("मैं आपकी क्या मदद कर सकता हूँ?"), tts, greeting: "ठीक है, मैं आपकी बात करवाता हूँ।" });
+    await convo.start();
+    await until(() => events.some((e) => e.type === "assistant"));
+    stt.fire({ kind: "final", text: "कैसे हैं आप" });
+    await until(() => events.some((e) => e.type === "timing"));
+    const said = events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text);
+    expect(said).toEqual(["ठीक है, मैं आपकी बात करवाती हूँ।", "मैं आपकी क्या मदद कर सकती हूँ?"]);
+    await convo.close();
+  });
+  it("leaves the text alone when the voice has no gender set", async () => {
+    const { convo, stt, events } = setup({ llm: fakeLlm("मैं आपकी क्या मदद कर सकता हूँ?") });
+    await convo.start();
+    stt.fire({ kind: "final", text: "कैसे हैं आप" });
+    await until(() => events.some((e) => e.type === "timing"));
+    expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual(["मैं आपकी क्या मदद कर सकता हूँ?"]);
+    await convo.close();
+  });
+});

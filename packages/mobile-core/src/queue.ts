@@ -23,6 +23,8 @@ export class SyncQueue {
   async pending(): Promise<DeviceCall[]> {
     try { return JSON.parse((await this.store.get(KEY)) ?? "[]") as DeviceCall[]; } catch { return []; }
   }
+  /** Forgets everything waiting to upload (when sharing is turned off, nothing from before may be sent later). */
+  clear(): Promise<void> { return this.store.remove(KEY); }
   private save(calls: DeviceCall[]) { return this.store.set(KEY, JSON.stringify(calls.slice(-MAX_QUEUE))); }
 
   /** Adds calls, skipping any already waiting (the same call read twice from the call log). */

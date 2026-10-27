@@ -18,6 +18,8 @@
     "dev:db": "bash packages/db/scripts/dev-db.sh",
     "dev:tts": "bash scripts/dev-tts.sh",
     "dev:stack": "bash scripts/dev-voice-stack.sh",
+    "dev:voice": "bash scripts/dev-voice-service.sh",
+    "dev:worker": "bash scripts/dev-worker.sh",
     "dev:voice-demo": "bash scripts/dev-voice-demo.sh"
   },
   "devDependencies": {

@@ -6,6 +6,7 @@ import { Forbidden } from "@/components/forbidden";
 import { Badge, CallStatusBadge, LeadStatusBadge, SentimentBadge, SourceBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/ui/page";
+import { PostButton } from "@/components/post-button";
 import { WaveformPlayer } from "@/components/waveform-player";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
@@ -26,7 +27,7 @@ export default async function CallDetail({ params }: { params: Promise<{ id: str
   const detail = await allowed(async () => getCallDetail(getDb(), user, id));
   if (detail === null) return <Forbidden />;
   if (!detail) notFound();
-  const { call, canPlay, canTranscript, transcript, insight } = detail;
+  const { call, canPlay, canTranscript, transcript, insight, statusInfo, analysisPending, analysisFailed, analysisRerunQueued, canRerun } = detail;
 
   const meta: Array<[string, React.ReactNode]> = [
     ["Source", <SourceBadge key="s" source={call.source} />], ["Outcome", <CallStatusBadge key="o" status={call.status} />],
@@ -97,7 +98,11 @@ export default async function CallDetail({ params }: { params: Promise<{ id: str
           <Card>
             <CardHeader title="AI insights" />
             {!insight ? (
-              <EmptyState title="No insights yet" description="Insights appear after the call is transcribed." />
+              <div>
+                <EmptyState title={analysisFailed ? "The AI could not analyse this call" : analysisPending ? "Being analysed" : "No insights yet"}
+                  description={analysisFailed ? `It tried ${analysisFailed.attempts} times and gave up${analysisFailed.error ? `: ${analysisFailed.error}` : "."}` : analysisPending ? "The summary, sentiment and next step appear within a minute. Reload this page." : "Insights appear after the call is transcribed."} />
+                {canRerun && (analysisFailed || analysisPending) && <div className="flex justify-center pb-6"><PostButton url={`/api/calls/${id}/analysis`} size="sm" variant="soft">{analysisFailed ? "Try again" : "Analyse now"}</PostButton></div>}
+              </div>
             ) : (
               <CardBody className="grid gap-4 text-sm">
                 <p>{insight.summary}</p>
@@ -110,9 +115,25 @@ export default async function CallDetail({ params }: { params: Promise<{ id: str
                   <div className="flex gap-2 rounded-lg bg-warning-soft px-3 py-2 text-warning"><Lightbulb className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /><span><b>Next:</b> {insight.nextAction}</span></div>
                 )}
                 {insight.suggestedStatus && (
-                  <div className="text-xs text-muted-foreground">
-                    Suggested status <LeadStatusBadge status={insight.suggestedStatus} /> at {Math.round((insight.suggestedStatusConfidence ?? 0) * 100)}% confidence
-                    {(insight.suggestedStatusConfidence ?? 0) >= 0.8 ? " · applied automatically" : " · waiting for the owner to confirm"}
+                  <div className="grid gap-2 rounded-lg border border-border px-3 py-2.5 text-xs">
+                    <div className="text-muted-foreground">
+                      Suggested status <LeadStatusBadge status={insight.suggestedStatus} /> at {Math.round((insight.suggestedStatusConfidence ?? 0) * 100)}% confidence
+                    </div>
+                    {!statusInfo ? null : statusInfo.current === insight.suggestedStatus ? (
+                      <div className="text-foreground">{statusInfo.by === "ai" ? "Applied automatically: the lead is now " : statusInfo.by === "user" ? "Confirmed by a person: the lead is now " : "The lead is already "}<LeadStatusBadge status={statusInfo.current} /></div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-foreground">{(insight.suggestedStatusConfidence ?? 0) < 0.5 ? <>Not applied: the AI was not sure enough to offer this. The lead stays <LeadStatusBadge status={statusInfo.current} />.</> : <>Not applied automatically (the lead is <LeadStatusBadge status={statusInfo.current} />): it needs the owner to confirm.</>}</span>
+                        {statusInfo.canConfirm && (insight.suggestedStatusConfidence ?? 0) >= 0.5 && <PostButton url={`/api/calls/${id}/insight`} size="sm" variant="soft" confirm={`Change this lead's status to ${titleCase(insight.suggestedStatus)}?`}>Confirm {titleCase(insight.suggestedStatus)}</PostButton>}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {canRerun && (
+                  <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                    {analysisRerunQueued ? <span>A fresh analysis is on its way. Reload in a minute.</span> : <>
+                      <PostButton url={`/api/calls/${id}/analysis`} size="sm" variant="outline">Re-run analysis</PostButton>
+                      <span>Gives a fresh summary. The lead's status is not changed again.</span></>}
                   </div>
                 )}
                 {!insight.suggestedStatus && insight.sentimentLabel === "negative" && (

@@ -4,7 +4,8 @@ import { auditLogs } from "./schema";
 export interface AuditEntry {
   orgId: string;
   teamId?: string | null;
-  actorUserId: string;
+  /** Null for something the system did by itself (the post-call worker). */
+  actorUserId?: string | null;
   action: string;
   entity: string;
   entityId?: string;

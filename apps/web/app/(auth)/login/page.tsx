@@ -26,8 +26,9 @@ export default function LoginPage() {
     setError("Invalid email, password or code.");
   }
 
+  // method=post: if the form is submitted before this page's script has loaded, the browser must never put the password in the address (GET would).
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <form onSubmit={submit} method="post" action="/login" className="grid gap-4">
       <h1 className="text-lg font-semibold">{needTotp ? "Two-factor authentication" : "Welcome back"}</h1>
       <div className={needTotp ? "hidden" : "grid gap-4"}>
         <Field label="Email"><Input name="email" type="email" autoComplete="username" placeholder="you@company.com" required /></Field>

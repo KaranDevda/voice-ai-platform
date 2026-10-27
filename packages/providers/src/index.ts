@@ -8,3 +8,4 @@ export * from "./deepgram-live";
 export * from "./vad";
 export * from "./whisper-local";
 export * from "./hinglish";
+export * from "./plivo";

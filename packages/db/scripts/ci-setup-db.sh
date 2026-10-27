@@ -12,4 +12,5 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO voiceai_app;
 GRANT EXECUTE ON FUNCTION auth_find_user(text) TO voiceai_app;
 GRANT EXECUTE ON FUNCTION auth_claim_pairing_code(text) TO voiceai_app;
 GRANT EXECUTE ON FUNCTION auth_find_device(text) TO voiceai_app;
+GRANT EXECUTE ON FUNCTION worker_pending_analysis(integer), worker_expired_recordings(integer), worker_expired_transcripts(integer) TO voiceai_app;
 SQL

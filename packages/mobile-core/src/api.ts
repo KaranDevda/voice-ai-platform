@@ -37,6 +37,8 @@ export function createApi(o: ApiOptions) {
     register: (input: { code: string; fingerprint: string; platform: "android" | "ios"; name?: string; appVersion?: string; workSimSlot?: number }) =>
       call<{ deviceId: string; token: string; email: string }>("/api/mobile/register", { body: input }),
     me: () => call<{ deviceId: string; calling: { windowStart: string; windowEnd: string } }>("/api/mobile/me"),
+    /** Stop sharing: the server deletes everything this phone uploaded, and forgets the phone. */
+    forgetMe: () => call<{ deleted: { calls: number; leads: number; recordings: number } }>("/api/mobile/me", { method: "DELETE" }),
     leads: async () => (await call<{ leads: LeadOption[] }>("/api/mobile/leads")).leads,
     check: (target: { leadId?: string; number?: string }) => call<CheckResult>("/api/mobile/check-call", { body: target }),
     syncCalls: async (calls: DeviceCall[]) => (await call<{ results: SyncOutcome[] }>("/api/mobile/calls", { body: { calls } })).results,

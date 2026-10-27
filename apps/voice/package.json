@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "load-test": "tsx src/load-test.ts"
+    "load-test": "tsx src/load-test.ts",
+    "phone-sim": "tsx src/phone-sim.ts"
   },
   "dependencies": {
     "@voiceai/auth": "workspace:*",

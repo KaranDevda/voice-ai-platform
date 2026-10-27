@@ -28,8 +28,8 @@ export function relevantExcerpt(content: string, query: string, max = 380): stri
  * Matching ignores the nukta mark, so बिज़नेस and बिजनेस are the same.
  */
 const GLOSSARY: Array<[string[], string]> = [
-  [["कीमत", "दाम", "मूल्य", "रेट", "शुल्क", "कितना", "कितने रुपये", "खर्च", "पैसे"], "price cost rupees per month"],
-  [["प्लान", "योजना", "पैकेज"], "plan"],
+  [["कीमत", "दाम", "मूल्य", "रेट", "शुल्क", "कितना", "कितने रुपये", "खर्च", "पैसे", "प्राइसिंग", "प्राइस"], "price cost rupees per month"],
+  [["प्लान", "प्लांस", "प्लान्स", "योजना", "पैकेज", "प्राइसिंग", "प्राइस"], "plan"],
   [["बिजनेस", "व्यापार"], "business"],
   [["स्टार्टर"], "starter"],
   [["एंटरप्राइज", "उद्यम"], "enterprise"],

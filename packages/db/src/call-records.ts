@@ -71,3 +71,15 @@ export async function checkOutboundCall(db: Db, actor: AuthUser, leadId: string,
     return { allowed: false, reason } as const;
   });
 }
+
+/** The phone number of a lead the person may call, or null when there is no such lead (or it is in another organisation). */
+export async function getLeadPhone(db: Db, actor: AuthUser, leadId: string): Promise<string | null> {
+  assertAuthorized(actor, "calls.place");
+  return withOrg(db, actor.orgId, async (tx) => (await tx.select({ phone: leads.phoneE164 }).from(leads).where(eq(leads.id, leadId)))[0]?.phone ?? null);
+}
+
+/** The lead with this phone number (already in +91... form), so an incoming call is filed under the right person. Null when unknown. */
+export async function findLeadIdByPhone(db: Db, actor: AuthUser, e164: string): Promise<string | null> {
+  assertAuthorized(actor, "calls.place");
+  return withOrg(db, actor.orgId, async (tx) => (await tx.select({ id: leads.id }).from(leads).where(eq(leads.phoneE164, e164)))[0]?.id ?? null);
+}

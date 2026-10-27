@@ -29,3 +29,8 @@ export function mulawAdapterAsPcm(tts: TtsAdapter, voiceId: string): TtsEngine {
     },
   };
 }
+
+/** An adapter that already makes 8 kHz µ-law (Deepgram, ElevenLabs), used as it is: exactly what the phone carrier wants. */
+export function mulawAdapterEngine(tts: TtsAdapter, voiceId: string): TtsEngine {
+  return { encoding: "mulaw", rate: 8000, speak: (text, signal) => tts.synthesize({ text, providerVoiceId: voiceId, signal }) };
+}

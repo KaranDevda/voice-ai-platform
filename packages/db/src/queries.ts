@@ -7,7 +7,7 @@ import { withOrg, type Db } from "./client";
 import { scopeCondition } from "./scoped";
 import {
   auditLogs, callInsights, callLogs, callTranscripts, consentRecords, devices, kbChunks, kbDocuments,
-  leads, leadStatusHistory, organizations, roles, userRoles, users, voiceProfiles,
+  callAnalysisAttempts, leads, leadStatusHistory, organizations, roles, userRoles, users, voiceProfiles,
 } from "./schema";
 
 export const PAGE_SIZE = 15;
@@ -70,7 +70,7 @@ export async function dashboardStats(db: Db, user: AuthUser, days = 7) {
       const dt = day(days - 1 - i);
       const key = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(dt);
       const r = byKey.get(key);
-      return { label: new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(dt), ai: r?.ai ?? 0, web: r?.web ?? 0, mobile: r?.mobile ?? 0 };
+      return { label: new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(dt), day: key, ai: r?.ai ?? 0, web: r?.web ?? 0, mobile: r?.mobile ?? 0 };
     });
 
     let leadsByStatus: Array<{ status: LeadStatus; n: number }> | null = null;
@@ -88,7 +88,8 @@ export async function dashboardStats(db: Db, user: AuthUser, days = 7) {
 
 // -------------------------------------------------------------------- calls
 
-export interface CallFilters { q?: string; source?: string; status?: string; page?: number; leadId?: string }
+/** `source` may also be "ai" (both AI sources). `day` is a calendar day (YYYY-MM-DD) in India time. */
+export interface CallFilters { q?: string; source?: string; status?: string; page?: number; leadId?: string; day?: string; /** "failed": the AI gave up analysing the call */ analysis?: string }
 
 export async function listCalls(db: Db, user: AuthUser, f: CallFilters = {}, pageSize = PAGE_SIZE) {
   const { where, aggregateOnly } = aggregateScope(user, "calls.read");
@@ -97,7 +98,10 @@ export async function listCalls(db: Db, user: AuthUser, f: CallFilters = {}, pag
   const agent = aliasedTable(users, "agent");
 
   const conds: SQL[] = [where];
-  if (f.source) conds.push(eq(callLogs.source, f.source as never));
+  if (f.source === "ai") conds.push(sql`${callLogs.source} in ('ai_inbound','ai_outbound')`);
+  else if (f.source) conds.push(eq(callLogs.source, f.source as never));
+  if (f.analysis === "failed") conds.push(sql`exists (select 1 from call_analysis_attempts a where a.call_log_id = ${callLogs.id} and a.attempts >= 5) and not exists (select 1 from call_insights i where i.call_log_id = ${callLogs.id})`);
+  if (f.day && /^\d{4}-\d{2}-\d{2}$/.test(f.day)) conds.push(sql`(${callLogs.startedAt} at time zone 'Asia/Kolkata')::date = ${f.day}::date`);
   if (f.status) conds.push(eq(callLogs.status, f.status as never));
   if (f.leadId) conds.push(eq(callLogs.leadId, f.leadId));
   if (f.q?.trim()) {
@@ -151,9 +155,26 @@ export async function getCallDetail(db: Db, user: AuthUser, id: string) {
 
     const [transcript] = canTranscript ? await tx.select().from(callTranscripts).where(eq(callTranscripts.callLogId, id)) : [];
     const [insight] = canTranscript ? await tx.select().from(callInsights).where(eq(callInsights.callLogId, id)) : [];
+    const [attempt] = canTranscript ? await tx.select({ attempts: callAnalysisAttempts.attempts, error: callAnalysisAttempts.lastError, rerun: callAnalysisAttempts.rerun }).from(callAnalysisAttempts).where(eq(callAnalysisAttempts.callLogId, id)) : [];
+    const analysisFailed = !insight && attempt && attempt.attempts >= 5 ? { attempts: attempt.attempts, error: attempt.error } : null;
+    const analysisRerunQueued = !!attempt?.rerun;
+    // What became of the status the AI suggested: changed by the AI, confirmed by a person, or still waiting for the owner.
+    let statusInfo: { current: string; by: "ai" | "user" | null; canConfirm: boolean } | null = null;
+    if (insight && call.leadId) {
+      const [lead] = await tx.select({ status: leads.status, teamId: leads.teamId, ownerId: leads.ownerUserId }).from(leads).where(eq(leads.id, call.leadId));
+      const [h] = await tx.select({ by: leadStatusHistory.changedBy }).from(leadStatusHistory).where(eq(leadStatusHistory.callLogId, id)).orderBy(desc(leadStatusHistory.createdAt)).limit(1);
+      if (lead) statusInfo = { current: lead.status, by: h?.by ?? null, canConfirm: authorize(user, "leads.status_override", { orgId: call.orgId, teamId: lead.teamId, ownerUserId: lead.ownerId }).allowed };
+    }
     return {
       call: { ...call, leadPhone: call.leadPhone ? phone(user, call.leadPhone) : null, recordingKey: undefined },
-      canPlay, canTranscript, transcript: transcript ?? null, insight: insight ?? null,
+      canPlay, canTranscript, transcript: transcript ?? null, insight: insight ?? null, statusInfo,
+      /** There is a transcript but the analysis has not run yet (the worker picks calls up within seconds). */
+      analysisPending: canTranscript && !!transcript && !insight && !analysisFailed,
+      /** The AI gave up after five tries: why, so a person can decide to try again. */
+      analysisFailed,
+      /** A fresh analysis was asked for and is waiting for the worker. */
+      analysisRerunQueued,
+      canRerun: canTranscript && !!transcript,
     };
   });
 }

@@ -12,8 +12,6 @@ export interface AndroidCallEntry {
   phoneAccountId?: string;
 }
 
-export const MAX_BACKFILL_DAYS = 7;
-
 /**
  * Turns one Android call-log row into a call to upload, or null when it must NOT be uploaded: the other SIM (personal calls
  * never leave the phone), voicemail, or a row we cannot read. `workAccountId` is the SIM the person chose as the work SIM.
@@ -35,12 +33,11 @@ export function fromAndroid(e: AndroidCallEntry, workAccountId: string | null): 
 }
 
 /**
- * Which time to read the call log from: just after the last call already handled, but never further back than a week, so
- * installing the app does not upload someone's whole history.
+ * Which time to read the call log from. Never before the moment the person turned sharing on, so old calls are not uploaded, and
+ * after that, just after the last call already handled.
  */
-export function readFrom(lastHandledAt: number | null, now = Date.now()): number {
-  const floor = now - MAX_BACKFILL_DAYS * 86_400_000;
-  return Math.max(floor, (lastHandledAt ?? 0) + 1);
+export function readFrom(sharingStartedAt: number, lastHandledAt: number | null): number {
+  return Math.max(sharingStartedAt, (lastHandledAt ?? 0) + 1);
 }
 
 /** The newest call time among the rows, to remember as the cursor. */

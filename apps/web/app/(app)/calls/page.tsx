@@ -14,21 +14,24 @@ import { formatDateTime, formatDuration, titleCase } from "@/lib/utils";
 
 const SOURCE_LABEL: Record<string, string> = { ai_inbound: "AI inbound", ai_outbound: "AI outbound", web_dialer: "Web dialer", mobile_sim: "Mobile SIM" };
 
-export default async function CallsPage({ searchParams }: { searchParams: Promise<{ q?: string; source?: string; status?: string; page?: string }> }) {
+export default async function CallsPage({ searchParams }: { searchParams: Promise<{ q?: string; source?: string; status?: string; day?: string; analysis?: string; page?: string }> }) {
   const user = await requirePageUser();
   const sp = await searchParams;
-  const data = await allowed(() => listCalls(getDb(), user, { q: sp.q, source: sp.source, status: sp.status, page: Number(sp.page) || 1 }));
+  const data = await allowed(() => listCalls(getDb(), user, { q: sp.q, source: sp.source, status: sp.status, day: sp.day, analysis: sp.analysis === "failed" ? "failed" : undefined, page: Number(sp.page) || 1 }));
   if (!data) return <Forbidden />;
+  const validDay = !!sp.day && /^\d{4}-\d{2}-\d{2}$/.test(sp.day);
+  const dayLabel = validDay ? new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${sp.day}T00:00:00Z`)) : "";
 
   return (
     <>
-      <PageHeader title="Call logs" description="Every call, whether the AI, the web dialer or an agent's phone made it." />
+      <PageHeader title="Call logs" description={sp.analysis === "failed" ? "Calls the AI gave up analysing. Open one and press Try again." : validDay ? `Calls on ${dayLabel} (India time)` : "Every call, whether the AI, the web dialer or an agent's phone made it."} />
       <Card>
         <FilterBar
           action="/calls"
           q={sp.q}
+          extra={<>{validDay && <input type="hidden" name="day" value={sp.day} />}{sp.analysis === "failed" && <input type="hidden" name="analysis" value="failed" />}</>}
           selects={[
-            { name: "source", value: sp.source, label: "All sources", options: CALL_SOURCES.map((s) => [s, SOURCE_LABEL[s]!]) },
+            { name: "source", value: sp.source, label: "All sources", options: [["ai", "All AI calls"], ...CALL_SOURCES.map((s) => [s, SOURCE_LABEL[s]!] as [string, string])] },
             { name: "status", value: sp.status, label: "All outcomes", options: CALL_STATUSES.map((s) => [s, titleCase(s)]) },
           ]}
         />
@@ -54,7 +57,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
             </tbody>
           </Table>
         )}
-        <Pager basePath="/calls" params={{ q: sp.q, source: sp.source, status: sp.status }} page={data.page} hasMore={data.hasMore} />
+        <Pager basePath="/calls" params={{ q: sp.q, source: sp.source, status: sp.status, day: validDay ? sp.day : undefined, analysis: sp.analysis === "failed" ? "failed" : undefined }} page={data.page} hasMore={data.hasMore} />
       </Card>
     </>
   );

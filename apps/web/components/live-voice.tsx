@@ -165,7 +165,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
       socket.onopen = () => socket.send(JSON.stringify({ type: "start", language, voice, greeting: true, listen, ...(lead ? { leadId: lead.id } : {}) }));
       socket.onmessage = (m) => (typeof m.data === "string" ? onEvent(JSON.parse(m.data)) : onAudio(m.data as ArrayBuffer));
       socket.onclose = () => { if (ws.current === socket) stop(); };
-      socket.onerror = () => { setError("Could not reach the voice service. Is it running on port 4001?"); stop(); };
+      socket.onerror = () => { setError("Could not reach the voice service. Start everything with pnpm dev:stack (it runs the voice service on port 4001 and restarts it if it stops), then try again."); stop(); };
       node.port.onmessage = (m: MessageEvent<ArrayBuffer>) => {
         const s = new Int16Array(m.data);
         // Hold-to-talk: when the button is not held the microphone is replaced by silence, so nothing in the room is heard.

@@ -69,3 +69,10 @@ describe("hindiToEnglishKeywords", () => {
     expect(relevantExcerpt(PRICING, q, 300)).toContain("Business plan starts at 4,999");
   });
 });
+
+describe("Hindi spellings of plan", () => {
+  it("finds plan documents for the plural and for 'pricing' as Whisper writes them", () => {
+    for (const q of ["अन्य प्लांस के बारे में भी बताइए", "प्राइसिंग प्लान के बारे में बताइए", "प्लान्स क्या हैं"]) expect(hindiToEnglishKeywords(q).split(" ")).toContain("plan");
+    expect(hindiToEnglishKeywords("प्राइसिंग के बारे में बताइए").split(" ")).toEqual(expect.arrayContaining(["price", "plan"]));
+  });
+});

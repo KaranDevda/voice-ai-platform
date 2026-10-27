@@ -47,16 +47,23 @@ describe("Android call log", () => {
     expect(fromAndroid(e(), "work")!.localId).not.toBe(fromAndroid(e({ timestamp: 1_792_000_000_001 }), "work")!.localId);
     expect(fromAndroid(e({ duration: "30" }), "work")!.durationS).toBe(30);
   });
-  it("reads from just after the last handled call, but never more than a week back", () => {
-    const now = 1_792_000_000_000;
-    expect(readFrom(null, now)).toBe(now - 7 * 86_400_000);
-    expect(readFrom(now - 1000, now)).toBe(now - 999);
-    expect(readFrom(now - 30 * 86_400_000, now)).toBe(now - 7 * 86_400_000);
+  it("never reads calls from before sharing was turned on, whatever the call log holds", () => {
+    const on = 1_792_000_000_000;
+    expect(readFrom(on, null)).toBe(on);
+    expect(readFrom(on, on - 5_000_000)).toBe(on);          // a cursor from the past cannot reach back
+    expect(readFrom(on, on + 1000)).toBe(on + 1001);        // afterwards, just past the last call handled
     expect(newestTimestamp([e({ timestamp: 5 }), e({ timestamp: "9" }), e({ timestamp: 7 })])).toBe(9);
   });
+
 });
 
 describe("offline queue", () => {
+  it("forgets everything waiting when told to clear", async () => {
+    const q = new SyncQueue(memory());
+    await q.add([call(1), call(2)]);
+    await q.clear();
+    expect(await q.pending()).toEqual([]);
+  });
   it("keeps calls until the server answers, and removes them after", async () => {
     const q = new SyncQueue(memory());
     await q.add([call(1), call(2)]);
@@ -134,6 +141,12 @@ describe("offline queue", () => {
 });
 
 describe("api client", () => {
+  it("asks the server to forget this phone with a DELETE", async () => {
+    let seen: { url: string; method: string } | null = null;
+    const api = createApi({ baseUrl: "https://x.test", token: "vd_abc", fetch: (async (url: string, init: RequestInit) => { seen = { url, method: init.method! }; return new Response('{"deleted":{"calls":3,"leads":1,"recordings":0}}'); }) as unknown as typeof fetch });
+    expect((await api.forgetMe()).deleted.calls).toBe(3);
+    expect(seen).toEqual({ url: "https://x.test/api/mobile/me", method: "DELETE" });
+  });
   const reply = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
   it("sends the token as a bearer header and not in the address", async () => {
     let seen: { url: string; headers: Record<string, string> } | null = null;
@@ -151,5 +164,34 @@ describe("api client", () => {
     expect(bad.code).toBe("invalid_code");
     const limited = await createApi({ baseUrl: "https://x.test", fetch: reply(429, { error: "too_many_attempts" }) }).register({ code: "x", fingerprint: "y", platform: "ios" }).catch((e) => e);
     expect(limited).toBeInstanceOf(RequestError); // while pairing there is no token, so a rate limit is shown to the person, not retried silently
+  });
+});
+
+import { matchRecordings, type RecordingFile } from "./recordings";
+
+describe("matching recordings to calls", () => {
+  const T = Date.parse("2026-10-26T04:30:00Z");
+  const call = (id: string, number: string, at: number, durationS: number, status: DeviceCall["status"] = "connected"): DeviceCall => ({ localId: id, number, direction: "outbound", status, startedAt: new Date(at).toISOString(), durationS });
+  const file = (uri: string, name: string, at: number, size = 1000): RecordingFile => ({ uri, name, createdMs: at, sizeBytes: size });
+  it("pairs a recording made during the call", () => {
+    expect(matchRecordings([call("c1", "+919800000001", T, 60)], [file("f1", "Call recording.m4a", T + 5_000)])).toEqual([{ localId: "c1", file: file("f1", "Call recording.m4a", T + 5_000) }]);
+  });
+  it("accepts a timestamp at the end of the call, but not one from long before or after", () => {
+    const c = [call("c1", "+919800000001", T, 60)];
+    expect(matchRecordings(c, [file("end", "x.m4a", T + 60_000 + 30_000)])).toHaveLength(1);
+    expect(matchRecordings(c, [file("early", "x.m4a", T - 10 * 60_000)])).toHaveLength(0);
+    expect(matchRecordings(c, [file("late", "x.m4a", T + 60_000 + 10 * 60_000)])).toHaveLength(0);
+  });
+  it("uses the number in the file name to tell two close calls apart", () => {
+    const calls = [call("a", "+919800000001", T, 60), call("b", "+919811122233", T + 20_000, 60)];
+    const files = [file("fa", "Call_9800000001.m4a", T + 25_000), file("fb", "Call_9811122233.m4a", T + 26_000)];
+    const m = Object.fromEntries(matchRecordings(calls, files).map((x) => [x.localId, x.file.uri]));
+    expect(m).toEqual({ a: "fa", b: "fb" });
+  });
+  it("never uses one file for two calls, and skips missed, uploaded, empty and oversized ones", () => {
+    const calls = [call("a", "+919800000001", T, 60), call("b", "+919800000002", T + 30_000, 60), call("missed", "+919800000003", T, 0, "missed")];
+    expect(matchRecordings(calls, [file("only", "r.m4a", T + 40_000)])).toHaveLength(1);
+    expect(matchRecordings(calls, [file("done", "r.m4a", T + 40_000)], new Set(["done"]))).toHaveLength(0);
+    expect(matchRecordings(calls, [file("empty", "r.m4a", T + 40_000, 0), file("huge", "r.m4a", T + 40_000, 60 * 1024 * 1024)])).toHaveLength(0);
   });
 });

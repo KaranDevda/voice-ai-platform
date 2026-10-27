@@ -5,11 +5,34 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "ios": { "bundleIdentifier": "com.bizfylabs.voiceai", "supportsTablet": false },
+    "ios": {
+      "bundleIdentifier": "com.bizfylabs.voiceai",
+      "supportsTablet": false,
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
     "android": {
       "package": "com.bizfylabs.voiceai",
-      "permissions": ["android.permission.READ_CALL_LOG", "android.permission.READ_PHONE_STATE"]
+      "permissions": [
+        "android.permission.READ_CALL_LOG",
+        "android.permission.READ_PHONE_STATE"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2563eb"
+      },
+      "versionCode": 1
     },
-    "plugins": ["expo-secure-store"]
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    }
   }
 }

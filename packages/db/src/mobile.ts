@@ -9,7 +9,7 @@ import { writeAudit } from "./audit";
 import { withOrg, type Db } from "./client";
 import { checkOutboundCall, type OutboundCheck } from "./call-records";
 import { loadAuthUser } from "./login";
-import { callLogs, devicePairingCodes, devices, leads, organizations, users } from "./schema";
+import { callLogs, devicePairingCodes, devices, leadStatusHistory, leads, organizations, users } from "./schema";
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -145,5 +145,52 @@ export async function logDialerCall(
       })
       .returning({ id: callLogs.id });
     return { id: row!.id, leadId: lead!.id };
+  });
+}
+
+/**
+ * The call a phone wants to attach a recording to, found by the phone's own call id. Null when this phone never uploaded that call
+ * (a phone can only attach recordings to its own calls). `hasRecording` stops a second upload from replacing the first.
+ */
+export async function findDeviceCall(db: Db, device: DeviceSession, localId: string): Promise<{ id: string; orgId: string; hasRecording: boolean } | null> {
+  return withOrg(db, device.actor.orgId, async (tx) => {
+    const [row] = await tx.select({ id: callLogs.id, orgId: callLogs.orgId, key: callLogs.recordingKey }).from(callLogs)
+      .where(eq(callLogs.idempotencyKey, `${device.deviceId}:${localId}`));
+    return row ? { id: row.id, orgId: row.orgId, hasRecording: !!row.key } : null;
+  });
+}
+
+/** Records where a call's recording is stored. Only fills an empty slot, so a recording is never silently replaced. */
+export async function setRecordingKey(db: Db, device: DeviceSession, callLogId: string, key: string): Promise<boolean> {
+  return withOrg(db, device.actor.orgId, async (tx) => {
+    const done = await tx.update(callLogs).set({ recordingKey: key })
+      .where(and(eq(callLogs.id, callLogId), eq(callLogs.deviceId, device.deviceId), isNull(callLogs.recordingKey))).returning({ id: callLogs.id });
+    if (done.length) await writeAudit(tx, { orgId: device.actor.orgId, actorUserId: device.actor.id, action: "recording.uploaded", entity: "call_logs", entityId: callLogId });
+    return done.length > 0;
+  });
+}
+
+/**
+ * "Stop sharing and delete what this phone uploaded." Removes the phone's calls, the leads that only this phone's calls created (a
+ * number that was already a lead, or has a call from anywhere else, stays), and the phone's own record, so its token stops working.
+ * Returns the recording files that belonged to the deleted calls, for the caller to remove from storage. The audit log keeps counts only.
+ */
+export async function forgetDevice(db: Db, device: DeviceSession): Promise<{ calls: number; leads: number; recordingKeys: string[] }> {
+  const { actor, deviceId } = device;
+  return withOrg(db, actor.orgId, async (tx) => {
+    const [dev] = await tx.select({ createdAt: devices.createdAt }).from(devices).where(eq(devices.id, deviceId));
+    const gone = await tx.delete(callLogs).where(eq(callLogs.deviceId, deviceId)).returning({ key: callLogs.recordingKey });
+    const orphans = await tx.select({ id: leads.id }).from(leads).where(and(
+      eq(leads.source, "mobile_sim"), eq(leads.ownerUserId, actor.id), sql`${leads.createdAt} >= ${dev?.createdAt ?? new Date(0)}`,
+      sql`not exists (select 1 from call_logs c where c.lead_id = ${leads.id})`,
+    ));
+    const ids = orphans.map((o) => o.id);
+    if (ids.length) {
+      await tx.delete(leadStatusHistory).where(sql`${leadStatusHistory.leadId} in ${ids}`);
+      await tx.delete(leads).where(sql`${leads.id} in ${ids}`);
+    }
+    await tx.delete(devices).where(eq(devices.id, deviceId));
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "device.forget", entity: "devices", entityId: deviceId, after: { calls: gone.length, leads: ids.length } });
+    return { calls: gone.length, leads: ids.length, recordingKeys: gone.map((g) => g.key).filter((k): k is string => !!k) };
   });
 }

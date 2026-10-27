@@ -37,6 +37,9 @@ Running it fully locally in English and Hindi: [LOCAL_VOICE_STACK.md](LOCAL_VOIC
 
 `pnpm --filter @voiceai/voice load-test -- --calls 20 --concurrency 20` (20 calls at once) or `-- --calls 50 --concurrency 10 --turns 2` (50 scripted calls). It opens real sessions with spoken audio sent in real time and reports the time from the end of the question to the first word, against the gate of a median under 1.0 s. It needs `pnpm dev:stack` running, and it does not use a phone line.
 
+## After the call
+A worker summarises each call and applies the status and Do Not Disturb rules: see [POST_CALL.md](POST_CALL.md).
+
 ## Not built yet
 
-Carrier adapter (Plivo or Exotel, 8 kHz µ-law in and out, signature checks), the actual call transfer, call recording, cost tracking.
+The phone line is built but untested against real Plivo (see [PHONE_LINE.md](PHONE_LINE.md)). Not built: call recording, cost tracking, Exotel.

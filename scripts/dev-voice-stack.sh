@@ -22,7 +22,7 @@ free_port() { # port, text that identifies OUR program in its command line (a mi
   done
   for _ in 1 2 3 4 5 6 7 8 9 10; do lsof -ti :"$1" -sTCP:LISTEN >/dev/null 2>&1 || return 0; sleep 0.3; done
 }
-free_port 8090 "llama-server"; free_port 8767 "whisper-server"; free_port 8769 "voice-convert-server"; free_port 8765 "pocket-tts"; free_port 8768 "pocket-tts"; free_port 8768 "kokoro-server"
+free_port 8090 "llama-server"; free_port 4001 "src/index.ts"; free_port 8767 "whisper-server"; free_port 8769 "voice-convert-server"; free_port 8765 "pocket-tts"; free_port 8768 "pocket-tts"; free_port 8768 "kokoro-server"
 mkdir -p "$LOCAL/logs"
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null || true' EXIT INT TERM
@@ -44,5 +44,9 @@ LLAMA="$LOCAL/llama.cpp/build/bin/llama-server"; LLAMA_MODEL="$LOCAL/models/Llam
 if [ -x "$LLAMA" ] && [ -f "$LLAMA_MODEL" ] && [ "$(stat -f%z "$LLAMA_MODEL" 2>/dev/null || stat -c%s "$LLAMA_MODEL")" = "2019377696" ]; then
   "$LLAMA" -m "$LLAMA_MODEL" --host 127.0.0.1 --port 8090 -c 4096 -ngl 99 > "$LOCAL/logs/llama.log" 2>&1 & pids+=($!)
 else echo "Note: the backup AI model is not installed, so nothing answers when AskG1 is down. See docs/LOCAL_VOICE_STACK.md."; fi
-echo "Local voice stack running: speech-to-text :8767, English voice :8765, Hindi voice :8768, voice conversion :8769, backup AI :8090. Logs in $LOCAL/logs. Ctrl+C to stop."
+# The voice service itself (port 4001, the Live page and Agent console talk to it). A small loop restarts it if it ever stops.
+bash scripts/dev-voice-service.sh > "$LOCAL/logs/voice.log" 2>&1 & pids+=($!)
+# The post-call worker: analyses each finished call (summary, sentiment, next step, lead status) a few seconds after it ends.
+bash scripts/dev-worker.sh > "$LOCAL/logs/worker.log" 2>&1 & pids+=($!)
+echo "Local voice stack running: speech-to-text :8767, English voice :8765, Hindi voice :8768, voice conversion :8769, backup AI :8090, voice service :4001, post-call worker. Logs in $LOCAL/logs. Ctrl+C to stop."
 wait
