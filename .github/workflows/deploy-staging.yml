@@ -1,0 +1,58 @@
+name: Deploy staging
+
+# Manual only. Needs the repository variable AWS_DEPLOY_ROLE_ARN (terraform output deploy_role_arn). Signs in to AWS with a
+# short-lived token, so no AWS keys are stored in GitHub. Only the main branch is allowed by the role.
+on:
+  workflow_dispatch:
+    inputs:
+      migrate:
+        description: "Run the database job (migrations and app role) before deploying"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-south-1
+  NAME: voiceai-staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build and push the images
+        run: |
+          REGISTRY="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION}.amazonaws.com"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+          for app in web voice worker; do
+            docker build --build-arg APP=$app -f infra/docker/Dockerfile -t "$REGISTRY/$NAME/$app:${GITHUB_SHA}" .
+            docker push "$REGISTRY/$NAME/$app:${GITHUB_SHA}"
+          done
+
+      - name: Database job (migrations and app role)
+        if: inputs.migrate
+        run: |
+          # The job runs the worker image under its own task definition, so give it this commit's image first.
+          bash infra/deploy/register.sh migrate worker
+          NET="$(aws ecs describe-services --cluster "$NAME" --services web --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json)"
+          TASK="$(aws ecs run-task --cluster "$NAME" --launch-type FARGATE --task-definition "$NAME-migrate" --network-configuration "awsvpcConfiguration=$NET" --query 'tasks[0].taskArn' --output text)"
+          aws ecs wait tasks-stopped --cluster "$NAME" --tasks "$TASK"
+          CODE="$(aws ecs describe-tasks --cluster "$NAME" --tasks "$TASK" --query 'tasks[0].containers[0].exitCode' --output text)"
+          test "$CODE" = 0 || { echo "database job failed (exit $CODE); see the log group /$NAME/migrate"; exit 1; }
+
+      - name: Roll out the services
+        run: |
+          for app in web voice worker; do
+            bash infra/deploy/register.sh "$app" "$app"
+            aws ecs update-service --cluster "$NAME" --service "$app" --task-definition "$NAME-$app" >/dev/null
+          done
+          aws ecs wait services-stable --cluster "$NAME" --services web voice worker

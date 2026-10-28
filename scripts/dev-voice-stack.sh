@@ -22,12 +22,15 @@ free_port() { # port, text that identifies OUR program in its command line (a mi
   done
   for _ in 1 2 3 4 5 6 7 8 9 10; do lsof -ti :"$1" -sTCP:LISTEN >/dev/null 2>&1 || return 0; sleep 0.3; done
 }
-free_port 8090 "llama-server"; free_port 4001 "src/index.ts"; free_port 8767 "whisper-server"; free_port 8769 "voice-convert-server"; free_port 8765 "pocket-tts"; free_port 8768 "pocket-tts"; free_port 8768 "kokoro-server"
+free_port 8090 "llama-server"; free_port 4001 "src/index.ts"; free_port 8767 "whisper-server"; free_port 8770 "whisper-server"; free_port 8769 "voice-convert-server"; free_port 8765 "pocket-tts"; free_port 8768 "pocket-tts"; free_port 8768 "kokoro-server"
 mkdir -p "$LOCAL/logs"
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null || true' EXIT INT TERM
 # -ac 640 shortens the audio window Whisper looks at (about 2x faster on short utterances); -bs 1 -bo 1 -nf keep decoding quick.
 "$WHISPER" -m "$MODEL" --host 127.0.0.1 --port 8767 -t 4 -nt -ac 640 -bs 1 -bo 1 -nf > "$LOCAL/logs/whisper.log" 2>&1 & pids+=($!)
+# Optional: a small English-only model for faster English calls (set WHISPER_URL_EN=http://127.0.0.1:8770 in apps/voice/.env.local to use it).
+SMALL_EN="$LOCAL/models/ggml-small.en-q5_1.bin"
+[ -e "$SMALL_EN" ] && { "$WHISPER" -m "$SMALL_EN" --host 127.0.0.1 --port 8770 -t 4 -nt -ac 640 -bs 1 -bo 1 -nf > "$LOCAL/logs/whisper-en.log" 2>&1 & pids+=($!); }
 "$TTS" serve --host 127.0.0.1 --port 8765 > "$LOCAL/logs/voice-en.log" 2>&1 & pids+=($!)
 KOKORO_PY="$LOCAL/kokoro-venv/bin/python"
 if [ -x "$KOKORO_PY" ] && [ -f "$LOCAL/models/kokoro-v1.0.onnx" ]; then

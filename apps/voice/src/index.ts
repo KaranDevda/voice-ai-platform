@@ -86,8 +86,9 @@ const pocket = (say?: Say) => {
 export type ListenMode = "close" | "anyone" | "push";
 
 /** Local Whisper when it is set up (free, on this machine); otherwise Deepgram's cloud. */
-function sttFor(listen: ListenMode, log?: (line: string) => void): SttAdapter {
-  const whisper = env("WHISPER_URL");
+function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line: string) => void): SttAdapter {
+  // English calls can use a small English-only model (WHISPER_URL_EN): about five times faster to decode, but weaker on strong accents.
+  const whisper = (language === "en" && env("WHISPER_URL_EN")) || env("WHISPER_URL");
   if (env("STT_PROVIDER") !== "deepgram" && whisper) {
     const endSilenceMs = Number(env("ENDPOINTING_MS") ?? 400);
     return createLocalWhisper({
@@ -273,7 +274,7 @@ async function buildSession(
   const model = llm(io.send);
   warmUp(model, systemPrompt);
   const convo = new Conversation({
-    stt: sttFor(p.listen, (l) => console.log(`[${tag}] ${l}`)),
+    stt: sttFor(p.listen, p.language, (l) => console.log(`[${tag}] ${l}`)),
     llm: model, tts, language: p.language, systemPrompt, ground, turnNote: languageNote, handoff,
     greeting: p.greeting ? (p.language === "hi" ? GREETING_HI : p.language === "en-hi" ? GREETING_HINGLISH : greeting) : undefined,
     fallback: FALLBACK, send: io.send, sendAudio: io.sendAudio, log: (l) => console.log(`[${tag}] ${l}`),
@@ -455,4 +456,26 @@ function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams
 }
 
 if (!TOKEN_KEY) console.warn("VOICE_TOKEN_SECRET (or SESSION_SECRET) is not set: every stream will be refused.");
-server.listen(PORT, () => console.log(`voice service listening on :${PORT}`));
+/**
+ * AskG1 keeps a saved copy of the start of the instruction it last read, and a request with an instruction it has not read
+ * recently waits 6 to 13 seconds. So at start-up and every few minutes this sends a one-word request with the standard
+ * instruction (for a woman's and a man's voice), and the first caller after a quiet spell does not pay for it.
+ * ASKG1_KEEPWARM=off turns it off. Organisations with their own instruction are not covered.
+ */
+function keepWarm(): void {
+  const apiKey = env("ASKG1_API_KEY"), baseUrl = env("ASKG1_BASE_URL");
+  if (!apiKey || !baseUrl || env("ASKG1_KEEPWARM") === "off") return;
+  const main = createAskG1({ apiKey, baseUrl, model: env("ASKG1_MODEL"), maxTokens: 1, responseTimeoutMs: 40_000 });
+  const ping = async () => {
+    for (const gender of ["female", "male"] as const) {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 40_000);
+      try { for await (const _ of main.chat({ messages: [{ role: "system", content: SYSTEM_PROMPT + speakerNote(gender) }, { role: "user", content: "Hello" }], signal: ac.signal })) break; } catch { /* only a head start */ }
+      clearTimeout(timer);
+    }
+  };
+  void ping();
+  setInterval(() => void ping(), 4 * 60_000).unref();
+}
+
+server.listen(PORT, () => { console.log(`voice service listening on :${PORT}`); keepWarm(); });

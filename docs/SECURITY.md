@@ -10,8 +10,8 @@ What is in place, what is checked, and what is still open. Only what is tested i
 - **Rate limits:** sign-in and `/api/auth/*` 20 per minute per address, other API calls 600 per minute per address (`packages/shared/src/rate-limit.ts`). Per server, in memory. Existing limits remain: account lockout, pairing codes, phone check-call, per-device sync.
 
 ## Not done, and why
-- **Verified against real AWS:** nothing here has been run against AWS. The S3 code and `infra/terraform/staging` need an AWS account and credentials; run `terraform plan` first.
-- **Limit shared across servers:** needs a WAF rule or Redis. Terraform has no load balancer or WAF yet.
+- **Verified against real AWS:** nothing here has been run against AWS. `infra/terraform/staging` passes `terraform validate` only; it needs an AWS account (CEO approval, it costs money) and a first `terraform plan`. See its README for the runbook.
+- **Limit shared across servers:** needs a WAF rule or Redis. Terraform has a load balancer (not applied) but no WAF yet.
 - **Password reset and new-device alerts:** both send email. There is no email provider chosen (for example SES). Decision needed before building.
 - **Full CSP for scripts:** `script-src` is left open because Next injects inline scripts; tightening needs per-request nonces.
 - **Penetration test / external review:** not done.

@@ -88,9 +88,9 @@ resource "aws_db_instance" "postgres" {
   backup_retention_period = 7 # SOP: 7-day point-in-time recovery
 
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  deletion_protection     = true
-  skip_final_snapshot     = false
-  final_snapshot_identifier = "${var.name}-final"
+  deletion_protection             = true
+  skip_final_snapshot             = false
+  final_snapshot_identifier       = "${var.name}-final"
 }
 
 resource "aws_elasticache_subnet_group" "main" {

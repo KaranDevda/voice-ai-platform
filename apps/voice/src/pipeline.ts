@@ -80,6 +80,8 @@ export class Conversation {
   private speechStartedAt: number | null = null;
   private handedOff: HandoffReason | null = null;
   private errorStreak = 0;
+  /** What was actually sent to the model for each caller line (with that turn's note), so later requests repeat it word for word. */
+  private readonly sent = new WeakMap<ChatMessage, string>();
 
   constructor(private readonly o: ConversationOptions) {
     this.now = o.now ?? (() => performance.now());
@@ -296,12 +298,12 @@ export class Conversation {
         // The knowledge and the language note change every turn, so they ride on the newest user message instead of the
         // system prompt: that keeps the long system prompt and the earlier conversation identical from turn to turn, and
         // the model only has to read the new part.
-        const extra = (this.o.ground ? knowledgeBlock(passages) : "") + note;
+        const extra = [this.o.ground ? knowledgeBlock(passages) : "", note.trim()].filter(Boolean).join("\n");
         const recent = this.history.slice(-(this.o.maxHistory ?? 20));
-        const messages: ChatMessage[] = [
-          { role: "system", content: this.o.systemPrompt },
-          ...recent.map((m, i) => (i === recent.length - 1 && m.role === "user" && extra ? { ...m, content: `${m.content}\n\n[Notes for this reply, not said by the caller:${extra}]` } : m)),
-        ];
+        const last = recent.at(-1);
+        if (last && last.role === "user" && extra) this.sent.set(last, `${last.content}\n[note: ${extra}]`);
+        // Earlier turns go out exactly as they did the first time, notes included, so the model's saved copy of the conversation still matches.
+        const messages: ChatMessage[] = [{ role: "system", content: this.o.systemPrompt }, ...recent.map((m) => (m.role === "user" && this.sent.get(m)) ? { ...m, content: this.sent.get(m)! } : m)];
         for await (const token of this.o.llm.chat({ messages, signal })) {
           if (signal.aborted) break;
           if (!tFirstToken) tFirstToken = this.now();

@@ -6,6 +6,8 @@ import { getDb } from "@/lib/server";
 import { studioRoute } from "@/lib/studio-route";
 
 const MAX_CHARS = 10_000;
+/** Hindi in a cloned voice is made sentence by sentence (about 3 s each), so a long text needs more than a fixed minute. */
+const speakTimeoutMs = (chars: number) => Math.min(600_000, 60_000 + chars * 150);
 const body = z.object({ text: z.string().trim().min(1).max(MAX_CHARS), voice: z.string().min(1), save: z.boolean().default(false), title: z.string().max(200).optional() });
 
 export const POST = (req: Request) =>
@@ -13,7 +15,7 @@ export const POST = (req: Request) =>
     const input = body.parse(await req.json().catch(() => null));
     const { speak, voiceId, provider, hindiVoice } = await resolveVoice(user, input.voice);
     const t0 = Date.now();
-    const result = await timed(user, provider, "speech", () => speak.speak({ text: spellOutHindiNumbers(input.text), voiceId, hindiVoice, format: "mp3", signal: AbortSignal.timeout(60_000) }), () => input.text.length);
+    const result = await timed(user, provider, "speech", () => speak.speak({ text: spellOutHindiNumbers(input.text), voiceId, hindiVoice, format: "mp3", signal: AbortSignal.timeout(speakTimeoutMs(input.text.length)) }), () => input.text.length);
 
     // Be plain about who is speaking, from what actually happened (a conversion that failed falls back to the built-in voice).
     const gender = hindiVoice?.startsWith("hm_") ? "male" : "female";

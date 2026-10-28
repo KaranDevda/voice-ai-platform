@@ -10,3 +10,11 @@ dist
 
 # Local tools and exported voice files (biometric data)
 .local/
+
+# Terraform local state and plugins (the lock file is committed)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+staging.plan
+.DS_Store

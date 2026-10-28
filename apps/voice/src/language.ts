@@ -27,14 +27,14 @@ export function detectCallerLanguage(text: string): CallerLanguage | undefined {
   return lower.length <= 2 ? undefined : "en";
 }
 
-const NOTE: Record<CallerLanguage, string> = {
-  en: "The caller is speaking English. Reply in English only, with no Hindi words.",
-  hi: "The caller is speaking Hindi. Reply in Hindi only, written in Devanagari script. Never write Hindi in English letters. Short English product names such as Business plan may stay in English letters.",
-  hinglish: "The caller is speaking Hinglish. Reply in natural Hinglish, the way an Indian customer-care executive talks. Write every Hindi word in Devanagari script, for example आपकी मदद, never aapki madad. Only real English words such as plan, call recording or thanks stay in English letters. Never mix the two scripts inside one word. Example: जी, Business plan की कीमत 4,999 रुपये प्रति माह है।",
-};
+const NOTE: Record<CallerLanguage, string> = { en: "English", hi: "Hindi", hinglish: "Hinglish" };
 
-/** A line added to the instruction for this turn, so the model answers in the language the caller just used. */
+/**
+ * The language tag for this turn. English is the default, so English that continues English needs none (every token sent fresh
+ * costs the caller time); Hindi and Hinglish are tagged every turn, and English right after them is tagged to switch back.
+ */
 export function languageNote(current: string, previous?: string): string {
-  const now = detectCallerLanguage(current) ?? (previous ? detectCallerLanguage(previous) : undefined) ?? "en";
-  return `\n\n${NOTE[now]}`;
+  const before = previous ? detectCallerLanguage(previous) : undefined;
+  const now = detectCallerLanguage(current) ?? before ?? "en";
+  return now === "en" && (before ?? "en") === "en" ? "" : `reply language: ${NOTE[now]}`;
 }

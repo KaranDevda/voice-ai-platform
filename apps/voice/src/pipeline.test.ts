@@ -106,8 +106,21 @@ describe("Conversation grounding", () => {
     await convo.start();
     stt.fire({ kind: "final", text: "what does the premium plan cost" });
     await until(() => events.some((e) => e.type === "timing"));
-    expect(seen[0]!.at(-1)!.content).toMatch(/No company knowledge matched/);
-    expect(seen[0]!.at(-1)!.content).toMatch(/do not guess/);
+    expect(seen[0]!.at(-1)!.content).toMatch(/company knowledge: none/);
+    await convo.close();
+  });
+
+  it("repeats earlier turns word for word, so the model's saved copy of the conversation keeps matching", async () => {
+    const seen: ChatMessage[][] = [];
+    const { convo, stt, events } = setup({ llm: fakeLlm("Sure.", { seen }), ground: async () => [] });
+    await convo.start();
+    stt.fire({ kind: "final", text: "what plans do you have" });
+    await until(() => events.filter((e) => e.type === "timing").length === 1);
+    stt.fire({ kind: "final", text: "and the price" });
+    await until(() => events.filter((e) => e.type === "timing").length === 2);
+    expect(seen[0]![1]!.content).toMatch(/\[note: company knowledge: none\]/);
+    expect(seen[1]![1]!.content).toBe(seen[0]![1]!.content);
+    expect(seen[1]!.at(-1)!.content).toMatch(/^and the price/);
     await convo.close();
   });
 
@@ -130,7 +143,8 @@ describe("Conversation grounding", () => {
     stt.fire({ kind: "final", text: "second question" });
     await until(() => seen.length === 2);
     expect(seen[1]![0]).toEqual(seen[0]![0]);                         // same system prompt
-    expect(seen[1]![1]!.content).toBe("first question");              // the earlier user turn is stored clean, without notes
+    expect(seen[1]![1]!.content).toBe(seen[0]!.at(-1)!.content);      // the earlier user turn goes out exactly as it did the first time (note included)
+    expect(seen[1]![1]!.content).toContain("Pricing: about first question");
     expect(seen[1]!.at(-1)!.content).toContain("second question");
     expect(seen[1]!.at(-1)!.content).toContain("Pricing: about second question");
     await convo.close();

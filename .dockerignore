@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/.env*
+**/.turbo
+.git
+.local
+apps/mobile
+**/*.pdf
+infra/terraform
+docs

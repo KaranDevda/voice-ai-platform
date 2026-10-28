@@ -26,14 +26,18 @@ describe("detectCallerLanguage", () => {
 });
 
 describe("languageNote", () => {
-  it("names the language of the caller's last words", () => {
-    expect(languageNote("What plans do you have?")).toMatch(/speaking English/);
-    expect(languageNote("आपके पास कौन से प्लान हैं?")).toMatch(/speaking Hindi/);
-    expect(languageNote("mujhe pricing batao")).toMatch(/speaking Hinglish/);
+  it("tags Hindi and Hinglish, and leaves plain English untagged", () => {
+    expect(languageNote("What plans do you have?")).toBe("");
+    expect(languageNote("What plans do you have?", "How much is it?")).toBe("");
+    expect(languageNote("आपके पास कौन से प्लान हैं?")).toBe("reply language: Hindi");
+    expect(languageNote("mujhe pricing batao")).toBe("reply language: Hinglish");
+  });
+  it("tags English that follows another language, so the model switches back", () => {
+    expect(languageNote("What plans do you have?", "आपके पास कौन से प्लान हैं?")).toBe("reply language: English");
   });
   it("carries on in the caller's earlier language when the latest words give no clue", () => {
-    expect(languageNote("okay thanks", "mujhe pricing batao")).toMatch(/Hinglish/);
-    expect(languageNote("thanks", "नमस्ते")).toMatch(/Hindi/);
-    expect(languageNote("thanks")).toMatch(/English/);
+    expect(languageNote("okay thanks", "mujhe pricing batao")).toBe("reply language: Hinglish");
+    expect(languageNote("thanks", "नमस्ते")).toBe("reply language: Hindi");
+    expect(languageNote("thanks")).toBe("");
   });
 });
