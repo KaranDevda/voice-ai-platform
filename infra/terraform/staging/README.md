@@ -1,7 +1,8 @@
 # Staging infrastructure (Terraform)
 
-**Checked with `terraform validate` only.** Never planned or applied: it was written without an AWS account. The Docker images
-have not been built either. Run `terraform plan` and read it before applying; expect to fix small things on the first run.
+**Checked with `terraform validate` only.** Never planned or applied: it was written without an AWS account. The three Docker
+images build and start locally (web and voice answer their health checks as a non-root user; the worker polls its queue), but they
+have not run on AWS. Run `terraform plan` and read it before applying; expect to fix small things on the first run.
 
 Creates, in ap-south-1: VPC (2 AZ, one NAT), KMS key, RDS PostgreSQL 16 (encrypted, 7-day PITR), Redis (TLS + at rest),
 private S3 recordings bucket (SSE-KMS, TLS-only, 180-day expiry), ECR repos, ECS cluster with three Fargate services
@@ -22,7 +23,7 @@ Costs money while it exists (NAT gateway, RDS, Redis, load balancer, Fargate): g
 8. **Check:** open `terraform output public_url`; `/api/health` and `/healthz` answer.
 
 ## Known gaps
-- AskG1 is on a Tailscale address that AWS cannot reach: set `askg1_base_url` to something reachable (AskG1 team).
+- AskG1 is on a Tailscale address that AWS cannot reach: set `askg1_base_url` to something reachable (AskG1 team). The worker refuses to start without it.
 - Local speech (Whisper, Kokoro, Pocket TTS, the voice converter) is not deployed. The cloud setup uses Deepgram and ElevenLabs; that path is untested here with this configuration.
 - Redis is created but nothing uses it yet. The database connection skips certificate checking (`sslmode=no-verify`) until the RDS CA bundle is added.
 - No WAF and no rate limit shared between copies; no alarms or dashboards yet; the load balancer is HTTP-only until a certificate is given.

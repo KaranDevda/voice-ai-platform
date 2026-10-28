@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectHandoff } from "./handoff";
+import { commitsToConnect, detectHandoff, isAgreement, offeredHandoff } from "./handoff";
 
 const ALL = { person: true, complaint: true, payment: true };
 const reason = (t: string, e = ALL) => detectHandoff(t, e);
@@ -39,5 +39,39 @@ describe("Hindi spellings of 'a person'", () => {
   });
   it("does not hand over for an ordinary question", () => {
     expect(detectHandoff("प्लान की कीमत क्या है", on)).toBeNull();
+  });
+});
+
+describe("offeredHandoff and isAgreement", () => {
+  it("recognise an offer to connect a person, in Hindi and English", () => {
+    expect(offeredHandoff("इसकी जानकारी अभी मेरे पास नहीं है। अगर आप चाहें, तो मैं आपको अपने साथी से जोड़ देता हूँ।")).toBe(true);
+    expect(offeredHandoff("I do not have that. I can connect you with a person.")).toBe(true);
+    expect(offeredHandoff("जी बिल्कुल। Starter प्लान एक हज़ार नौ सौ निन्यानवे रुपये प्रति माह का है।")).toBe(false);
+    expect(offeredHandoff(undefined)).toBe(false);
+  });
+  it("hear a short yes, even garbled, and ignore a no or a new question", () => {
+    for (const yes of ["ठीक है जोड दीजाँ", "हाँ जी", "हां कर दीजिए", "yes please", "okay connect me", "haan theek hai"]) expect(isAgreement(yes), yes).toBe(true);
+    for (const no of ["नहीं, रहने दीजिए", "no thanks", "अभी नहीं", "हाँ लेकिन पहले बताइए कि बिज़नेस प्लान में कितने यूज़र मिलते हैं", ""]) expect(isAgreement(no), no).toBe(false);
+  });
+});
+
+describe("Hindi matching without the dot under letters", () => {
+  it("still hears a request for a person when the recogniser drops the nukta", () => {
+    expect(reason("ठीक है आप मुझे किसी इनसान से जोड दीजिये")).toBe("person");
+    expect(reason("ठीक है आप मुझे किसी इनसान से जोड़ दीजिये")).toBe("person");
+    expect(offeredHandoff("अगर आप चाहें, तो मैं आपको अपने साथी से जोड देता हूँ।")).toBe(true);
+    expect(isAgreement("ठीक है जोड दीजाँ")).toBe(true);
+  });
+});
+
+describe("commitsToConnect", () => {
+  it("is true only when the AI says it is connecting the caller now", () => {
+    expect(commitsToConnect("मैं अभी आपको अपने साथी से जोड़ देता हूँ।")).toBe(true);
+    expect(commitsToConnect("मैं अभी आपको अपने साथी से जोड देती हूँ।")).toBe(true);
+    expect(commitsToConnect("मैं आपको अपने साथी से जोड़ देती हूँ।")).toBe(true);
+    expect(commitsToConnect("Let me connect you with a colleague.")).toBe(true);
+    expect(commitsToConnect("अगर आप चाहें, तो मैं आपको अपने साथी से जोड़ देता हूँ।")).toBe(false);
+    expect(commitsToConnect("I can connect you with a person if you like.")).toBe(false);
+    expect(commitsToConnect("जी बिल्कुल। Starter प्लान एक हज़ार नौ सौ निन्यानवे रुपये का है।")).toBe(false);
   });
 });

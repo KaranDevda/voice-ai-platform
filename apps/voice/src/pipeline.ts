@@ -3,7 +3,7 @@ import { SentenceChunker } from "./sentences";
 import { knowledgeBlock } from "./prompt";
 import { forVoice } from "./speech-text";
 import { matchGender, type Gender } from "./gender";
-import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, type HandoffEnabled, type HandoffReason } from "./handoff";
+import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
 import type { TranscriptSegment } from "@voiceai/shared";
 
 /** Speaks text as audio chunks in the engine's native format. Abort the signal to stop mid-sentence. */
@@ -23,7 +23,7 @@ export type ServerEvent =
   | { type: "user"; text: string; turn: number; /** the caller kept talking: this replaces their previous line */ replace?: boolean }
   | { type: "assistant"; text: string; turn: number }
   | { type: "clear" }
-  | { type: "timing"; turn: number; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number; /** how long the company-knowledge search took (part of llmFirstTokenMs) */ groundMs?: number }
+  | { type: "timing"; turn: number; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number; /** when the caller first hears the real answer (after any acknowledgement), from the final transcript */ answerMs?: number; /** when the acknowledgement started, if one was played */ ackMs?: number; /** how long the company-knowledge search took (part of llmFirstTokenMs) */ groundMs?: number }
   | { type: "barge_in"; turn: number }
   | { type: "handoff"; reason: HandoffReason; message: string }
   | { type: "blocked"; reason: string; message: string }
@@ -39,12 +39,14 @@ export interface ConversationOptions {
   /** Extra instruction for this turn from what the caller just said and what they said before (for example, which language to answer in). */
   turnNote?: (lastUser: string, previousUser?: string) => string;
   /** Finds the company knowledge relevant to what the caller just said. Left out: answers use the model alone. */
-  ground?: (userText: string) => Promise<string[]>;
+  ground?: (userText: string, previousUserText?: string) => Promise<string[]>;
   /**
    * When to hand the call to a person: the caller asks for one, complains, or has a payment problem, and when the AI keeps
    * failing. The AI says the message, tells the client (the phone carrier transfers the call there), and stops answering.
    */
   handoff?: { enabled: HandoffEnabled; message?: { en: string; hi: string } };
+  /** A short acknowledgement to play at once while the answer is prepared (not kept in the history). Return null for none. */
+  ack?: (userText: string) => string | null;
   /** Spoken first, as the AI disclosure (SOP: every AI call opens with it). */
   greeting?: string;
   /** Spoken if the model fails before the caller hears anything (SOP: fallback message on errors). */
@@ -249,7 +251,9 @@ export class Conversation {
       if (replace && last?.speaker === "caller") { last.text = userText; last.endMs = Math.round(tFinal - this.t0); }
       else this.segments.push({ speaker: "caller", startMs: Math.round((this.speechStartedAt ?? tFinal) - this.t0), endMs: Math.round(tFinal - this.t0), text: userText });
       this.speechStartedAt = null;
-      const reason = this.o.handoff ? detectHandoff(userText, this.o.handoff.enabled) : null;
+      let reason = this.o.handoff ? detectHandoff(userText, this.o.handoff.enabled) : null;
+      // The AI just offered to connect a person and the caller said yes: do it, instead of asking the model again.
+      if (!reason && this.o.handoff?.enabled.person && isAgreement(userText) && offeredHandoff(this.history.slice(0, -1).reverse().find((m) => m.role === "assistant")?.content)) reason = "person";
       if (reason) scripted = this.markHandoff(reason, userText);
     }
     void this.run(turn, ac, tFinal, scripted);
@@ -258,10 +262,24 @@ export class Conversation {
   private async run(turn: number, ac: AbortController, tFinal: number, scripted?: string) {
     const { signal } = ac;
     const spoken: { text: string; playStart: number }[] = [];
-    let tFirstToken = 0, tFirstSentence = 0, tSpeakStart = 0, tFirstAudio = 0, failed = false, groundMs = 0;
+    let tFirstToken = 0, tFirstSentence = 0, tSpeakStart = 0, tFirstAudio = 0, failed = false, groundMs = 0, tAck = 0, tAnswerPlay = 0;
+    let ackDone: Promise<void> = Promise.resolve();
     this.setState("thinking");
 
+    // The acknowledgement is synthesised alongside the AI request; the answer waits only for its audio to finish being produced.
+    const sayAck = async (text: string): Promise<void> => {
+      for await (const chunk of this.o.tts.speak(text, signal)) {
+        if (signal.aborted) return;
+        const t = this.now();
+        if (!tAck) { tAck = t; this.setState("speaking"); if (this.active?.turn === turn) this.active.audio = true; }
+        this.playbackEndsAt = Math.max(this.playbackEndsAt, t) + this.chunkMs(chunk);
+        this.o.sendAudio(chunk);
+      }
+    };
+
     const say = async (raw: string): Promise<void> => {
+      await ackDone;
+      if (signal.aborted) return;
       const sentence = this.o.tts.gender ? matchGender(forVoice(raw), this.o.tts.gender) : forVoice(raw);
       if (!sentence || !/[\p{L}\p{N}]/u.test(sentence)) return; // nothing left to say once markup is removed
       if (!tSpeakStart) tSpeakStart = this.now();
@@ -270,7 +288,7 @@ export class Conversation {
         if (signal.aborted) return;
         const t = this.now();
         if (!tFirstAudio) { tFirstAudio = t; this.setState("speaking"); if (this.active?.turn === turn) this.active.audio = true; }
-        if (playStart < 0) playStart = Math.max(this.playbackEndsAt, t);
+        if (playStart < 0) { playStart = Math.max(this.playbackEndsAt, t); if (!tAnswerPlay) tAnswerPlay = playStart; }
         this.playbackEndsAt = Math.max(this.playbackEndsAt, t) + this.chunkMs(chunk);
         this.o.sendAudio(chunk);
       }
@@ -286,11 +304,14 @@ export class Conversation {
       if (scripted) {
         await say(scripted);
       } else {
+        const ackText = this.o.ack?.(this.history.at(-1)?.role === "user" ? this.history.at(-1)!.content : "") ?? null;
+        if (ackText) ackDone = sayAck(ackText).catch(() => {});
         const chunker = new SentenceChunker();
         const lastUser = [...this.history].reverse().find((m) => m.role === "user")?.content ?? "";
         // Knowledge lookup must never stop a reply: if it fails the model answers without it and is told nothing matched.
         const tGround = this.now();
-        const passages = this.o.ground ? await this.o.ground(lastUser).catch(() => []) : [];
+        const earlierUser = this.history.filter((m) => m.role === "user").at(-2)?.content;
+        const passages = this.o.ground ? await this.o.ground(lastUser, earlierUser).catch(() => []) : [];
         groundMs = this.now() - tGround;
         if (signal.aborted) return;
         const userLines = this.history.filter((m) => m.role === "user");
@@ -335,7 +356,14 @@ export class Conversation {
       // Whatever the caller actually heard goes into the history, so an interrupted reply is remembered as interrupted.
       const heard = this.bargedAt === null ? spoken : spoken.filter((x) => x.playStart <= this.bargedAt!);
       if (heard.length) {
-        this.history.push({ role: "assistant", content: heard.map((x) => x.text).join(" ") });
+        const said = heard.map((x) => x.text).join(" ");
+        this.history.push({ role: "assistant", content: said });
+        // The reply itself says "I am connecting you now": make that true, so the caller is not left talking to the AI.
+        if (!scripted && !failed && !signal.aborted && this.o.handoff?.enabled.person && !this.handedOff && commitsToConnect(said)) {
+          this.handedOff = "person";
+          this.o.send({ type: "handoff", reason: "person", message: said });
+          this.o.log?.("handoff: person (the AI said it was connecting the caller)");
+        }
         if (this.bargedAt === null) this.lastSpoken = { index: this.history.length - 1, sentences: spoken };
       }
       if (!failed && !signal.aborted && !scripted && tFirstToken) this.errorStreak = 0;
@@ -345,7 +373,9 @@ export class Conversation {
           llmFirstTokenMs: Math.round(tFirstToken - tFinal), groundMs: Math.round(groundMs),
           firstSentenceMs: Math.round(tFirstSentence - tFinal),
           ttsFirstAudioMs: Math.round(tFirstAudio - tSpeakStart),
-          totalMs: Math.round(tFirstAudio - tFinal),
+          totalMs: Math.round((tAck || tFirstAudio) - tFinal),
+          answerMs: Math.round(tAnswerPlay - tFinal),
+          ...(tAck ? { ackMs: Math.round(tAck - tFinal) } : {}),
         });
       }
       if (this.active?.turn === turn) {

@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "load-test": "tsx src/load-test.ts",
+    "hindi-check": "tsx src/hindi-check.ts",
     "phone-sim": "tsx src/phone-sim.ts"
   },
   "dependencies": {

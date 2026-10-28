@@ -69,7 +69,7 @@ async function speech(text: string): Promise<Int16Array> {
   return out;
 }
 
-interface Stages { llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number; groundMs?: number }
+interface Stages { answerMs?: number; ackMs?: number; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number; groundMs?: number }
 interface TurnResult { firstWordMs: number | null; serverMs: number | null; stages?: Stages }
 interface CallResult { ok: boolean; why?: string; turns: TurnResult[] }
 
@@ -158,7 +158,9 @@ async function main() {
     const st = results.flatMap((r) => r.turns).filter((t) => t.stages && t.firstWordMs !== null);
     if (st.length) {
       const m = (f: (t: TurnResult) => number) => pct(st.map(f), 50);
-      console.log(`Where the time goes (median of ${st.length}): listening and writing down the words ${s(m((t) => t.firstWordMs! - t.stages!.totalMs))}, AI first word ${s(m((t) => t.stages!.llmFirstTokenMs))}, AI first sentence ${s(m((t) => t.stages!.firstSentenceMs))}, voice first sound ${s(m((t) => t.stages!.ttsFirstAudioMs))}, from transcript to first sound ${s(m((t) => t.stages!.totalMs))}`);
+      console.log(`Where the time goes (median of ${st.length}): listening and writing down the words ${s(m((t) => t.firstWordMs! - t.stages!.totalMs))}, AI first word ${s(m((t) => t.stages!.llmFirstTokenMs))} (of which company-knowledge search ${s(m((t) => t.stages!.groundMs ?? 0))}), AI first sentence ${s(m((t) => t.stages!.firstSentenceMs))}, voice first sound ${s(m((t) => t.stages!.ttsFirstAudioMs))}, from transcript to first sound ${s(m((t) => t.stages!.totalMs))}`);
+      const ans = st.filter((t) => t.stages!.answerMs);
+      if (ans.length) console.log(`Real answer heard (the acknowledgement is not counted, ${ans.length} answers): median ${s(pct(ans.map((t) => t.firstWordMs! - t.stages!.totalMs + t.stages!.answerMs!), 50))}, p95 ${s(pct(ans.map((t) => t.firstWordMs! - t.stages!.totalMs + t.stages!.answerMs!), 95))}; acknowledgement played on ${st.filter((t) => t.stages!.ackMs !== undefined).length} of ${st.length} turns`);
       if (arg("json", "")) (await import("node:fs")).writeFileSync(arg("json", ""), JSON.stringify(st.map((t) => ({ firstWordMs: Math.round(t.firstWordMs!), ...t.stages })), null, 1));
     }
     console.log(`Latency gate (median under 1.0 s): ${pct(first, 50) < 1000 ? "MET" : "NOT MET"}`);

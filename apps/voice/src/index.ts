@@ -11,7 +11,7 @@ import {
   createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoPlayAudio, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
-import { mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine } from "./engines";
+import { elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine } from "./engines";
 import { MulawTo16k } from "./telephony-audio";
 import { hindiToEnglishKeywords, relevantExcerpt } from "./knowledge";
 import { languageNote } from "./language";
@@ -22,6 +22,7 @@ import { HANDOFF_HINDI } from "./handoff";
 import { withFailover } from "./llm-failover";
 import { speakerNote, type Gender } from "./gender";
 import { Conversation, type ServerEvent, type TtsEngine } from "./pipeline";
+import { ackFor } from "./ack";
 import { FALLBACK, GREETING, GREETING_HI, GREETING_HINGLISH, SYSTEM_PROMPT, VOICE_RULES } from "./prompt";
 
 // Paths are relative to this file, never to the folder the service was started from: starting it from the wrong folder used to run it
@@ -152,6 +153,15 @@ async function engineFor(voice: string, user: VoiceTokenClaims, say: Say, langua
     const g: Gender = ["marius", "javert", "jean", "charles", "george", "paul", "michael"].includes(name) ? "male" : "female";
     return { ...(phone ? pocketMulawEngine : pocketPcmEngine)(pocket(say), name, kokoroHindiVoiceFor(g)), gender: g };
   }
+  // "el:<ElevenLabs voice id>" or "el:<id>:male": a stock ElevenLabs voice, in English and Hindi, with no clone or database entry.
+  if (voice.startsWith("el:")) {
+    const [id, gender] = voice.slice(3).split(":");
+    if (!id || !/^[A-Za-z0-9]{10,40}$/.test(id)) throw new Error("unknown ElevenLabs voice");
+    const key = env("ELEVENLABS_API_KEY");
+    if (!key) throw new Error("ELEVENLABS_API_KEY is not set");
+    const g: Gender = gender === "male" ? "male" : "female";
+    return { ...(phone ? mulawAdapterEngine(createElevenLabsTts({ apiKey: key }), id) : elevenLabsPcmEngine(key, id)), gender: g };
+  }
   if (voice.startsWith("dg:")) {
     const id = voice.slice(3);
     const stock = stockVoiceById(id);
@@ -255,19 +265,24 @@ async function buildSession(
   const tts = await engineFor(voice, claims, io.send, p.language, o.phone);
   // The organisation's own AI instruction and greeting (Settings), and its knowledge base, when this is a real signed-in user.
   let systemPrompt = SYSTEM_PROMPT, greeting = GREETING;
-  let ground: ((text: string) => Promise<string[]>) | undefined;
+  let ground: ((text: string, previous?: string) => Promise<string[]>) | undefined;
   let handoff: ConstructorParameters<typeof Conversation>[0]["handoff"];
   if (user?.permissions.includes("studio.use")) {
     const cfg = await getAgentConfig(getDb(), user);
     systemPrompt = `${cfg.systemPrompt}\n\n${VOICE_RULES}`;
     greeting = `${cfg.disclosure} ${cfg.greeting}`.trim();
     handoff = { enabled: { person: true, complaint: cfg.handoffOnComplaint, payment: cfg.handoffOnPayment }, message: { en: cfg.handoffMessage, hi: HANDOFF_HINDI } };
-    ground = async (text) => {
+    const lookup = async (text: string) => {
       // The knowledge base is English and matched by words, so a Hindi question is searched by its English keywords.
       const query = hindiToEnglishKeywords(text); // English words in the question, plus glossary words for Hindi and Hinglish
       if (query && query !== text.toLowerCase().replace(/[^\p{L}\p{N} -]/gu, "").trim()) console.log(`[${tag}] searching the knowledge base for: ${query}`);
       if (!query) return [];
       return (await searchKnowledge(getDb(), user, query, 2)).map((r) => `${r.title}: ${relevantExcerpt(r.content, query)}`);
+    };
+    // A follow-up such as "and the other ones?" (or a garbled one) finds nothing by itself: search again with what they asked before.
+    ground = async (text, previous) => {
+      const found = await lookup(text);
+      return found.length || !previous ? found : lookup(`${previous} ${text}`);
     };
   }
   if (tts.gender) systemPrompt += speakerNote(tts.gender);
@@ -275,7 +290,7 @@ async function buildSession(
   warmUp(model, systemPrompt);
   const convo = new Conversation({
     stt: sttFor(p.listen, p.language, (l) => console.log(`[${tag}] ${l}`)),
-    llm: model, tts, language: p.language, systemPrompt, ground, turnNote: languageNote, handoff,
+    llm: model, tts, language: p.language, systemPrompt, ground, ack: env("ACK") === "off" ? undefined : (t) => ackFor(t, p.language, voice.startsWith("el:")), turnNote: languageNote, handoff,
     greeting: p.greeting ? (p.language === "hi" ? GREETING_HI : p.language === "en-hi" ? GREETING_HINGLISH : greeting) : undefined,
     fallback: FALLBACK, send: io.send, sendAudio: io.sendAudio, log: (l) => console.log(`[${tag}] ${l}`),
   });

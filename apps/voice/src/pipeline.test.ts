@@ -51,7 +51,7 @@ function fakeTts(perChunkMs = 0, chunks = 3): TtsEngine {
   };
 }
 
-function setup(over: { ground?: (t: string) => Promise<string[]>; llm?: LlmAdapter; tts?: TtsEngine; greeting?: string; fallback?: string; chunkMs?: number; handoff?: ConstructorParameters<typeof Conversation>[0]["handoff"] } = {}) {
+function setup(over: { ground?: (t: string, previous?: string) => Promise<string[]>; llm?: LlmAdapter; tts?: TtsEngine; greeting?: string; fallback?: string; chunkMs?: number; handoff?: ConstructorParameters<typeof Conversation>[0]["handoff"] } = {}) {
   const stt = fakeStt();
   const events: ServerEvent[] = [];
   const audio: string[] = [];
@@ -121,6 +121,20 @@ describe("Conversation grounding", () => {
     expect(seen[0]![1]!.content).toMatch(/\[note: company knowledge: none\]/);
     expect(seen[1]![1]!.content).toBe(seen[0]![1]!.content);
     expect(seen[1]!.at(-1)!.content).toMatch(/^and the price/);
+    await convo.close();
+  });
+
+  it("searches again with the caller's earlier question when a follow-up gives the knowledge search nothing to go on", async () => {
+    const asked: Array<[string, string | undefined]> = [];
+    const { convo, stt, events } = setup({ llm: fakeLlm("Okay."), ground: async (t, prev) => { asked.push([t, prev]); return []; } });
+    await convo.start();
+    stt.fire({ kind: "final", text: "tell me about your plans" });
+    await until(() => events.filter((e) => e.type === "timing").length === 1);
+    await sleep(30);
+    stt.fire({ kind: "final", text: "and the other ones" });
+    await until(() => asked.length === 2);
+    expect(asked[0]).toEqual(["tell me about your plans", undefined]);
+    expect(asked[1]).toEqual(["and the other ones", "tell me about your plans"]);
     await convo.close();
   });
 
@@ -437,6 +451,48 @@ describe("Conversation: the speaker's gender", () => {
     stt.fire({ kind: "final", text: "कैसे हैं आप" });
     await until(() => events.some((e) => e.type === "timing"));
     expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual(["मैं आपकी क्या मदद कर सकता हूँ?"]);
+    await convo.close();
+  });
+});
+
+describe("Conversation yes after an offer to connect a person", () => {
+  const OFFER = "इसकी जानकारी अभी मेरे पास नहीं है। अगर आप चाहें, तो मैं आपको अपने साथी से जोड़ देता हूँ।";
+  const handoff = { enabled: { person: true, complaint: true, payment: true } };
+  const talk = async (second: string, offer = OFFER) => {
+    const seen: ChatMessage[][] = [];
+    const { convo, stt, events } = setup({ llm: fakeLlm(offer, { seen }), handoff });
+    await convo.start();
+    stt.fire({ kind: "final", text: "और दूसरे प्लान बताइए" });
+    await until(() => events.filter((e) => e.type === "timing").length === 1);
+    await sleep(30);
+    stt.fire({ kind: "final", text: second });
+    await sleep(300);
+    const out = { handedOff: events.some((e) => e.type === "handoff"), asks: seen.length };
+    await convo.close();
+    return out;
+  };
+
+  it("hands the call over when the caller agrees, even if the recogniser garbled part of it", async () => {
+    expect(await talk("ठीक है जोड दीजाँ")).toEqual({ handedOff: true, asks: 1 });
+    expect(await talk("हाँ जी")).toEqual({ handedOff: true, asks: 1 });
+  });
+
+  it("does not hand over when the caller says no, or asks something else", async () => {
+    expect((await talk("नहीं, रहने दीजिए")).handedOff).toBe(false);
+    expect((await talk("हाँ लेकिन पहले बताइए कि बिज़नेस प्लान में कितने यूज़र मिलते हैं")).handedOff).toBe(false);
+  });
+
+  it("does not treat a plain yes as a request when nothing was offered", async () => {
+    expect((await talk("हाँ", "जी बिल्कुल। Starter प्लान एक हज़ार नौ सौ निन्यानवे रुपये का है।")).handedOff).toBe(false);
+  });
+
+  it("really hands the call over when the AI itself says it is connecting the caller", async () => {
+    const { convo, stt, events } = setup({ llm: fakeLlm("मैं अभी आपको अपने साथी से जोड़ देता हूँ।"), handoff });
+    await convo.start();
+    stt.fire({ kind: "final", text: "मुझे किसी से बात करनी है, बहुत ज़रूरी है" });
+    await until(() => events.some((e) => e.type === "handoff"));
+    expect(events.find((e) => e.type === "handoff")).toMatchObject({ reason: "person" });
+    expect(convo.handoffReason()).toBe("person");
     await convo.close();
   });
 });
