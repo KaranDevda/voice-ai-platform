@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { RateLimiter } from "@voiceai/shared";
 import { cookieOptions, SESSION_COOKIE, SESSION_TTL_S, signToken, verifyToken, type SessionClaims } from "./lib/session";
 
 // Brand images are static and shown on the login page, so they must load before sign-in.
@@ -6,8 +7,18 @@ import { cookieOptions, SESSION_COOKIE, SESSION_TTL_S, signToken, verifyToken, t
 // Voice files are fetched by the TTS server, not a browser; the route itself checks a signed address.
 const PUBLIC = [/^\/login$/, /^\/api\/auth\/(login|mfa\/.*)$/, /^\/brand\/[\w.-]+\.png$/, /^\/icon\.png$/, /^\/worklets\/[\w.-]+\.js$/, /^\/api\/mobile\/(register|me|calls|leads|check-call)$/, /^\/api\/mobile\/calls\/[^/]+\/recording$/, /^\/api\/internal\/voice-files\/[0-9a-f]{64}\/[0-9a-f-]{36}(\.[a-z]{2})?\.safetensors$/];
 
+// Per address, per server. Sign-in is tight (the account lockout already stops guessing one account; this stops one address trying many).
+// The address comes from X-Forwarded-For, which only a trusted proxy in front sets; otherwise it can be forged, so this is a brake, not the only lock.
+const authLimiter = new RateLimiter(20, 60_000);
+const apiLimiter = new RateLimiter(600, 60_000);
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  if (pathname.startsWith("/api/") || pathname === "/login") {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+    const gate = /^\/api\/auth\//.test(pathname) || pathname === "/login" ? authLimiter.take(`auth:${ip}`) : apiLimiter.take(`api:${ip}`);
+    if (!gate.ok) return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "retry-after": String(gate.retryAfterS) } });
+  }
   const claims = await verifyToken<SessionClaims>(req.cookies.get(SESSION_COOKIE)?.value, "session");
 
   if (!claims) {

@@ -71,13 +71,13 @@ export const orgSettingsSchema = z.object({
       handoffAfterLowConfidence: z.number().int().min(1).max(5).default(2),
       handoffTimeoutSeconds: z.number().int().min(10).max(120).default(30),
     })
-    .default({}),
+    .prefault({}),
   calling: z
     .object({
       windowStart: z.string().regex(/^\d{2}:\d{2}$/).default("09:00"),
       windowEnd: z.string().regex(/^\d{2}:\d{2}$/).default("21:00"),
     })
-    .default({}),
+    .prefault({}),
 });
 export type OrgSettings = z.infer<typeof orgSettingsSchema>;
 

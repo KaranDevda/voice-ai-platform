@@ -7,6 +7,8 @@ allowBuilds:
   msgpackr-extract: true
 overrides:
   postcss: ">=8.5.23"
+  body-parser: ">=2.4.0"
+  esbuild: ">=0.25.0"
 # Supply-chain hardening
 minimumReleaseAge: 1440
 trustPolicy: no-downgrade

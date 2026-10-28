@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { createDb, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, saveAnalysis } from "@voiceai/db";
-import { createAskG1, type LlmAdapter } from "@voiceai/providers";
+import { createAskG1, S3Recordings, type LlmAdapter } from "@voiceai/providers";
 import { analyzeCall } from "./analyze";
 
 try { process.loadEnvFile(join(fileURLToPath(new URL("..", import.meta.url)), ".env.local")); } catch { /* keys can also come from the real environment */ }
@@ -56,7 +56,10 @@ async function handleOne(p: { callLogId: string; orgId: string }) {
 
 /** Recording files live in a folder on this machine (RECORDINGS_DIR, the same one the website writes to). A missing file is fine: the goal is that it is gone. */
 const recordingsRoot = resolve(env("RECORDINGS_DIR") ?? join(fileURLToPath(new URL("../../..", import.meta.url)), ".local/recordings"));
+/** With RECORDINGS_BUCKET set (the same variable the website uses) they live in S3 instead. */
+const s3 = env("RECORDINGS_BUCKET") ? new S3Recordings({ bucket: env("RECORDINGS_BUCKET")!, region: env("RECORDINGS_REGION") ?? "ap-south-1", endpoint: env("RECORDINGS_S3_ENDPOINT") }) : null;
 async function deleteRecordingFile(key: string) {
+  if (s3) return s3.remove(key);
   const path = resolve(recordingsRoot, key);
   if (!path.startsWith(recordingsRoot + sep)) throw new Error("recording key points outside the recordings folder");
   await rm(path, { force: true });

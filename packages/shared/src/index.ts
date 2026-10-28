@@ -6,3 +6,4 @@ export * from "./hindi";
 export * from "./call-rules";
 export * from "./mobile";
 export * from "./post-call";
+export * from "./rate-limit";
