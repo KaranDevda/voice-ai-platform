@@ -64,20 +64,21 @@ hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("BACKGROUND", 
 S = [hdr, Spacer(1, 8), Paragraph("Voice Pipeline Latency Report", h1),
      Paragraph(f"Full speech-to-speech pipeline with the real AskG1 answering, plus AskG1 under load. Measured {DATE}.", sub)]
 
-S.append(box("<b>The caller now hears a sound in 0.3 to 0.9 s, but the real answer still takes 1.6 to 2.2 s.</b> A short acknowledgement (\"Sure.\", \"Okay.\", \"Ji.\" (Hindi, spoken as jee)) "
+S.append(box("<b>The caller now hears a sound in 0.3 to 1.1 s, but the real answer still takes 1.6 to 3.8 s.</b> A short acknowledgement (\"Sure.\", \"Okay.\", \"Ji.\" (Hindi, spoken as jee)) "
              "plays the moment the caller's words are final, while AskG1 works out the answer. AskG1's own first word is unchanged at about <b>1.05 to 1.5 s</b> inside the pipeline, "
              "and the real answer starts no sooner than before.", warn, WARN, colors.HexColor("#e5c98a")))
 S.append(Spacer(1, 6))
 S.append(box("<b>The load test's gate line (typical wait under 1.0 s) reads MET, but only because the acknowledgement counts as first sound.</b> "
-             "Measured honestly, the typical wait for the real answer is 1.86 s in English and 2.16 s in Hindi (best setups). With more than 2 or 3 calls at once AskG1 queues requests: "
+             "Measured honestly, the typical wait for the real answer is 1.86 s in English and 3.7 to 3.8 s in Hindi. With more than 2 or 3 calls at once AskG1 queues requests: "
              "its first word reaches 4.7 s with 6 calls and 12.8 s with 10.", bad, RED, colors.HexColor("#e9b3b3")))
 
 S += [Paragraph("Summary", h2)]
 S += bullets([
     "<b>Where the time was:</b> in English, speech-to-text 0.29 s, AskG1's first word 1.07 s, voice 0.06 s. The company knowledge search takes 0.00 s, so it is not the cause.",
     "<b>Acknowledgement (new):</b> first sound 0.34 s in English with the local voice and 0.67 s with ElevenLabs. It plays on about 3 of every 4 turns; greetings, thanks, very short replies and, without a fast Hindi voice, Hindi get none.",
-    "<b>ElevenLabs voice (new):</b> first byte about 0.3 s for English and Hindi (measured directly). Hindi no longer needs the 1.6 s voice conversion: Hindi first sound fell from 5.78 s to 3.97 s, then to 0.94 s with Deepgram speech-to-text.",
-    "<b>Hindi speech-to-text is now the Hindi bottleneck:</b> the local large Whisper model took 3.68 s to write down the words. Deepgram took 0.63 s, but it sends caller audio to a third party, so it was tested only with computer-spoken audio and not switched on.",
+    "<b>ElevenLabs voice (new):</b> first byte about 0.3 s for English and Hindi (measured directly). Hindi no longer needs the 1.6 s voice conversion.",
+    "<b>Correction:</b> the first Hindi runs of the day used English questions in a Hindi session, so their speech-to-text times (3.68 s local, 0.63 s Deepgram) were wrong and are removed. Redone with real Hindi speech (5 questions spoken by a Hindi voice): local Whisper 1.14 s to first sound and 3.72 s to the real answer; Deepgram 0.89 s and 3.82 s.",
+    "<b>Hindi speech-to-text is not the bottleneck:</b> Deepgram is 0.26 s faster to first sound and made fewer spelling mistakes (1 of 5 questions against 3 of 5 for local Whisper), but the real answer is no faster, because AskG1's first word took 2.0 to 2.3 s in these Hindi runs. Deepgram would send caller audio to a third party; the gain does not justify that today, and it is not switched on.",
     "<b>Not yet compared:</b> voice quality against myequal.ai. Only speed was measured; realism needs a listening test.",
 ])
 
@@ -89,9 +90,8 @@ S.append(table([
     ["English, local voice, no acknowledgement (repeat)", "12", "1.47 s", "1.47 s", "2.53 s"],
     ["English, local voice, with acknowledgement", "16", "0.34 s", "1.56 s", "2.02 s"],
     ["English, ElevenLabs voice, with acknowledgement", "12", "0.67 s", "1.86 s", "2.66 s"],
-    ["Hindi, local voice (earlier today)", "-", "5.78 s", "5.78 s", "-"],
-    ["Hindi, ElevenLabs voice, local Whisper", "12", "3.97 s", "5.16 s", "8.94 s"],
-    ["Hindi, ElevenLabs voice, Deepgram speech-to-text", "12", "0.94 s", "2.16 s", "2.52 s"],
+    ["Hindi speech, ElevenLabs voice, local Whisper", "16", "1.14 s", "3.72 s", "4.55 s"],
+    ["Hindi speech, ElevenLabs voice, Deepgram speech-to-text", "16", "0.89 s", "3.82 s", "6.48 s"],
 ], [W * 0.40, W * 0.10, W * 0.17, W * 0.18, W * 0.15]))
 
 S += [Paragraph("Where the time goes", h2), Paragraph("Typical (median) time of each stage, from the transcript or the end of speech.", small), Spacer(1, 4)]
@@ -99,8 +99,8 @@ S.append(table([
     ["Setup", "Listening and writing down", "AskG1 first word", "First sentence ready", "Voice first sound"],
     ["English, local voice", "0.29 s", "1.05 s", "1.05 s", "0.06 s"],
     ["English, ElevenLabs", "0.33 s", "1.21 s", "1.37 s", "0.20 s"],
-    ["Hindi, ElevenLabs, local Whisper", "3.68 s", "1.46 s", "1.89 s", "0.20 s"],
-    ["Hindi, ElevenLabs, Deepgram", "0.63 s", "1.13 s", "1.13 s", "0.19 s"],
+    ["Hindi speech, ElevenLabs, local Whisper", "0.83 s", "1.98 s", "2.66 s", "0.19 s"],
+    ["Hindi speech, ElevenLabs, Deepgram", "0.57 s", "2.26 s", "3.01 s", "0.19 s"],
 ], [W * 0.34, W * 0.19, W * 0.16, W * 0.17, W * 0.14]))
 
 S += [Paragraph("AskG1 under load (several calls at once)", h2),
@@ -123,7 +123,7 @@ S += bullets([
 S += [Paragraph("What would help", h2)]
 S += bullets([
     "<b>AskG1:</b> more parallel slots, a prompt cache that stays warm across calls, and a typical first word under 0.4 s inside the pipeline. This is the biggest lever and is for the AskG1 team.",
-    "<b>Hindi speech-to-text:</b> a decision for the CEO on Deepgram (caller audio goes to a third party), or a faster local Hindi model.",
+    "<b>Hindi speech-to-text:</b> Deepgram gains only 0.26 s to first sound and nothing on the real answer, so there is no need to decide on it now.",
     "<b>Voice realism:</b> a listening comparison of ElevenLabs voices against myequal.ai.",
     "<b>Phone app:</b> calls did not sync on the Samsung S24 Ultra because the call left on the personal SIM, which the app deliberately ignores. Set the work SIM as the default calling SIM, or build dialling on the work SIM.",
 ])
@@ -132,7 +132,7 @@ S += [Paragraph("How this was measured", h2)]
 S += bullets([
     "Real sessions on the voice service with a signed token, spoken questions sent in real time, and the clock stopped at the first byte of reply audio. Questions were spoken by a computer voice, cleaner than a real phone line.",
     "One laptop ran everything at once. A real phone call will wait longer: the carrier's network is not included (the carrier is not connected yet).",
-    "Hindi with Deepgram used a second copy of the voice service (port 4002, stopped afterwards) with STT_PROVIDER=deepgram. Its accuracy on real Hindi callers was not checked.",
+    "Hindi runs used 5 Hindi sentences spoken by a computer Hindi voice, through two temporary copies of the voice service (local Whisper and STT_PROVIDER=deepgram), backup model off. Accuracy on real callers was not checked.",
     "AskG1's speed drifts through the day (0.3 to 0.5 s in the morning, 0.6 to 1.5 s later for the same request), so run-to-run differences of 0.1 to 0.2 s are not meaningful.",
 ])
 doc.build(S, onFirstPage=footer, onLaterPages=footer)
