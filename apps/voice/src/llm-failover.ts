@@ -5,6 +5,13 @@ export interface FailoverOptions {
   firstTokenTimeoutMs?: number;
   /** After the main model fails, how long to go straight to the backup (so each turn does not wait to fail again). */
   coolDownMs?: number;
+  /**
+   * How many turns the main model may be answering at once. A turn beyond that goes straight to the backup, instead of
+   * queueing behind the others at the main model for seconds and then timing out. 0 or left out: no limit.
+   */
+  maxConcurrent?: number;
+  /** State shared by every call on this server (each call has its own adapter, but AskG1's load and health are global). */
+  shared?: { inFlight: number; downUntil: number };
   /** Called each time a turn is answered by the backup, with why the main model was skipped. */
   onBackup?: (why: string) => void;
   now?: () => number;
@@ -17,11 +24,14 @@ export interface FailoverOptions {
  */
 export function withFailover(main: LlmAdapter, backup: LlmAdapter, o: FailoverOptions = {}): LlmAdapter {
   const timeoutMs = o.firstTokenTimeoutMs ?? 8000, coolMs = o.coolDownMs ?? 120_000, now = o.now ?? Date.now;
-  let downUntil = 0;
+  const st = o.shared ?? { inFlight: 0, downUntil: 0 };
 
   async function* chat(input: { messages: ChatMessage[]; signal?: AbortSignal }): AsyncGenerator<string> {
     let why = "it failed a moment ago";
-    if (now() >= downUntil) {
+    const full = !!o.maxConcurrent && st.inFlight >= o.maxConcurrent;
+    if (full) why = `it is already answering ${st.inFlight} turns at once`;
+    if (!full && now() >= st.downUntil) {
+      st.inFlight++;
       const ac = new AbortController();
       const relay = () => ac.abort();
       input.signal?.addEventListener("abort", relay, { once: true });
@@ -48,8 +58,9 @@ export function withFailover(main: LlmAdapter, backup: LlmAdapter, o: FailoverOp
         clearTimeout(timer);
         input.signal?.removeEventListener("abort", relay);
         ac.abort();
+        st.inFlight--;
       }
-      downUntil = now() + coolMs;
+      st.downUntil = now() + coolMs;
     }
     o.onBackup?.(why);
     let spoke = false;

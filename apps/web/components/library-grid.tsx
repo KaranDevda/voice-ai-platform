@@ -9,7 +9,7 @@ import { buttonClass } from "./ui/button";
 import { Input, Select } from "./ui/form";
 import type { VoiceChoice } from "./voice-picker";
 
-const SAMPLE = "Hello, thanks for calling. This is an AI assistant. How can I help you today?";
+const SAMPLE = "Hello, thanks for calling. How can I help you today?";
 
 export function LibraryGrid({ voices }: { voices: VoiceChoice[] }) {
   const [q, setQ] = useState("");

@@ -18,6 +18,8 @@ const config: NextConfig = {
   transpilePackages: ["@voiceai/db", "@voiceai/auth", "@voiceai/shared", "@voiceai/providers"],
   serverExternalPackages: ["pg", "@node-rs/argon2"],
   poweredByHeader: false,
+  // Pages already visited re-open from the browser's memory for 30 s, and the icon library is split per icon.
+  experimental: { staleTimes: { dynamic: 30 }, optimizePackageImports: ["lucide-react"] },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

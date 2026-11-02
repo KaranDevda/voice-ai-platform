@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectCallerLanguage, languageNote } from "./language";
+import { detectCallerLanguage, greetingFix, languageNote, sessionLanguageRule, wrongLanguage } from "./language";
 
 describe("detectCallerLanguage", () => {
   it("recognises English", () => {
@@ -39,5 +39,39 @@ describe("languageNote", () => {
     expect(languageNote("okay thanks", "mujhe pricing batao")).toBe("reply language: Hinglish");
     expect(languageNote("thanks", "नमस्ते")).toBe("reply language: Hindi");
     expect(languageNote("thanks")).toBe("");
+  });
+});
+
+describe("greetingFix", () => {
+  it("says Hello instead of Namaste on English and Hinglish calls, and leaves Hindi calls alone", () => {
+    expect(greetingFix("Namaste! How can I help?", "en")).toBe("Hello! How can I help?");
+    expect(greetingFix("नमस्ते! मैं आपकी मदद कर सकती हूँ।", "en-hi")).toBe("Hello! मैं आपकी मदद कर सकती हूँ।");
+    expect(greetingFix("नमस्ते! मैं आपकी मदद कर सकती हूँ।", "hi")).toBe("नमस्ते! मैं आपकी मदद कर सकती हूँ।");
+  });
+});
+
+describe("wrongLanguage", () => {
+  it("flags Hindi script on an English call, and English sentences on a Hindi call", () => {
+    expect(wrongLanguage("नमस्ते! मैं आपकी मदद कर सकती हूँ।", "en")).toBe(true);
+    expect(wrongLanguage("The Business plan costs 4,999 rupees.", "en")).toBe(false);
+    expect(wrongLanguage("The Business plan costs 4,999 rupees per month.", "hi")).toBe(true);
+    expect(wrongLanguage("जी, Business plan की कीमत 4,999 रुपये है।", "hi")).toBe(false);
+    expect(wrongLanguage("नमस्ते! Hello", "en-hi")).toBe(false);
+  });
+});
+
+describe("the language chosen for the call", () => {
+  it("is final: an English call never follows Hindi words, a Hindi call always answers in Hindi", () => {
+    expect(languageNote("namaste, kya plans hain", undefined, "en")).toBe("");
+    expect(languageNote("नमस्ते, प्लान बताइए", "okay", "en")).toBe("");
+    expect(languageNote("what is the price?", undefined, "hi")).toBe("reply language: Hindi");
+  });
+  it("leaves a mixed call to the caller's own words", () => {
+    expect(languageNote("pricing batao", undefined, "en-hi")).toBe("reply language: Hinglish");
+  });
+  it("has a standing rule for English and Hindi calls only", () => {
+    expect(sessionLanguageRule("en")).toMatch(/English only/);
+    expect(sessionLanguageRule("hi")).toMatch(/Hindi only/);
+    expect(sessionLanguageRule("en-hi")).toBe("");
   });
 });

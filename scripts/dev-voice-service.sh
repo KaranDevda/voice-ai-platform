@@ -8,7 +8,8 @@ child=""
 stop_child() { [ -n "$child" ] && { pkill -P "$child" 2>/dev/null; kill "$child" 2>/dev/null; }; child=""; }
 trap 'stop_child; exit 0' INT TERM
 while true; do
-  pnpm exec tsx watch src/index.ts &
+  # node_modules is not watched: a package file touched by an install or the web build must not restart the service in the middle of a call.
+  pnpm exec tsx watch --exclude "**/node_modules/**" --exclude "../../node_modules/**" --exclude "node_modules/**" --exclude "**/.pnpm/**" src/index.ts &
   child=$!
   sleep 12  # time to start
   fails=0

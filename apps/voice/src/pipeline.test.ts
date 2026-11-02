@@ -51,12 +51,12 @@ function fakeTts(perChunkMs = 0, chunks = 3): TtsEngine {
   };
 }
 
-function setup(over: { ground?: (t: string, previous?: string) => Promise<string[]>; llm?: LlmAdapter; tts?: TtsEngine; greeting?: string; fallback?: string; chunkMs?: number; handoff?: ConstructorParameters<typeof Conversation>[0]["handoff"] } = {}) {
+function setup(over: { language?: "en" | "hi" | "en-hi"; ground?: (t: string, previous?: string) => Promise<string[]>; llm?: LlmAdapter; tts?: TtsEngine; greeting?: string; fallback?: string; chunkMs?: number; handoff?: ConstructorParameters<typeof Conversation>[0]["handoff"] } = {}) {
   const stt = fakeStt();
   const events: ServerEvent[] = [];
   const audio: string[] = [];
   const convo = new Conversation({
-    stt: stt.adapter, llm: over.llm ?? fakeLlm("Hello there. How are you today?"), tts: over.tts ?? fakeTts(), language: "en", systemPrompt: "be brief",
+    stt: stt.adapter, llm: over.llm ?? fakeLlm("Hello there. How are you today?"), tts: over.tts ?? fakeTts(), language: over.language ?? "en-hi", systemPrompt: "be brief",
     greeting: over.greeting, fallback: over.fallback, ground: over.ground, handoff: over.handoff, chunkDurationMs: over.chunkMs === undefined ? undefined : () => over.chunkMs!,
     send: (e) => events.push(e), sendAudio: (c) => audio.push(new TextDecoder().decode(c)),
   });
@@ -98,6 +98,26 @@ describe("Conversation grounding", () => {
     expect(turn).toContain("[1] Pricing: The Business plan costs 4,999 rupees per month.");
     expect(seen[0]![0]!.content).toBe("be brief"); // the system prompt itself never changes between turns
     await convo.close();
+  });
+
+  it("answers a repeated question from the saved answer, without asking the model again", async () => {
+    const seen: ChatMessage[][] = [];
+    const tts = { ...fakeTts(), cacheKey: "test-voice-cache" } as TtsEngine;
+    const ground = async () => ["Pricing: The Business plan costs 4,999 rupees per month."];
+    const ask = async () => {
+      const { convo, stt, events, audio } = setup({ llm: fakeLlm("The Business plan costs 4,999 rupees per month.", { seen }), ground, tts, language: "en" });
+      await convo.start();
+      stt.fire({ kind: "final", text: "what does the saved business plan cost" });
+      await until(() => events.some((e) => e.type === "timing"));
+      const said = events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text).join(" ");
+      await convo.close();
+      return { said, audio: audio.length };
+    };
+    const first = await ask();
+    const second = await ask();
+    expect(seen).toHaveLength(1); // the model was asked once
+    expect(second.said).toBe(first.said);
+    expect(second.audio).toBeGreaterThan(0);
   });
 
   it("tells the model not to guess when nothing in the knowledge base matched", async () => {
@@ -493,6 +513,45 @@ describe("Conversation yes after an offer to connect a person", () => {
     await until(() => events.some((e) => e.type === "handoff"));
     expect(events.find((e) => e.type === "handoff")).toMatchObject({ reason: "person" });
     expect(convo.handoffReason()).toBe("person");
+    await convo.close();
+  });
+});
+
+describe("Conversation: the language chosen for the call is final", () => {
+  const twice = (first: string, second: string): LlmAdapter & { asks: string[][] } => {
+    const a = { asks: [] as string[][], respond: () => (async function* () {})(), async *chat({ messages }: { messages: ChatMessage[] }) { a.asks.push(messages.map((m) => m.content)); yield a.asks.length === 1 ? first : second; } };
+    return a;
+  };
+  const said = (events: ServerEvent[]) => events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text);
+
+  it("asks again, firmly, when an English call gets a Hindi answer, and speaks only the English one", async () => {
+    const llm = twice("नमस्ते! मैं आपकी मदद कर सकती हूँ।", "Hello! How can I help you today?");
+    const { convo, stt, events } = setup({ llm, language: "en" });
+    await convo.start();
+    stt.fire({ kind: "final", text: "Namaste, what plans do you have?" });
+    await until(() => events.some((e) => e.type === "timing"));
+    expect(said(events)).toEqual(["Hello!", "How can I help you today?"]);
+    expect(llm.asks).toHaveLength(2);
+    expect(llm.asks[1]!.at(-1)).toMatch(/reply in English only/);
+    await convo.close();
+  });
+
+  it("says a short apology in English if the model keeps answering in Hindi", async () => {
+    const { convo, stt, events } = setup({ llm: fakeLlm("नमस्ते! मैं आपकी मदद कर सकती हूँ।"), language: "en" });
+    await convo.start();
+    stt.fire({ kind: "final", text: "What plans do you have?" });
+    await until(() => said(events).length > 0);
+    expect(said(events)).toEqual(["Sorry, could you say that again?"]);
+    await convo.close();
+  });
+
+  it("keeps a Hindi call in Hindi", async () => {
+    const llm = twice("The Business plan costs 4,999 rupees per month.", "जी, Business प्लान 4,999 रुपये प्रति माह का है।");
+    const { convo, stt, events } = setup({ llm, language: "hi" });
+    await convo.start();
+    stt.fire({ kind: "final", text: "What is the price?" });
+    await until(() => events.some((e) => e.type === "timing"));
+    expect(said(events)).toEqual(["जी, Business प्लान चार हज़ार नौ सौ निन्यानवे रुपये प्रति माह का है।"]);
     await convo.close();
   });
 });

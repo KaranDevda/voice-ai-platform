@@ -26,8 +26,9 @@ free_port 8090 "llama-server"; free_port 4001 "src/index.ts"; free_port 8767 "wh
 mkdir -p "$LOCAL/logs"
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null || true' EXIT INT TERM
-# -ac 640 shortens the audio window Whisper looks at (about 2x faster on short utterances); -bs 1 -bo 1 -nf keep decoding quick.
-"$WHISPER" -m "$MODEL" --host 127.0.0.1 --port 8767 -t 4 -nt -ac 640 -bs 1 -bo 1 -nf > "$LOCAL/logs/whisper.log" 2>&1 & pids+=($!)
+# Hindi and mixed calls: -ac 1000 -bs 2 -bo 2 on 8 threads. Measured on spoken Hindi: the old quick setting (-ac 640, greedy) got 57-62% of characters
+# wrong on quiet or noisy microphone audio, this one 2-7% (about 1.0 s instead of 0.6 s per phrase).
+"$WHISPER" -m "$MODEL" --host 127.0.0.1 --port 8767 -t 8 -nt -ac 1000 -bs 2 -bo 2 > "$LOCAL/logs/whisper.log" 2>&1 & pids+=($!)
 # Optional: a small English-only model for faster English calls (set WHISPER_URL_EN=http://127.0.0.1:8770 in apps/voice/.env.local to use it).
 SMALL_EN="$LOCAL/models/ggml-small.en-q5_1.bin"
 [ -e "$SMALL_EN" ] && { "$WHISPER" -m "$SMALL_EN" --host 127.0.0.1 --port 8770 -t 4 -nt -ac 640 -bs 1 -bo 1 -nf > "$LOCAL/logs/whisper-en.log" 2>&1 & pids+=($!); }
@@ -40,16 +41,22 @@ elif [ -n "$HI_CONFIG" ]; then "$TTS" serve --host 127.0.0.1 --port 8768 --confi
 # Voice conversion: changes Hindi and Hinglish into the cloned person's own voice (OpenVoice). Optional: without it Hindi uses the built-in voice.
 OV_PY="$LOCAL/ov-venv/bin/python"
 if [ -x "$OV_PY" ] && [ -f "$LOCAL/models/openvoice-v2/converter/checkpoint.pth" ]; then
-  "$OV_PY" scripts/voice-convert-server.py > "$LOCAL/logs/voice-convert.log" 2>&1 & pids+=($!)
+  # On the Apple GPU: the same model and the same voice, 0.3 s per sentence instead of 1.3 to 3.5 s. VOICE_CONVERT_DEVICE=cpu goes back.
+  PYTORCH_ENABLE_MPS_FALLBACK=1 VOICE_CONVERT_DEVICE="${VOICE_CONVERT_DEVICE:-mps}" "$OV_PY" scripts/voice-convert-server.py > "$LOCAL/logs/voice-convert.log" 2>&1 & pids+=($!)
 else echo "Note: voice conversion is not installed, so Hindi uses the built-in voice. See docs/LOCAL_VOICE_STACK.md."; fi
 # Backup AI: answers when AskG1 is unreachable or slow (VPN off, server down). Needs the complete model file (see docs/LOCAL_VOICE_STACK.md).
 LLAMA="$LOCAL/llama.cpp/build/bin/llama-server"; LLAMA_MODEL="$LOCAL/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 if [ -x "$LLAMA" ] && [ -f "$LLAMA_MODEL" ] && [ "$(stat -f%z "$LLAMA_MODEL" 2>/dev/null || stat -c%s "$LLAMA_MODEL")" = "2019377696" ]; then
-  "$LLAMA" -m "$LLAMA_MODEL" --host 127.0.0.1 --port 8090 -c 4096 -ngl 99 > "$LOCAL/logs/llama.log" 2>&1 & pids+=($!)
+  "$LLAMA" -m "$LLAMA_MODEL" --host 127.0.0.1 --port 8090 -c 16384 -np 4 -ngl 99 > "$LOCAL/logs/llama.log" 2>&1 & pids+=($!)
 else echo "Note: the backup AI model is not installed, so nothing answers when AskG1 is down. See docs/LOCAL_VOICE_STACK.md."; fi
 # The voice service itself (port 4001, the Live page and Agent console talk to it). A small loop restarts it if it ever stops.
 bash scripts/dev-voice-service.sh > "$LOCAL/logs/voice.log" 2>&1 & pids+=($!)
 # The post-call worker: analyses each finished call (summary, sentiment, next step, lead status) a few seconds after it ends.
 bash scripts/dev-worker.sh > "$LOCAL/logs/worker.log" 2>&1 & pids+=($!)
+# Warm the staff voices once the voice service is up (greeting, acknowledgements, AskG1 prompt cache), so the first caller does not wait.
+if command -v psql >/dev/null 2>&1; then
+  ( sleep 40; V="$(psql -d voiceai_dev -Atc "select 'profile:' || id from voice_profiles where status = 'active' and provider = 'pocket_tts'" 2>/dev/null | paste -sd, - || true)"
+    [ -n "$V" ] && (cd apps/voice && pnpm exec tsx src/warm.ts --voices "$V" > "../../$LOCAL/logs/warm.log" 2>&1) ) & pids+=($!)
+fi
 echo "Local voice stack running: speech-to-text :8767, English voice :8765, Hindi voice :8768, voice conversion :8769, backup AI :8090, voice service :4001, post-call worker. Logs in $LOCAL/logs. Ctrl+C to stop."
 wait

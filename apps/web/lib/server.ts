@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { createDb, loadAuthUser, type Db } from "@voiceai/db";
 import { parseKey, type AuthUser } from "@voiceai/auth";
@@ -18,11 +19,11 @@ export const encryptionKey = () => {
   return parseKey(k);
 };
 
-/** Current user, reloaded from the DB so suspension and role changes apply immediately. */
-export async function getAuthUser(): Promise<AuthUser | null> {
+/** Current user, reloaded from the DB so suspension and role changes apply immediately. Once per request: the layout and the page share it. */
+export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
   const claims = await verifyToken<SessionClaims>((await cookies()).get(SESSION_COOKIE)?.value, "session");
   return claims ? loadAuthUser(getDb(), claims.org, claims.sub) : null;
-}
+});
 
 /** CSRF defence for mutations, on top of SameSite=Lax: the Origin header must match the Host. */
 export async function assertSameOrigin(): Promise<boolean> {

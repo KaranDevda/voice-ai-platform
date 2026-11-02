@@ -38,6 +38,8 @@ const KEY = process.env.VOICE_TOKEN_SECRET?.trim() || process.env.SESSION_SECRET
 if (!KEY) { console.error("Set SESSION_SECRET (apps/voice/.env.local) so the test can sign a stream token."); process.exit(2); }
 
 const SHOW = process.argv.includes("--show");
+/** Real callers do not all speak at the same instant: start each call this much after the previous one, and pause this long (give or take half) before each later question. */
+const STAGGER_MS = Number(arg("stagger-ms", "0")), THINK_MS = Number(arg("think-ms", "0"));
 const LEAD = process.argv.includes("--lead") ? arg("lead", "") : "";
 const QUESTIONS = process.argv.includes("--questions") ? arg("questions", "").split("|").filter(Boolean) : [
   "Hello, I wanted to ask about your plans.",
@@ -97,6 +99,7 @@ async function oneCall(n: number): Promise<CallResult> {
     ws.send(JSON.stringify({ type: "start", language: LANGUAGE, voice: VOICE, greeting: false, listen: "anyone", ...(LEAD ? { leadId: LEAD } : {}) }));
     for (let t = 0; !ready; t += 50) { if (failed || closed || t > 20000) throw new Error(failed ?? closed ?? "no ready message in 20 s"); await sleep(50); }
     for (let i = 0; i < TURNS; i++) {
+      if (i > 0 && THINK_MS) await sleep(THINK_MS * (0.5 + Math.random()));
       const pcm = await speech(QUESTIONS[(n + i) % QUESTIONS.length]!);
       audioAt = 0; timing = null; lastStages = null;
       const CH = 1600; // 100 ms
@@ -135,7 +138,8 @@ async function main() {
   const results: CallResult[] = [];
   const poll = setInterval(async () => { const h = await health(); if (h) peak = Math.max(peak, h.sessions); }, 250);
   const t0 = performance.now();
-  await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+  await Promise.all(Array.from({ length: CONCURRENCY }, async (_, w) => {
+    if (STAGGER_MS) await sleep(w * STAGGER_MS);
     for (;;) {
       const n = next++;
       if (n >= CALLS) return;

@@ -9,7 +9,8 @@
     "test": "vitest run",
     "load-test": "tsx src/load-test.ts",
     "hindi-check": "tsx src/hindi-check.ts",
-    "phone-sim": "tsx src/phone-sim.ts"
+    "phone-sim": "tsx src/phone-sim.ts",
+    "warm": "tsx src/warm.ts"
   },
   "dependencies": {
     "@voiceai/auth": "workspace:*",

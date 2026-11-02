@@ -253,7 +253,7 @@ const wav = (seconds: number, base: number): Buffer => {
 const adminU = U.get("admin@demo.io")!;
 const mgrU = U.get("manager.north@demo.io")!;
 await db.insert(t.studioAssets).values([
-  { orgId, teamId: null, userId: adminU.id, kind: "speech", title: "Welcome greeting", text: "Thanks for calling Bizfy. You are speaking with an AI assistant, and this call is recorded. How can I help you today?", provider: "deepgram", voiceRef: "dg:aura-2-thalia-en", mime: "audio/wav", audio: wav(4, 300), createdAt: new Date(Date.now() - 2 * 86400_000) },
+  { orgId, teamId: null, userId: adminU.id, kind: "speech", title: "Welcome greeting", text: "Thanks for calling Bizfy. This call is recorded. How can I help you today?", provider: "deepgram", voiceRef: "dg:aura-2-thalia-en", mime: "audio/wav", audio: wav(4, 300), createdAt: new Date(Date.now() - 2 * 86400_000) },
   { orgId, teamId: north!.id, userId: mgrU.id, kind: "speech", title: "Callback confirmation", text: "Hello, this is a reminder that we will call you back tomorrow at eleven in the morning.", provider: "deepgram", voiceRef: "dg:aura-2-apollo-en", mime: "audio/wav", audio: wav(3, 220), createdAt: new Date(Date.now() - 86400_000) },
   { orgId, teamId: null, userId: adminU.id, kind: "transcript", title: "Customer interview (demo)", provider: "deepgram", mime: null, audio: null, durationMs: 41000,
     text: "Thanks for joining. We mostly use it to follow up on missed calls. The recordings help a lot.",

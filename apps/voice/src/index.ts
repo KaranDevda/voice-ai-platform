@@ -11,19 +11,19 @@ import {
   createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoPlayAudio, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
-import { elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine } from "./engines";
+import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine } from "./engines";
 import { MulawTo16k } from "./telephony-audio";
 import { hindiToEnglishKeywords, relevantExcerpt } from "./knowledge";
-import { languageNote } from "./language";
+import { languageNote, sessionLanguageRule } from "./language";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { allowedOrigins, originAllowed } from "./origins";
 import { HANDOFF_HINDI } from "./handoff";
 import { withFailover } from "./llm-failover";
 import { speakerNote, type Gender } from "./gender";
-import { Conversation, type ServerEvent, type TtsEngine } from "./pipeline";
+import { Conversation, primeAck, type ServerEvent, type TtsEngine } from "./pipeline";
 import { ackFor } from "./ack";
-import { FALLBACK, GREETING, GREETING_HI, GREETING_HINGLISH, SYSTEM_PROMPT, VOICE_RULES } from "./prompt";
+import { FALLBACK, FALLBACK_HI, GREETING, GREETING_HI, GREETING_HINGLISH, systemPromptFor, voiceRulesFor } from "./prompt";
 
 // Paths are relative to this file, never to the folder the service was started from: starting it from the wrong folder used to run it
 // without its keys or voice files.
@@ -90,14 +90,16 @@ export type ListenMode = "close" | "anyone" | "push";
 function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line: string) => void): SttAdapter {
   // English calls can use a small English-only model (WHISPER_URL_EN): about five times faster to decode, but weaker on strong accents.
   const whisper = (language === "en" && env("WHISPER_URL_EN")) || env("WHISPER_URL");
-  if (env("STT_PROVIDER") !== "deepgram" && whisper) {
+  // STT_HINDI=deepgram sends Hindi and mixed-language calls to Deepgram (nova-3 hears Hindi well and answers in about 0.3 s); English stays on the local model.
+  const viaDeepgram = env("STT_PROVIDER") === "deepgram" || (env("STT_HINDI") === "deepgram" && language !== "en");
+  if (!viaDeepgram && whisper) {
     const endSilenceMs = Number(env("ENDPOINTING_MS") ?? 400);
     return createLocalWhisper({
       baseUrl: whisper,
       // A higher bar and a longer onset in "close" mode, so a nearby conversation does not start the AI talking or stop it.
-      vad: listen === "close" ? { endSilenceMs, floor: 0.02, startMs: 160 } : { endSilenceMs },
+      vad: listen === "close" ? { endSilenceMs, floor: 0.03, startMs: 200, minSpeechMs: 400 } : { endSilenceMs },
       closeMic: listen === "close" ? {} : undefined,
-      minConfidence: listen === "close" ? {} : undefined, // only consulted for quieter-than-usual speech, so normal answers stay fast
+      minConfidence: listen === "close" ? { avgLogprob: -0.85, noSpeechProb: 0.5 } : undefined, // only consulted for quieter-than-usual speech, so normal answers stay fast
       onTranscribed: (i) => { log?.(i.dropped ? `ignored (${i.dropped})${i.avgLogprob !== undefined ? `, confidence ${i.avgLogprob.toFixed(2)}` : ""}` : `transcribed ${i.speechMs} ms of speech in ${i.ms} ms`); },
     });
   }
@@ -110,20 +112,35 @@ function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line
  * AskG1 is the main model. LOCAL_LLM_URL (a llama.cpp server running Llama 3.2) is the backup: when AskG1 cannot be reached
  * or is too slow to start answering, the backup answers instead and the page is told, so nobody mistakes it for AskG1.
  */
+const askg1Shared = { inFlight: 0, downUntil: 0 };
 function llm(say?: Say): LlmAdapter {
   const apiKey = env("ASKG1_API_KEY"), baseUrl = env("ASKG1_BASE_URL"), localUrl = env("LOCAL_LLM_URL");
-  const maxTokens = Number(env("ASKG1_MAX_TOKENS") ?? 160), temperature = Number(env("ASKG1_TEMPERATURE") ?? 0.3);
+  const maxTokens = Number(env("ASKG1_MAX_TOKENS") ?? 220), temperature = Number(env("ASKG1_TEMPERATURE") ?? 0.3);
   const local = localUrl ? createAskG1({ apiKey: "local", baseUrl: localUrl, model: "local", maxTokens, temperature }) : null;
   if (!apiKey || !baseUrl) {
     if (!local) throw new Error("AskG1 is not configured (ASKG1_API_KEY, ASKG1_BASE_URL)");
     say?.({ type: "notice", message: "AskG1 is not configured, so a small local model (Llama 3.2) is answering. It is less accurate than AskG1, especially in Hindi." });
     return local;
   }
-  const askg1 = createAskG1({ apiKey, baseUrl, model: env("ASKG1_MODEL"), maxTokens, temperature });
+  // AskG1 alone answers (no backup model), and it sometimes stalls for 10 to 30 s before recovering: wait for it instead of handing the call over.
+  // A request that has not started after 12 s is sent again once (AskG1's stalls often clear within seconds), with 18 s more to start.
+  const quick = createAskG1({ apiKey, baseUrl, model: env("ASKG1_MODEL"), maxTokens, temperature, responseTimeoutMs: Number(env("ASKG1_FIRST_TRY_MS") ?? 12_000) });
+  const second = createAskG1({ apiKey, baseUrl, model: env("ASKG1_MODEL"), maxTokens, temperature, responseTimeoutMs: Number(env("ASKG1_SECOND_TRY_MS") ?? 18_000) });
+  const askg1: LlmAdapter = {
+    ...quick,
+    async *chat(args) {
+      let started = false;
+      try { for await (const t of quick.chat(args)) { started = true; yield t; } return; } catch (e) { if (started || args.signal?.aborted) throw e; }
+      console.warn("AskG1 did not start in time, asking again");
+      yield* second.chat(args);
+    },
+  };
   if (!local) return askg1;
   let told = false;
   return withFailover(askg1, local, {
     firstTokenTimeoutMs: Number(env("ASKG1_FIRST_TOKEN_TIMEOUT_MS") ?? 8000),
+    maxConcurrent: Number(env("ASKG1_MAX_CONCURRENT") ?? 3),
+    shared: askg1Shared,
     onBackup: (why) => {
       console.warn(`AskG1 skipped (${why}); the local model answered`);
       if (told) return;
@@ -180,6 +197,11 @@ async function engineFor(voice: string, user: VoiceTokenClaims, say: Say, langua
         : `Hindi and Hinglish are spoken by a built-in ${profile.gender} Hindi voice, not ${profile.label}'s own voice. English uses the clone.` });
     }
     const g: Gender = profile.gender === "male" ? "male" : "female";
+    // CHATTERBOX_URL set and this person has a reference recording: Hindi and mixed calls are made directly in their own voice (browser calls only).
+    if (profile.provider === "pocket_tts" && env("CHATTERBOX_URL") && language !== "en" && !phone && existsSync(join(env("POCKET_TTS_VOICES_DIR") ?? join(REPO_DIR, ".local/voices"), `${profile.providerVoiceId}.ref.wav`))) {
+      say({ type: "notice", message: `${profile.label}'s Hindi is made directly in their own voice (Chatterbox).` });
+      return { ...chatterboxEngine(env("CHATTERBOX_URL")!, profile.providerVoiceId), gender: g };
+    }
     if (profile.provider === "pocket_tts") return { ...(phone ? pocketMulawEngine : pocketPcmEngine)(pocket(say), profile.providerVoiceId, kokoroHindiVoiceFor(profile.gender)), gender: g };
     if (profile.provider === "elevenlabs") {
       const apiKey = env("ELEVENLABS_API_KEY");
@@ -263,13 +285,15 @@ async function buildSession(
   }
   await findWebBase();
   const tts = await engineFor(voice, claims, io.send, p.language, o.phone);
+  tts.cacheKey = `${voice}|${p.language}|${o.phone ? "phone" : "web"}`;
+  if (env("ACK") !== "off") for (const w of p.language === "en" ? ["Sure.", "Let me check."] : p.language === "hi" ? ["जी।"] : ["Sure.", "Let me check.", "जी।"]) void primeAck(tts, w);
   // The organisation's own AI instruction and greeting (Settings), and its knowledge base, when this is a real signed-in user.
-  let systemPrompt = SYSTEM_PROMPT, greeting = GREETING;
+  let systemPrompt = systemPromptFor(p.language), greeting = GREETING;
   let ground: ((text: string, previous?: string) => Promise<string[]>) | undefined;
   let handoff: ConstructorParameters<typeof Conversation>[0]["handoff"];
   if (user?.permissions.includes("studio.use")) {
     const cfg = await getAgentConfig(getDb(), user);
-    systemPrompt = `${cfg.systemPrompt}\n\n${VOICE_RULES}`;
+    systemPrompt = `${cfg.systemPrompt}\n\n${voiceRulesFor(p.language)}`;
     greeting = `${cfg.disclosure} ${cfg.greeting}`.trim();
     handoff = { enabled: { person: true, complaint: cfg.handoffOnComplaint, payment: cfg.handoffOnPayment }, message: { en: cfg.handoffMessage, hi: HANDOFF_HINDI } };
     const lookup = async (text: string) => {
@@ -286,13 +310,15 @@ async function buildSession(
     };
   }
   if (tts.gender) systemPrompt += speakerNote(tts.gender);
+  systemPrompt += sessionLanguageRule(p.language);
   const model = llm(io.send);
   warmUp(model, systemPrompt);
   const convo = new Conversation({
     stt: sttFor(p.listen, p.language, (l) => console.log(`[${tag}] ${l}`)),
-    llm: model, tts, language: p.language, systemPrompt, ground, ack: env("ACK") === "off" ? undefined : (t) => ackFor(t, p.language, voice.startsWith("el:")), turnNote: languageNote, handoff,
+    llm: model, tts, language: p.language, systemPrompt, ground, ack: env("ACK") === "off" ? undefined : (t) => ackFor(t, p.language, true), turnNote: (a, b) => languageNote(a, b, p.language), handoff,
     greeting: p.greeting ? (p.language === "hi" ? GREETING_HI : p.language === "en-hi" ? GREETING_HINGLISH : greeting) : undefined,
-    fallback: FALLBACK, send: io.send, sendAudio: io.sendAudio, log: (l) => console.log(`[${tag}] ${l}`),
+    resumeAfterHandoff: !o.phone,
+    fallback: p.language === "hi" ? FALLBACK_HI : FALLBACK, send: io.send, sendAudio: io.sendAudio, log: (l) => console.log(`[${tag}] ${l}`),
   });
   const record: SessionRecord | null = user?.permissions.includes("calls.place")
     ? { user, callId: o.callId ?? randomUUID(), startedAt: new Date(), language: p.language, direction: o.direction, leadId: p.leadId, voiceProfileId: voice.startsWith("profile:") ? voice.slice(8) : undefined }
@@ -482,10 +508,10 @@ function keepWarm(): void {
   if (!apiKey || !baseUrl || env("ASKG1_KEEPWARM") === "off") return;
   const main = createAskG1({ apiKey, baseUrl, model: env("ASKG1_MODEL"), maxTokens: 1, responseTimeoutMs: 40_000 });
   const ping = async () => {
-    for (const gender of ["female", "male"] as const) {
+    for (const [language, gender] of [["en", "female"], ["en", "male"], ["hi", "female"], ["hi", "male"], ["en-hi", "female"], ["en-hi", "male"]] as const) {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), 40_000);
-      try { for await (const _ of main.chat({ messages: [{ role: "system", content: SYSTEM_PROMPT + speakerNote(gender) }, { role: "user", content: "Hello" }], signal: ac.signal })) break; } catch { /* only a head start */ }
+      try { for await (const _ of main.chat({ messages: [{ role: "system", content: systemPromptFor(language) + speakerNote(gender) + sessionLanguageRule(language) }, { role: "user", content: "Hello" }], signal: ac.signal })) break; } catch { /* only a head start */ }
       clearTimeout(timer);
     }
   };

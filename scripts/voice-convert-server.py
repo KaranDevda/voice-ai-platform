@@ -11,7 +11,7 @@ POST /score?id=<voice id>    body: a WAV. Returns JSON {"similarity": cosine to 
 GET  /health                 200 when the model is loaded.
 Bound to 127.0.0.1 only. A voice fingerprint is biometric data: it lives in the voices folder and is deleted with the voice.
 """
-import io, json, os, re, sys, tempfile, threading
+import hashlib, io, json, os, re, sys, tempfile, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -23,6 +23,8 @@ from openvoice.api import OpenVoiceBaseClass, ToneColorConverter  # noqa: E402
 MODEL_DIR = os.path.join(ROOT, ".local", "models", "openvoice-v2", "converter")
 VOICES = os.environ.get("POCKET_TTS_VOICES_DIR") or os.path.join(ROOT, ".local", "voices")
 PORT = int(os.environ.get("VOICE_CONVERT_PORT", "8769"))
+# "mps" runs the same model on the Apple GPU (several times faster than "cpu"); the voice is the same model and the same fingerprint.
+DEVICE = os.environ.get("VOICE_CONVERT_DEVICE", "cpu")
 OUT_RATE = 24000          # what the rest of the platform plays; OpenVoice itself works at 22.05 kHz
 TAU = os.environ.get("VOICE_CONVERT_TAU", "0.3")  # how freely the converter reshapes the voice; /convert?tau= overrides it per request
 MAX_BODY = 20 * 1024 * 1024
@@ -40,9 +42,11 @@ class Converter(ToneColorConverter):
         self.version = getattr(self.hps, "_version_", "v1")
 
 
-conv = Converter(os.path.join(MODEL_DIR, "config.json"), device="cpu")
+conv = Converter(os.path.join(MODEL_DIR, "config.json"), device=DEVICE)
 conv.load_ckpt(os.path.join(MODEL_DIR, "checkpoint.pth"))
 lock = threading.Lock()  # one conversion at a time; the model is not built for parallel calls
+# The same sentence in the same person's voice (the greeting, common answers) is made once: the last 100 are kept as audio.
+converted = {}
 fingerprints = {}        # voice id -> (file modified time, tensor), so each call does not re-read the file
 
 
@@ -93,7 +97,7 @@ def load_fingerprint(voice_id):
     cached = fingerprints.get(voice_id)
     if cached and cached[0] == mtime:
         return cached[1]
-    se = torch.load(path, map_location="cpu")
+    se = torch.load(path, map_location="cpu").to(DEVICE)
     fingerprints[voice_id] = (mtime, se)
     return se
 
@@ -160,6 +164,10 @@ class Handler(BaseHTTPRequestHandler):
                 if url.path == "/score":
                     sim = float(torch.nn.functional.cosine_similarity(conv.extract_se([wav]).flatten(), target.flatten(), dim=0))
                     return self._send(200, json.dumps({"similarity": round(sim, 4)}).encode(), "application/json")
+                tau = float((parse_qs(url.query).get("tau") or [TAU])[0])
+                ckey = (voice_id, tau, os.path.getmtime(fingerprint_path(voice_id)), hashlib.sha1(open(wav, "rb").read()).hexdigest())
+                if ckey in converted:
+                    return self._send(200, converted[ckey], "audio/wav")
                 target_f0 = load_f0(voice_id)
                 if PITCH_MATCH and target_f0:
                     y, sr = librosa.load(wav, sr=None)
@@ -174,7 +182,9 @@ class Handler(BaseHTTPRequestHandler):
                 audio = np.clip(audio, -1.0, 1.0)
                 buf = io.BytesIO()
                 sf.write(buf, audio, OUT_RATE, format="WAV", subtype="PCM_16")
-                return self._send(200, buf.getvalue(), "audio/wav")
+                if len(converted) >= 100: converted.pop(next(iter(converted)))
+                converted[ckey] = buf.getvalue()
+                return self._send(200, converted[ckey], "audio/wav")
         except Exception as e:  # one bad request must never take the server down
             return self._send(500, str(e)[:200].encode())
         finally:

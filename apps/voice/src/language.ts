@@ -33,8 +33,59 @@ const NOTE: Record<CallerLanguage, string> = { en: "English", hi: "Hindi", hingl
  * The language tag for this turn. English is the default, so English that continues English needs none (every token sent fresh
  * costs the caller time); Hindi and Hinglish are tagged every turn, and English right after them is tagged to switch back.
  */
-export function languageNote(current: string, previous?: string): string {
+export function languageNote(current: string, previous?: string, session: "en" | "hi" | "en-hi" = "en-hi"): string {
+  // The language chosen for the call is final: English and Hindi calls never follow the words the caller happens to use.
+  if (session === "en") return "";
+  if (session === "hi") return `reply language: ${NOTE.hi}`;
   const before = previous ? detectCallerLanguage(previous) : undefined;
   const now = detectCallerLanguage(current) ?? before ?? "en";
   return now === "en" && (before ?? "en") === "en" ? "" : `reply language: ${NOTE[now]}`;
+}
+
+/**
+ * A standing rule for the whole call, from the language chosen when it started. It goes in the system prompt (which the model
+ * keeps a saved copy of), so it costs nothing per turn. A mixed English-and-Hindi call has none: the caller's own words decide.
+ */
+export function sessionLanguageRule(session: "en" | "hi" | "en-hi"): string {
+  if (session === "en") return "\n\nThis call is in English. Every reply must be in English only: no Hindi words and no Devanagari, even if the caller uses a Hindi word such as 'namaste' or 'haan'. Answer such a caller in plain English. If the caller asks you to speak Hindi, say in English that this call is in English and offer to help in English.";
+  if (session === "hi") return "\n\nThis call is in Hindi. Every reply must be in Hindi only, written in Devanagari, even if the caller uses an English word. Only product names such as Business plan may stay in English letters.";
+  return "";
+}
+
+const DEVANAGARI = /[ऀ-ॿ]/;
+
+/** True when a spoken sentence is in the wrong language for an English or Hindi call (a mixed call accepts anything). */
+export function wrongLanguage(sentence: string, session: "en" | "hi" | "en-hi"): boolean {
+  if (session === "en") return DEVANAGARI.test(sentence);
+  if (session === "hi") return !DEVANAGARI.test(sentence) && (sentence.match(/[A-Za-z]{2,}/g) ?? []).length >= 3;
+  return false;
+}
+
+/** A one-line reminder added to the caller's message when the first answer came back in the wrong language. */
+export function strictNote(session: "en" | "hi" | "en-hi"): string {
+  return session === "hi" ? "[note: reply in Hindi only, written in Devanagari]" : "[note: reply in English only, with no Hindi words]";
+}
+
+/** What to say if the model keeps answering in the wrong language. */
+/** Said when the AI has not started answering after a few seconds, so the caller knows the call is alive. */
+export function stillWorking(session: "en" | "hi" | "en-hi"): string {
+  return session === "en" ? "One moment, I am checking that for you." : "बस एक पल, ज़रा रुकिए।";
+}
+
+/** Said when AskG1 did not start answering in time: nothing is wrong with the call, the caller is invited to ask again (no hand-over). */
+export function askAgainSlow(session: "en" | "hi" | "en-hi"): string {
+  return session === "en" ? "Sorry, that is taking longer than usual. Could you ask me again?" : "माफ़ कीजिए, जवाब आने में देर हो रही है। क्या आप दोबारा पूछ सकते हैं?";
+}
+
+export function sorryAgain(session: "en" | "hi" | "en-hi"): string {
+  return session === "hi" ? "माफ़ कीजिए, क्या आप दोबारा बता सकते हैं?" : "Sorry, could you say that again?";
+}
+
+/**
+ * "Hello" or "Hi" is the greeting on English and Hinglish calls, never "Namaste" (the model still writes it now and then, even when
+ * told not to). Swapped in the text itself, before it is spoken, so it costs no time. A Hindi call keeps "नमस्ते".
+ */
+export function greetingFix(text: string, session: "en" | "hi" | "en-hi"): string {
+  if (session === "hi") return text;
+  return text.replace(/\b(?:namaste|namaskar)\b/gi, "Hello").replace(/नमस्ते|नमस्कार/g, "Hello");
 }

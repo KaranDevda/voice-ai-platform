@@ -142,7 +142,7 @@ describe("local Whisper speech-to-text", () => {
     it("asks for confidence only about quieter-than-usual speech, to keep normal answers fast", async () => {
       const formats: string[] = [];
       const f: typeof fetch = (async (_u: unknown, init?: RequestInit) => { formats.push((init!.body as FormData).get("response_format") as string); return new Response(JSON.stringify({ text: "something said" }), { status: 200 }); }) as typeof fetch;
-      const say = (amp: number) => [...tone(1200, amp), ...quiet(700)];
+      const say = (amp: number) => [...tone(1800, amp), ...quiet(700)];
       await run(Int16Array.from([...quiet(400), ...say(0.3), ...say(0.3), ...say(0.15), ...quiet(300)]), f, "en", { closeMic: {}, minConfidence: {} });
       expect(formats).toEqual(["json", "json", "verbose_json"]); // only the quieter third utterance was checked
     });

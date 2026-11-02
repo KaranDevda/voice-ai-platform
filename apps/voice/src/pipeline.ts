@@ -2,6 +2,7 @@ import type { ChatMessage, LlmAdapter, SttAdapter, SttEvent, SttSession } from "
 import { SentenceChunker } from "./sentences";
 import { knowledgeBlock } from "./prompt";
 import { forVoice } from "./speech-text";
+import { askAgainSlow, greetingFix, sorryAgain, stillWorking, strictNote, wrongLanguage } from "./language";
 import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
 import type { TranscriptSegment } from "@voiceai/shared";
@@ -12,6 +13,8 @@ export interface TtsEngine {
   gender?: Gender;
   encoding: "linear16" | "mulaw";
   rate: number;
+  /** Identifies this voice for the acknowledgement cache: the same key means the same voice speaking the same way. */
+  cacheKey?: string;
   speak(text: string, signal: AbortSignal): AsyncIterable<Uint8Array>;
 }
 
@@ -56,10 +59,30 @@ export interface ConversationOptions {
   now?: () => number;
   /** Stop the AI the moment the recogniser hears the caller start, not only when words arrive. */
   bargeOnVoice?: boolean;
+  /** A browser call has nobody to transfer to: after the hand-over line the AI keeps listening and helping. A phone call really moves to a person. */
+  resumeAfterHandoff?: boolean;
   maxHistory?: number;
   /** How long a chunk of audio plays. Defaults to deriving it from the byte count and the engine's format. */
   chunkDurationMs?: (chunk: Uint8Array) => number;
   log?: (line: string) => void;
+}
+
+/** Acknowledgements already spoken in a voice, kept as audio so the next one plays at once (staff voices take up to 3 s to make a sentence). */
+const ackCache = new Map<string, Uint8Array[]>();
+const ackKey = (tts: TtsEngine, text: string) => (tts.cacheKey ? `${tts.cacheKey}|${text}` : null);
+/** Answers already given to a question, in a voice and language, for the same company knowledge: asked again, they are spoken at once without waiting for AskG1. */
+const answerCache = new Map<string, string[]>();
+const remember = <V>(m: Map<string, V>, key: string, value: V, max: number) => { if (m.size >= max) m.delete(m.keys().next().value!); m.set(key, value); };
+
+/** Makes an acknowledgement ahead of the first caller turn so even the first one is instant. Never throws. */
+export async function primeAck(tts: TtsEngine, text: string): Promise<void> {
+  const key = ackKey(tts, text);
+  if (!key || ackCache.has(key)) return;
+  try {
+    const chunks: Uint8Array[] = [];
+    for await (const c of tts.speak(text, new AbortController().signal)) chunks.push(new Uint8Array(c));
+    if (chunks.length) ackCache.set(key, chunks);
+  } catch { /* the acknowledgement is only a courtesy */ }
 }
 
 /** One live call: caller audio in, speech-to-text, AskG1, text-to-speech, audio out, with barge-in. */
@@ -75,12 +98,15 @@ export class Conversation {
   private playbackEndsAt = 0;
   private playbackTimer: ReturnType<typeof setTimeout> | null = null;
   private bargedAt: number | null = null;
+  /** The opening greeting carries the AI and recording notice, so it is played in full: the speaker's own sound reaching the microphone must not cut it off. */
+  private greetingPlaying = false;
   /** The assistant message in `history` and when each of its sentences began to play, so an interruption trims it. */
   private lastSpoken: { index: number; sentences: { text: string; playStart: number }[] } | null = null;
   private readonly t0: number;
   private readonly segments: TranscriptSegment[] = [];
   private speechStartedAt: number | null = null;
   private handedOff: HandoffReason | null = null;
+  private handoffSeen: HandoffReason | null = null; // kept for the call log when the call carries on after the hand-over line
   private errorStreak = 0;
   /** What was actually sent to the model for each caller line (with that turn's note), so later requests repeat it word for word. */
   private readonly sent = new WeakMap<ChatMessage, string>();
@@ -93,12 +119,14 @@ export class Conversation {
   /** The call so far, with times from the start of the call (saved to the call log when it ends). */
   transcript(): TranscriptSegment[] { return this.segments.map((s) => ({ ...s })); }
   /** Why the call was handed to a person, if it was. */
-  handoffReason(): HandoffReason | null { return this.handedOff; }
+  handoffReason(): HandoffReason | null { return this.handedOff ?? this.handoffSeen; }
   durationMs(): number { return Math.max(0, this.now() - this.t0); }
 
   private handoffMessage(callerText: string): string {
     const m = this.o.handoff?.message;
-    return /[\u0900-\u097F]/.test(callerText) ? (m?.hi ?? HANDOFF_HINDI) : (m?.en ?? HANDOFF_ENGLISH);
+    // The language chosen for the call decides; only a mixed call follows the caller's own script.
+    const hindi = this.o.language === "hi" || (this.o.language === "en-hi" && /[\u0900-\u097F]/.test(callerText));
+    return hindi ? (m?.hi ?? HANDOFF_HINDI) : (m?.en ?? HANDOFF_ENGLISH);
   }
 
   /** Hands the call over: the AI says so, the client is told, and the AI stops answering. */
@@ -118,7 +146,7 @@ export class Conversation {
     this.session = await this.openStt();
     this.o.send({ type: "ready", audio: { encoding: this.o.tts.encoding, rate: this.o.tts.rate } });
     void this.listen(this.session);
-    if (this.o.greeting) this.begin(null, this.o.greeting);
+    if (this.o.greeting) { this.greetingPlaying = true; this.begin(null, this.o.greeting); }
   }
 
   pushAudio(frame: Uint8Array): void {
@@ -154,6 +182,10 @@ export class Conversation {
   private setState(s: State) {
     if (this.state === s) return;
     this.state = s;
+    if (s === "listening") {
+      this.greetingPlaying = false;
+      if (this.handedOff && this.o.resumeAfterHandoff) { this.handoffSeen = this.handedOff; this.handedOff = null; }
+    }
     this.o.send({ type: "state", state: s });
   }
 
@@ -189,7 +221,9 @@ export class Conversation {
       case "partial":
         if (ev.text) {
           this.o.send({ type: "partial", text: ev.text });
-          if (this.state !== "listening") this.bargeIn();
+          // Only real words (three or more letters) while the AI is speaking count as an interruption. Interim words that arrive while it is still
+          // thinking belong to the same question (the next final joins them), and a short sound ("जी") can be the speaker's own echo.
+          if (this.state === "speaking" && [...ev.text].filter((c) => /\p{L}/u.test(c)).length >= 3) this.bargeIn();
         }
         break;
       case "final":
@@ -202,6 +236,7 @@ export class Conversation {
 
   /** The caller spoke over the AI: stop audio, drop the reply being written, and listen. */
   private bargeIn() {
+    if (this.greetingPlaying) return;
     const t = this.now();
     if (!this.active && !this.isPlaying()) return;
     const turn = this.active?.turn ?? this.turn;
@@ -264,34 +299,44 @@ export class Conversation {
     const spoken: { text: string; playStart: number }[] = [];
     let tFirstToken = 0, tFirstSentence = 0, tSpeakStart = 0, tFirstAudio = 0, failed = false, groundMs = 0, tAck = 0, tAnswerPlay = 0;
     let ackDone: Promise<void> = Promise.resolve();
+    let waitTimer: ReturnType<typeof setTimeout> | undefined;
     this.setState("thinking");
 
     // The acknowledgement is synthesised alongside the AI request; the answer waits only for its audio to finish being produced.
     const sayAck = async (text: string): Promise<void> => {
-      for await (const chunk of this.o.tts.speak(text, signal)) {
+      const key = ackKey(this.o.tts, text);
+      const cached = key ? ackCache.get(key) : undefined;
+      const fresh: Uint8Array[] = [];
+      for await (const chunk of cached ?? this.o.tts.speak(text, signal)) {
         if (signal.aborted) return;
         const t = this.now();
         if (!tAck) { tAck = t; this.setState("speaking"); if (this.active?.turn === turn) this.active.audio = true; }
         this.playbackEndsAt = Math.max(this.playbackEndsAt, t) + this.chunkMs(chunk);
         this.o.sendAudio(chunk);
+        if (!cached) fresh.push(new Uint8Array(chunk));
       }
+      if (key && !cached && fresh.length) ackCache.set(key, fresh);
     };
 
     const say = async (raw: string): Promise<void> => {
       await ackDone;
       if (signal.aborted) return;
+      raw = greetingFix(raw, this.o.language);
       const sentence = this.o.tts.gender ? matchGender(forVoice(raw), this.o.tts.gender) : forVoice(raw);
       if (!sentence || !/[\p{L}\p{N}]/u.test(sentence)) return; // nothing left to say once markup is removed
       if (!tSpeakStart) tSpeakStart = this.now();
       let playStart = -1;
-      for await (const chunk of this.o.tts.speak(sentence, signal)) {
+      const skey = ackKey(this.o.tts, sentence), scached = skey ? ackCache.get(skey) : undefined, sfresh: Uint8Array[] = [];
+      for await (const chunk of scached ?? this.o.tts.speak(sentence, signal)) {
         if (signal.aborted) return;
+        if (!scached) sfresh.push(new Uint8Array(chunk));
         const t = this.now();
         if (!tFirstAudio) { tFirstAudio = t; this.setState("speaking"); if (this.active?.turn === turn) this.active.audio = true; }
         if (playStart < 0) { playStart = Math.max(this.playbackEndsAt, t); if (!tAnswerPlay) tAnswerPlay = playStart; }
         this.playbackEndsAt = Math.max(this.playbackEndsAt, t) + this.chunkMs(chunk);
         this.o.sendAudio(chunk);
       }
+      if (skey && !scached && !signal.aborted && sfresh.length) remember(ackCache, skey, sfresh, 400);
       if (!signal.aborted) {
         const startedAt = playStart < 0 ? this.now() : playStart;
         spoken.push({ text: sentence, playStart: startedAt });
@@ -306,7 +351,8 @@ export class Conversation {
       } else {
         const ackText = this.o.ack?.(this.history.at(-1)?.role === "user" ? this.history.at(-1)!.content : "") ?? null;
         if (ackText) ackDone = sayAck(ackText).catch(() => {});
-        const chunker = new SentenceChunker();
+        // AskG1 sometimes takes 10 to 40 s to start: after 6 s without a word the caller hears that we are still on it, instead of silence.
+        waitTimer = setTimeout(() => { if (!tFirstToken && !signal.aborted) void ackDone.then(() => sayAck(stillWorking(this.o.language))).catch(() => {}); }, 6000);
         const lastUser = [...this.history].reverse().find((m) => m.role === "user")?.content ?? "";
         // Knowledge lookup must never stop a reply: if it fails the model answers without it and is told nothing matched.
         const tGround = this.now();
@@ -325,34 +371,65 @@ export class Conversation {
         if (last && last.role === "user" && extra) this.sent.set(last, `${last.content}\n[note: ${extra}]`);
         // Earlier turns go out exactly as they did the first time, notes included, so the model's saved copy of the conversation still matches.
         const messages: ChatMessage[] = [{ role: "system", content: this.o.systemPrompt }, ...recent.map((m) => (m.role === "user" && this.sent.get(m)) ? { ...m, content: this.sent.get(m)! } : m)];
-        for await (const token of this.o.llm.chat({ messages, signal })) {
-          if (signal.aborted) break;
-          if (!tFirstToken) tFirstToken = this.now();
-          for (const sentence of chunker.push(token)) {
-            if (!tFirstSentence) tFirstSentence = this.now();
-            await say(sentence);
+        // The language chosen for the call is final. A sentence in the wrong language is never spoken: if the reply starts that way
+        // the model is asked again with a firm one-line instruction, and what still comes back wrong is dropped.
+        const lang = this.o.language;
+        let strict = false, violated = false, complete = true;
+        const normQ = lastUser.normalize("NFC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+        const cacheKey = this.o.tts.cacheKey && passages.length && normQ.split(" ").length >= 3 ? `${lang}|${this.o.tts.cacheKey}|${normQ}|${passages.join("|")}` : null;
+        const cachedAnswer = cacheKey ? answerCache.get(cacheKey) : undefined;
+        if (cachedAnswer) this.o.log?.("answered from the saved answer");
+        const chat = cachedAnswer ? async function* () { yield cachedAnswer.join(" "); } : (a: Parameters<typeof this.o.llm.chat>[0]) => this.o.llm.chat(a);
+        for (let attempt = 0; attempt < 2 && !signal.aborted; attempt++) {
+          const chunker = new SentenceChunker(this.o.language === "en" ? {} : { eagerFirstChars: 14 }); // Hindi voice time grows with length: start on a shorter first piece
+          let restart = false;
+          const sendMessages = strict ? messages.map((m, i) => i === messages.length - 1 && m.role === "user" ? { ...m, content: `${m.content}\n${strictNote(lang)}` } : m) : messages;
+          for await (const token of chat({ messages: sendMessages, signal })) {
             if (signal.aborted) break;
+            if (!tFirstToken) tFirstToken = this.now();
+            for (const sentence of chunker.push(token)) {
+              if (wrongLanguage(sentence, lang)) {
+                violated = true;
+                if (attempt === 0 && !spoken.length) { restart = true; break; }
+                continue;
+              }
+              if (!tFirstSentence) tFirstSentence = this.now();
+              await say(sentence);
+              if (signal.aborted) break;
+            }
+            if (restart) break;
           }
+          if (restart) { strict = true; this.o.log?.(`wrong language in the reply, asking again (${lang})`); continue; }
+          if (!signal.aborted) {
+            const rest = chunker.flush();
+            // A long tail with no ending punctuation means the model ran out of room mid-sentence: never speak half a sentence.
+            const cutOff = !!rest && rest.length > 24 && !/[.!?।…"')\]]\s*$/.test(rest);
+            if (cutOff) complete = false;
+            if (rest && !cutOff && wrongLanguage(rest, lang)) {
+              violated = true;
+              if (attempt === 0 && !spoken.length) { strict = true; this.o.log?.(`wrong language in the reply, asking again (${lang})`); continue; }
+            } else if (rest && !cutOff) { if (!tFirstSentence) tFirstSentence = this.now(); await say(rest); }
+          }
+          break;
         }
-        if (!signal.aborted) {
-          const rest = chunker.flush();
-          // A long tail with no ending punctuation means the model ran out of room mid-sentence: never speak half a sentence.
-          const cutOff = !!rest && rest.length > 24 && !/[.!?।…"')\]]\s*$/.test(rest);
-          if (rest && !cutOff) { if (!tFirstSentence) tFirstSentence = this.now(); await say(rest); }
-        }
+        if (violated && !spoken.length && !signal.aborted) await say(sorryAgain(lang));
+        if (cacheKey && !cachedAnswer && complete && !violated && !signal.aborted && this.bargedAt === null && spoken.length) remember(answerCache, cacheKey, spoken.map((x) => x.text), 300);
       }
     } catch (e) {
       if (!signal.aborted) {
         failed = true;
         this.o.send({ type: "error", message: e instanceof Error ? e.message : String(e) });
-        if (!tFirstAudio && this.o.fallback) await say(this.o.fallback).catch(() => {});
+        const tooSlow = e instanceof Error && /did not answer in time/i.test(e.message);
+        if (tooSlow) await say(askAgainSlow(this.o.language)).catch(() => {}); // a slow model is not a broken call: no hand-over, just ask again
+        else if (!tFirstAudio && this.o.fallback) await say(this.o.fallback).catch(() => {});
         // The AI failed twice in a row: stop pretending it can help and hand the call to a person (SOP: any pipeline error).
-        if (++this.errorStreak >= 2 && this.o.handoff && !this.handedOff) {
+        if (!tooSlow && ++this.errorStreak >= 2 && this.o.handoff && !this.handedOff) {
           const lastCaller = [...this.history].reverse().find((m) => m.role === "user")?.content ?? "";
           await say(this.markHandoff("pipeline_error", lastCaller)).catch(() => {});
         }
       }
     } finally {
+      clearTimeout(waitTimer);
       // Whatever the caller actually heard goes into the history, so an interrupted reply is remembered as interrupted.
       const heard = this.bargedAt === null ? spoken : spoken.filter((x) => x.playStart <= this.bargedAt!);
       if (heard.length) {

@@ -131,7 +131,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
       case "notice": setNotice(String(e.message)); break;
       case "handoff": {
         const why: Record<string, string> = { person: "asked for a person", complaint: "has a complaint", payment: "has a payment problem", pipeline_error: "the AI could not help" };
-        setNotice(`Handed over to a person: the caller ${why[String(e.reason)] ?? "needs a person"}. On a real phone call the carrier would transfer the call now. The AI has stopped answering.`);
+        setNotice(`Handed over to a person: the caller ${why[String(e.reason)] ?? "needs a person"}. On a real phone call the carrier would transfer the call now; in this practice call the AI keeps listening.`);
         break;
       }
       case "blocked": setError(String(e.message)); break;

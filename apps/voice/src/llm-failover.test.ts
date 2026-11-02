@@ -59,4 +59,20 @@ describe("withFailover", () => {
     expect(await text(m, ac.signal)).toBe("");
     expect(whys).toEqual([]);
   });
+  it("sends a turn straight to the backup when the main model is already busy with its limit, without a cool-down", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const calls = { main: 0 };
+    const main: LlmAdapter = { respond: () => (async function* () {})(), async *chat() { calls.main++; await gate; yield "main"; } };
+    const whys: string[] = [];
+    const m = withFailover(main, say(["backup"]), { maxConcurrent: 2, onBackup: (w) => whys.push(w) });
+    const a = text(m), b = text(m);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await text(m)).toBe("backup");        // third turn: over the limit, answered at once
+    expect(whys[0]).toMatch(/already answering 2/);
+    release();
+    expect([await a, await b]).toEqual(["main", "main"]);
+    expect(await text(m)).toBe("main");           // no cool-down: the main model is used again as soon as there is room
+    expect(calls.main).toBe(3);
+  });
 });

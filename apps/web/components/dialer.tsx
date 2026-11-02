@@ -121,7 +121,7 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
               ))}
             </div>
             {mode === "ai" && (
-              <Field label="AI voice" hint={voices.length ? "The AI always says it is an AI assistant first." : "No active voices. An Org Admin must register one."}>
+              <Field label="AI voice" hint={voices.length ? "The AI opens with the greeting from Settings." : "No active voices. An Org Admin must register one."}>
                 <Select value={voiceId} onChange={(e) => setVoiceId(e.target.value)}>{voices.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</Select>
               </Field>
             )}

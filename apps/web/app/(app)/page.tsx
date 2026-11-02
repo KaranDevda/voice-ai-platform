@@ -1,5 +1,6 @@
 import { AudioLines, ArrowUpRight, BarChart3, Bot, FileText, FolderOpen, Fingerprint, Library, LayoutDashboard, Mic2, Phone, PhoneCall, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 import { dashboardStats, listAssets, usageToday } from "@voiceai/db";
 import { resolveScope } from "@voiceai/auth";
 import { ProviderChips } from "@/components/provider-chips";
@@ -20,14 +21,19 @@ const greeting = () => {
 /** Decorative waveform for the hero: fixed heights so server and client render identically. */
 const HERO_BARS = Array.from({ length: 56 }, (_, i) => 14 + Math.round(40 * Math.abs(Math.sin(i * 0.43) * Math.cos(i * 0.17)) + 10 * Math.abs(Math.sin(i * 1.7))));
 
+/** The provider check pings each service, so it streams in after the page instead of holding it back. */
+async function Connections() {
+  const providers = await checkProviders();
+  return <Card><CardHeader title="Connections" description="The services the studio runs on" /><CardBody><ProviderChips status={providers} /></CardBody></Card>;
+}
+
 export default async function Launchpad() {
   const user = await requirePageUser();
   const has = (p: string) => user.permissions.includes(p);
   const studio = has("studio.use");
   const recordScope = (b: "leads.read" | "calls.read") => { const s = resolveScope(user, b); return !!s && s !== "aggregate"; };
 
-  const [providers, recent, usage, today] = await Promise.all([
-    studio ? checkProviders() : null,
+  const [recent, usage, today] = await Promise.all([
     studio ? allowed(() => listAssets(getDb(), user, { pageSize: 5 })) : null,
     studio ? allowed(() => usageToday(getDb(), user)) : null,
     allowed(() => dashboardStats(getDb(), user, 1)),
@@ -96,7 +102,11 @@ export default async function Launchpad() {
         </div>
 
         <div className="grid min-w-0 content-start gap-6">
-          {providers && <Card><CardHeader title="Connections" description="The services the studio runs on" /><CardBody><ProviderChips status={providers} /></CardBody></Card>}
+          {studio && (
+            <Suspense fallback={<Card><CardHeader title="Connections" description="Checking the services…" /><CardBody><div className="h-6 animate-pulse rounded bg-muted" /></CardBody></Card>}>
+              <Connections />
+            </Suspense>
+          )}
           <Card>
             <CardHeader title="Last 24 hours" />
             <CardBody className="grid grid-cols-2 gap-4">

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { ForbiddenError, resolveScope, type AuthUser, type FlagPermission, type ScopedBase } from "@voiceai/auth";
 import { getDb, getAuthUser } from "./server";
@@ -74,4 +75,4 @@ export function navFor(u: AuthUser): NavGroup[] {
     .filter((g) => g.items.length);
 }
 
-export const profileOf = (user: AuthUser) => getUserProfile(getDb(), user);
+export const profileOf = cache((user: AuthUser) => getUserProfile(getDb(), user));

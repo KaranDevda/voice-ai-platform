@@ -18,17 +18,17 @@ const LANGS: Array<[Lang, string]> = [["en", "English"], ["hi", "Hindi"], ["hing
 /** Ready-made scripts per language. Hinglish: Hindi words in Devanagari, English words in English letters. */
 const SAMPLES: Record<Lang, ReadonlyArray<readonly [string, string]>> = {
   en: [
-    ["Greeting", "Hello, thanks for calling Bizfy. You are speaking with an AI assistant, and this call is recorded. How can I help you today?"],
+    ["Greeting", "Hello, thanks for calling Bizfy. This call is recorded. How can I help you today?"],
     ["Callback", "Hi, this is a reminder that we will call you back tomorrow at eleven in the morning. If that time does not suit you, just reply and we will move it."],
     ["Pricing", "Our Business plan starts at four thousand nine hundred ninety nine rupees per month and includes up to ten users, the AI phone assistant, and call tracking."],
   ],
   hi: [
-    ["Greeting", "नमस्ते, बिज़्फी में कॉल करने के लिए धन्यवाद। आप एक एआई असिस्टेंट से बात कर रहे हैं, और यह कॉल रिकॉर्ड हो सकती है। मैं आपकी कैसे मदद कर सकता हूँ?"],
+    ["Greeting", "नमस्ते! यह कॉल रिकॉर्ड हो सकती है। मैं आपकी कैसे मदद कर सकता हूँ?"],
     ["Callback", "नमस्ते, यह एक अनुस्मारक है कि हम आपको कल सुबह ग्यारह बजे वापस कॉल करेंगे। अगर यह समय आपके लिए ठीक नहीं है, तो बस जवाब दें, हम इसे बदल देंगे।"],
     ["Pricing", "हमारा बिज़नेस प्लान 4,999 रुपये प्रति माह से शुरू होता है, और इसमें दस उपयोगकर्ता, एआई फोन असिस्टेंट और कॉल ट्रैकिंग शामिल हैं।"],
   ],
   hinglish: [
-    ["Greeting", "नमस्ते! Bizfy में आपका स्वागत है। आप एक AI assistant से बात कर रहे हैं, और यह call record हो सकती है। बताइए, मैं आपकी कैसे help कर सकता हूँ?"],
+    ["Greeting", "नमस्ते! यह call record हो सकती है। बताइए, मैं आपकी कैसे help कर सकता हूँ?"],
     ["Callback", "Hello, यह एक reminder है कि हम आपको कल सुबह ग्यारह बजे call back करेंगे। अगर यह time आपके लिए ठीक नहीं है, तो बस reply कर दीजिए।"],
     ["Pricing", "हमारा Business plan 4,999 रुपये प्रति माह से शुरू होता है, और इसमें दस users, AI phone assistant और call tracking शामिल हैं।"],
   ],

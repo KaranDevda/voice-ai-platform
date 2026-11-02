@@ -64,3 +64,24 @@ export function mulawAdapterAsPcm(tts: TtsAdapter, voiceId: string): TtsEngine {
 export function mulawAdapterEngine(tts: TtsAdapter, voiceId: string): TtsEngine {
   return { encoding: "mulaw", rate: 8000, speak: (text, signal) => tts.synthesize({ text, providerVoiceId: voiceId, signal }) };
 }
+
+/**
+ * Chatterbox Multilingual, run by scripts/chatterbox-server.py: Hindi and English made directly in the person's own voice from a
+ * recording of them. Each sentence is written in Devanagari (Hindi) or Latin letters (English) and sent with that language.
+ * It is much closer to the person than the stock Hindi voice plus voice conversion, but needs a GPU to run faster than real time.
+ */
+export function chatterboxEngine(baseUrl: string, voiceId: string, doFetch: typeof fetch = fetch): TtsEngine {
+  return {
+    encoding: "linear16",
+    rate: 24_000,
+    async *speak(text, signal) {
+      const language = /[\u0900-\u097F]/.test(text) ? "hi" : "en";
+      const res = await doFetch(`${baseUrl.replace(/\/$/, "")}/tts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, language, voice_id: voiceId }), signal });
+      if (!res.ok) throw new Error(`Chatterbox failed: ${res.status}`);
+      const wav = new Uint8Array(await res.arrayBuffer());
+      const pcm = wav.subarray(44); // a 44-byte header, then 16-bit samples at 24 kHz
+      const step = 24_000 / 4 * 2; // 250 ms of audio per chunk
+      for (let i = 0; i < pcm.length; i += step) { if (signal.aborted) return; yield pcm.slice(i, Math.min(pcm.length, i + step)); }
+    },
+  };
+}
