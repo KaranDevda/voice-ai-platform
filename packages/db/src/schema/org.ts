@@ -22,6 +22,8 @@ export const organizations = pgTable("organizations", {
   dataRetentionDays: integer("data_retention_days").notNull().default(365),
   /** Recordings, days. SOP default: 180 (split from data_retention_days because defaults differ). */
   recordingRetentionDays: integer("recording_retention_days").notNull().default(180),
+  /** Verification level (KYC). Raised by a platform reviewer; see kyc_submissions. */
+  kycTier: text("kyc_tier", { enum: ["unverified", "basic", "business"] }).notNull().default("unverified"),
   createdAt: createdAt(),
 });
 

@@ -1,11 +1,13 @@
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { BizfyMark } from "@/components/brand";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { navFor, profileOf, requirePageUser } from "@/lib/page-auth";
+import { SESSION_COOKIE, verifyToken, type SessionClaims } from "@/lib/session";
 import { titleCase } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -14,9 +16,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requirePageUser();
   const [profile, groups, jar] = [await profileOf(user), navFor(user), await cookies()];
   const theme = jar.get("theme")?.value === "light" ? "light" : "dark";
+  const impersonating = !!(await verifyToken<SessionClaims>(jar.get(SESSION_COOKIE)?.value, "session"))?.impBy;
 
   return (
-    <div className="min-h-screen md:flex">
+    <div className="min-h-screen md:flex md:flex-wrap">
+      {impersonating && <div className="w-full"><ImpersonationBanner email={profile.email} /></div>}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-card md:flex">
         <div className="flex items-center gap-2.5 px-5 py-4">
           <BizfyMark className="h-9 w-9" />

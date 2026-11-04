@@ -40,9 +40,10 @@ describe("Hindi numbers", () => {
   it("reads decimals digit by digit after the point", () => {
     expect(spellOutHindiNumbers("दर 2.5 है")).toBe("दर दो दशमलव पाँच है");
   });
-  it("leaves English sentences alone, so the English voice reads their digits", () => {
+  it("leaves English sentences alone in the Hindi step; the English step writes big numbers and amounts as words", () => {
     expect(spellOutHindiNumbers("The plan costs 4,999 rupees.")).toBe("The plan costs 4,999 rupees.");
-    expect(forVoice("**4,999** rupees")).toBe("4,999 rupees");
+    expect(forVoice("**4,999** rupees")).toBe("four thousand nine hundred ninety-nine rupees");
+    expect(forVoice("It is ₹4,999 a month, call 98765 43210")).toBe("It is four thousand nine hundred ninety-nine rupees a month, call nine eight seven six five, four three two one zero");
   });
   it("cleans and spells out together", () => {
     expect(forVoice("**कीमत** 4,999 रुपये है 😊")).toBe("कीमत चार हज़ार नौ सौ निन्यानवे रुपये है");

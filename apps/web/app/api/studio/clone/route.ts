@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { assertConsentUsable, createVoiceProfile } from "@voiceai/db";
+import { assertConsentUsable, createVoiceProfile, saveVoiceSample } from "@voiceai/db";
 import { assertAuthorized } from "@voiceai/auth";
 import { cloneProvider, getElevenLabs, getPocketTts, timed } from "@/lib/providers";
 import { getDb } from "@/lib/server";
@@ -35,13 +35,22 @@ export const POST = (req: Request) =>
     // With the built-in Hindi voice every voice also speaks Hindi and Hinglish; no Hindi voice file is made.
     const languages = extra.languages && process.env.KOKORO_URL?.trim() && !extra.languages.includes("hi") ? [...extra.languages, "hi"] : extra.languages;
     const failed = extra.failed?.map((f) => f.language);
+    let profile;
     try {
-      const profile = await createVoiceProfile(getDb(), user, { ...input, provider, providerVoiceId });
-      // Raw samples were only held in memory for this request (SOP: raw samples deleted after cloning).
-      return Response.json({ id: profile.id, label: profile.label, languages, missingLanguages: failed, hindiInOwnVoice: extra.hindiInOwnVoice ?? false }, { status: 201 });
+      profile = await createVoiceProfile(getDb(), user, { ...input, provider, providerVoiceId });
     } catch (err) {
       // Do not leave an orphan clone at the provider if registering it here failed.
       await engine.deleteVoice(providerVoiceId).catch(() => {});
       throw err;
     }
+    // The recording is kept with the voice (biometric data, managers only, deleted with the voice) so the voice can be heard on the
+    // website, re-made, and used by the open-source Chatterbox engine. A Hindi-specific recording wins when one was given.
+    // The voice is already registered at this point, so a failure here must never delete its voice files: it is reported instead.
+    let sampleSaved = false;
+    const kept = hindiSample ?? samples[0]!;
+    if (provider === "pocket_tts" && kept.data.length) {
+      sampleSaved = await saveVoiceSample(getDb(), user, profile.id, kept.data, "audio/wav").then(() => true, (e) => { console.error("could not keep the voice recording", e); return false; });
+    }
+    // Raw samples were otherwise only held in memory for this request.
+    return Response.json({ id: profile.id, label: profile.label, languages, missingLanguages: failed, hindiInOwnVoice: extra.hindiInOwnVoice ?? false, recordingKept: sampleSaved }, { status: 201 });
   });

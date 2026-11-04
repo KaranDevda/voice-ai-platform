@@ -12,3 +12,6 @@ export function maskPhone(e164: string): string {
   if (national.length < 6) return "X".repeat(national.length);
   return `${national.slice(0, 2)}${"X".repeat(national.length - 5)}${national.slice(-3)}`;
 }
+
+/** The country of an E.164 number ("IN", "US", ...), "other" when it cannot be told, "unknown" for no number. */
+export const countryOfPhone = (e164: string): string => (e164 ? parsePhoneNumberFromString(e164)?.country ?? "other" : "unknown");

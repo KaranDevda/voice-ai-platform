@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, pgTable, real, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, real, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, leadConsentStatus, leadStatus, orgIsolationPolicy, statusChanger } from "./_common";
 import { organizations, teams, users } from "./org";
 import { callLogs } from "./calls";
@@ -18,6 +18,8 @@ export const leads = pgTable(
     status: leadStatus("status").notNull().default("new"),
     score: integer("score"),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+    /** Extra columns from an imported contact list (city, company, ...), usable as {{variables}} in a campaign. */
+    customFields: jsonb("custom_fields").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
     dndFlag: boolean("dnd_flag").notNull().default(false),
     consentStatus: leadConsentStatus("consent_status").notNull().default("unknown"),
     createdAt: createdAt(),

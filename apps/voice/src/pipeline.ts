@@ -2,6 +2,7 @@ import type { ChatMessage, LlmAdapter, SttAdapter, SttEvent, SttSession } from "
 import { SentenceChunker } from "./sentences";
 import { knowledgeBlock } from "./prompt";
 import { forVoice } from "./speech-text";
+import { looksUnfinished } from "./turn-end";
 import { askAgainSlow, greetingFix, sorryAgain, stillWorking, strictNote, wrongLanguage } from "./language";
 import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
@@ -15,6 +16,8 @@ export interface TtsEngine {
   rate: number;
   /** Identifies this voice for the acknowledgement cache: the same key means the same voice speaking the same way. */
   cacheKey?: string;
+  /** Part of the cache key for settings that change how the same text sounds (a voice's speed and pitch), so cached lines are never played with old settings. */
+  variant?: string;
   speak(text: string, signal: AbortSignal): AsyncIterable<Uint8Array>;
 }
 
@@ -59,6 +62,8 @@ export interface ConversationOptions {
   now?: () => number;
   /** Stop the AI the moment the recogniser hears the caller start, not only when words arrive. */
   bargeOnVoice?: boolean;
+  /** When a transcript stops mid-sentence ("my name is"), wait this long for the rest before answering. 0 = off. Lets the silence rule be short. */
+  holdUnfinishedMs?: number;
   /** A browser call has nobody to transfer to: after the hand-over line the AI keeps listening and helping. A phone call really moves to a person. */
   resumeAfterHandoff?: boolean;
   maxHistory?: number;
@@ -156,6 +161,7 @@ export class Conversation {
   async close(): Promise<void> {
     this.closed = true;
     if (this.playbackTimer) clearTimeout(this.playbackTimer);
+    if (this.holdTimer) clearTimeout(this.holdTimer);
     this.active?.ac.abort();
     await this.session?.close().catch(() => {});
   }
@@ -227,7 +233,7 @@ export class Conversation {
         }
         break;
       case "final":
-        if (ev.text && !this.handedOff) { this.o.log?.(`heard: ${ev.text}`); this.begin(ev.text); }
+        if (ev.text && !this.handedOff) { this.o.log?.(`heard: ${ev.text}`); this.onFinalText(ev.text); }
         break;
       default:
         break;
@@ -262,6 +268,22 @@ export class Conversation {
     this.o.send({ type: "barge_in", turn });
     this.o.log?.(`barge-in on turn ${turn}`);
     if (!this.active) this.setState("listening");
+  }
+
+  /** A caller's finished piece of speech. If it stops mid-sentence, wait briefly for the rest; the pieces are then answered as one question. */
+  private heldText: string | null = null;
+  private holdTimer?: ReturnType<typeof setTimeout>;
+  private onFinalText(text: string) {
+    if (this.holdTimer) { clearTimeout(this.holdTimer); this.holdTimer = undefined; }
+    if (this.heldText) { text = `${this.heldText} ${text}`; this.heldText = null; }
+    const hold = this.o.holdUnfinishedMs ?? 0;
+    if (hold > 0 && looksUnfinished(text)) {
+      this.heldText = text;
+      this.o.log?.(`waiting ${hold} ms: the caller may not have finished ("${text.slice(-30)}")`);
+      this.holdTimer = setTimeout(() => { const t = this.heldText; this.heldText = null; this.holdTimer = undefined; if (t && !this.closed) this.begin(t); }, hold);
+      return;
+    }
+    this.begin(text);
   }
 
   private begin(userText: string | null, scripted?: string) {

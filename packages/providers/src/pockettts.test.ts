@@ -168,7 +168,7 @@ describe("Pocket TTS adapter", () => {
       const tts = createPocketTts({ ...cfg(), binPath: bin, voicesDir: join(dir, "voices") });
       const r = await tts.cloneVoice({ label: "x", samples: [{ name: "s.wav", mime: "audio/wav", data: wav(samples) }] });
       expect(r.languages).toEqual(["en", "hi"]);
-      expect((await readdir(join(dir, "voices"))).sort()).toEqual([`${r.providerVoiceId}.hi.safetensors`, `${r.providerVoiceId}.safetensors`]);
+      expect((await readdir(join(dir, "voices"))).sort()).toEqual([`${r.providerVoiceId}.hi.safetensors`, `${r.providerVoiceId}.ref.wav`, `${r.providerVoiceId}.safetensors`]); // the .ref.wav is the kept recording for Chatterbox
       await tts.deleteVoice(r.providerVoiceId);
       expect(await readdir(join(dir, "voices"))).toEqual([]);
     });

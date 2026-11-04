@@ -5,3 +5,8 @@ export * from "./crm";
 export * from "./calls";
 export * from "./platform";
 export * from "./studio";
+export * from "./campaigns";
+export * from "./messaging";
+export * from "./billing";
+export * from "./admin";
+export * from "./integrations";

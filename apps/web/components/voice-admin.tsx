@@ -9,7 +9,8 @@ import { Table, Td, Th, Tr } from "./ui/table";
 import { PostButton } from "./post-button";
 import { formatDate, titleCase } from "@/lib/utils";
 
-interface Profile { id: string; label: string; gender: string; provider: string; status: string; donorFirst?: string | null; donorLast?: string | null; donorEmail: string; consentGrantedAt: string; consentPurpose: string; consentWithdrawn: string | null }
+interface Profile { id: string; label: string; gender: string; provider: string; status: string; speed: number; pitch: number; hasSample: boolean; donorFirst?: string | null; donorLast?: string | null; donorEmail: string; consentGrantedAt: string; consentPurpose: string; consentWithdrawn: string | null }
+const PREVIEW_TEXT = "Hello! Kafi time se baat nahi hui, sab badhiya? Is weekend scene banayein? Batana kab free ho, milte hain!";
 interface Consent { id: string; email: string | null; purpose: string; method: string; grantedAt: string; revokedAt: string | null; inUse: boolean }
 interface Staff { id: string; email: string }
 
@@ -44,17 +45,41 @@ function VoiceRow({ p }: { p: Profile }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(p.label);
   const [gender, setGender] = useState(p.gender);
+  const [speed, setSpeed] = useState(p.speed);
+  const [pitch, setPitch] = useState(p.pitch);
   const [busy, setBusy] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [error, setError] = useState("");
   const donor = [p.donorFirst, p.donorLast].filter(Boolean).join(" ") || p.donorEmail;
 
   async function save() {
     setBusy(true); setError("");
-    const res = await fetch(`/api/voices/${p.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ label, gender }) });
+    const res = await fetch(`/api/voices/${p.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ label, gender, speed, pitch }) });
     setBusy(false);
     if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Could not save");
     setEditing(false);
     router.refresh();
+  }
+
+  /** Plays the stored recording the voice was cloned from. */
+  async function playOriginal() {
+    const res = await fetch(`/api/voices/${p.id}/sample`);
+    if (!res.ok) return setError("Could not load the original recording");
+    const url = URL.createObjectURL(await res.blob());
+    const audio = new Audio(url);
+    audio.onended = audio.onerror = () => URL.revokeObjectURL(url);
+    await audio.play().catch(() => {});
+  }
+
+  /** Plays a Hinglish sample with the slider values, before anything is saved. */
+  async function preview() {
+    setPreviewing(true); setError("");
+    const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: PREVIEW_TEXT, voice: `profile:${p.id}`, speed, pitch }) });
+    if (!res.ok) { setPreviewing(false); return setError(((await res.json().catch(() => ({}))) as { message?: string; error?: string }).message ?? "Could not make the preview"); }
+    const url = URL.createObjectURL(await res.blob());
+    const audio = new Audio(url);
+    audio.onended = audio.onerror = () => { URL.revokeObjectURL(url); setPreviewing(false); };
+    await audio.play().catch(() => setPreviewing(false));
   }
 
   if (editing) {
@@ -63,20 +88,27 @@ function VoiceRow({ p }: { p: Profile }) {
         <Td><Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} aria-label="Voice name" /></Td>
         <Td><Select value={gender} onChange={(e) => setGender(e.target.value)} aria-label="Gender"><option value="female">Female</option><option value="male">Male</option></Select></Td>
         <Td>{donor}</Td>
-        <Td colSpan={2} className="text-xs text-muted-foreground">{error ? <span role="alert" className="text-danger">{error}</span> : "Gender picks the built-in Hindi voice, so set it to the speaker's."}</Td>
+        <Td colSpan={2} className="text-xs text-muted-foreground">
+          <label className="grid gap-1">Speed {speed.toFixed(2)}×<input type="range" min={0.8} max={1.25} step={0.01} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="Speed" /></label>
+          <label className="mt-2 grid gap-1">Pitch {pitch > 0 ? "+" : ""}{pitch.toFixed(1)} semitones<input type="range" min={-3} max={3} step={0.1} value={pitch} onChange={(e) => setPitch(Number(e.target.value))} aria-label="Pitch" /></label>
+          <p className="mt-2">{error ? <span role="alert" className="text-danger">{error}</span> : "Small changes sound natural; large ones make words harder to understand. Gender picks the built-in Hindi voice, so set it to the speaker's."}</p>
+        </Td>
         <Td className="text-right whitespace-nowrap">
+          <Button size="sm" variant="outline" onClick={() => { setSpeed(1); setPitch(0); }} disabled={speed === 1 && pitch === 0}>Reset</Button>{" "}
+          <Button size="sm" variant="outline" onClick={() => void preview()} disabled={previewing}>{previewing ? "Playing…" : "Preview"}</Button>{" "}
           <Button size="sm" onClick={() => void save()} disabled={busy || !label.trim()}>Save</Button>{" "}
-          <Button size="sm" variant="outline" onClick={() => { setEditing(false); setLabel(p.label); setGender(p.gender); setError(""); }}>Cancel</Button>
+          <Button size="sm" variant="outline" onClick={() => { setEditing(false); setLabel(p.label); setGender(p.gender); setSpeed(p.speed); setPitch(p.pitch); setError(""); }}>Cancel</Button>
         </Td>
       </Tr>
     );
   }
   return (
     <Tr>
-      <Td className="font-medium">{p.label}</Td><Td>{titleCase(p.gender)}</Td><Td>{donor}</Td>
+      <Td className="font-medium">{p.label}{p.hasSample ? "" : <span className="ml-2 text-xs font-normal text-muted-foreground" title="This voice was cloned before recordings were kept. Clone it again to use it with the realistic open-source engine.">no recording saved</span>}{p.speed !== 1 || p.pitch !== 0 ? <span className="ml-2 text-xs font-normal text-muted-foreground" title="Speed and pitch applied to this voice">{p.speed.toFixed(2)}× · {p.pitch > 0 ? "+" : ""}{p.pitch.toFixed(1)} st</span> : null}</Td><Td>{titleCase(p.gender)}</Td><Td>{donor}</Td>
       <Td className="text-muted-foreground">{formatDate(p.consentGrantedAt)}{p.consentWithdrawn ? " · withdrawn" : ""}</Td>
       <Td><Badge tone={p.status === "active" ? "success" : "danger"}>{titleCase(p.status)}</Badge></Td>
       <Td className="text-right whitespace-nowrap">
+        {p.status === "active" && p.hasSample && <Button size="sm" variant="outline" onClick={() => void playOriginal()}>Original</Button>}{" "}
         {p.status === "active" && <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>}{" "}
         {p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}>Revoke</PostButton>}
       </Td>

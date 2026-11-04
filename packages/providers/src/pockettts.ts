@@ -279,6 +279,9 @@ export function createPocketTts(config: PocketTtsConfig): TtsAdapter & SpeechSyn
       if (hindiSample && !isRiffWave(hindiSample.data)) throw new PocketTtsError("the Hindi voice sample must be a WAV file", 400);
       const { done, failed } = await exportAll(id, { en: sample.data, hi: hindiSample?.data }, ["en", ...(Object.keys(config.languages ?? {}) as PocketLanguage[])]);
       if (!done.includes("en")) throw new PocketTtsError(failed.find((f) => f.language === "en")?.reason ?? "voice export failed", 502);
+      // Chatterbox (the realistic open-source engine) clones from a recording, not from these voice files, so one clean copy is kept
+      // on this machine, readable only by its owner. It is deleted with the voice (deleteVoice removes every file of the id).
+      await writeFile(join(config.voicesDir, `${id}.ref.wav`), hindiSample && isRiffWave(hindiSample.data) ? hindiSample.data : sample.data, { mode: 0o600 }).catch(() => {});
       // The fingerprint that lets Hindi and Hinglish be spoken in this person's voice. If it cannot be made, the clone still works
       // in English and Hindi falls back to the built-in voice.
       let hindiInOwnVoice = false;

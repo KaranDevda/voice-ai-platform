@@ -54,6 +54,13 @@ export const plivoStreamXml = (streamUrl: string) =>
 /** Hands the call to a person's phone number. */
 export const plivoDialXml = (toNumber: string) => `<?xml version="1.0" encoding="UTF-8"?><Response><Dial><Number>${esc(toNumber)}</Number></Dial></Response>`;
 
+/**
+ * A touch-tone menu: plays the prompt (an audio file made by our own voice) and waits for one key. The key goes to `actionUrl`; with no key
+ * the call carries on to `fallbackUrl` (the AI), so a caller who presses nothing is never stuck.
+ */
+export const plivoMenuXml = (o: { audioUrl: string; actionUrl: string; fallbackUrl: string; validDigits: string; timeoutS?: number }) =>
+  `<?xml version="1.0" encoding="UTF-8"?><Response><GetDigits action="${esc(o.actionUrl)}" method="POST" numDigits="1" timeout="${o.timeoutS ?? 6}" retries="1" validDigits="${esc(o.validDigits)}"><Play>${esc(o.audioUrl)}</Play></GetDigits><Redirect method="POST">${esc(o.fallbackUrl)}</Redirect></Response>`;
+
 export const plivoHangupXml = () => `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`;
 
 // ---------------------------------------------------------------------------------------------- the audio stream
@@ -113,6 +120,18 @@ export function createPlivo(config: PlivoConfig) {
       const r = await call("POST", "/Call/", { from: i.from, to: i.to, answer_url: i.answerUrl, answer_method: "POST", ...(i.hangupUrl ? { hangup_url: i.hangupUrl, hangup_method: "POST" } : {}) });
       const id = Array.isArray(r.request_uuid) ? r.request_uuid[0] : r.request_uuid;
       return { callUuid: String(id ?? "") };
+    },
+    /**
+     * Sends one text. For India the text must match a template registered on the DLT platform: pass the registered entity and template IDs
+     * (the field names follow Plivo's India documentation as I know it: dlt_entity_id, dlt_template_id; confirm on the first real send).
+     */
+    async sendSms(i: { from: string; to: string; text: string; dltEntityId?: string; dltTemplateId?: string }): Promise<{ messageUuid: string }> {
+      const r = await call("POST", "/Message/", {
+        src: i.from, dst: i.to, text: i.text, type: "sms",
+        ...(i.dltEntityId ? { dlt_entity_id: i.dltEntityId } : {}), ...(i.dltTemplateId ? { dlt_template_id: i.dltTemplateId } : {}),
+      });
+      const id = Array.isArray(r.message_uuid) ? r.message_uuid[0] : r.message_uuid;
+      return { messageUuid: String(id ?? "") };
     },
     /** Moves a live call to new instructions: Plivo fetches `legUrl`, which should answer with plivoDialXml(person's number). */
     async transferCall(i: { callUuid: string; legUrl: string }): Promise<void> {

@@ -98,10 +98,10 @@ export function CloneWizard({ staff, consents, cloningReady, builtInHindi = fals
     return (
       <Card><CardBody className="grid justify-items-center gap-4 py-12 text-center">
         <span className="grid h-14 w-14 place-items-center rounded-full bg-success-soft text-success"><Check className="h-7 w-7" aria-hidden /></span>
-        <div><h2 className="text-xl font-semibold">{done.label}&apos;s voice is ready</h2><p className="mt-1 text-sm text-muted-foreground">The consent is linked, and the raw recordings were not stored on the server. You can revoke this voice at any time.</p>
+        <div><h2 className="text-xl font-semibold">{done.label}&apos;s voice is ready</h2><p className="mt-1 text-sm text-muted-foreground">The consent is linked, and the recording is kept securely with the voice (only people who manage voices can hear it). You can revoke this voice at any time.</p>
           <div className="mx-auto mt-3 max-w-md rounded-xl border border-border p-4 text-left">
             <div className="text-sm font-semibold">Save your recordings now</div>
-            <p className="mb-2 mt-1 text-xs text-muted-foreground">The app keeps no copy, so this is the only chance. Keep them somewhere private: a voice recording is personal data. With them, a better voice model can be tried later without recording again.</p>
+            <p className="mb-2 mt-1 text-xs text-muted-foreground">The app keeps one copy with the voice. Keep your own copy somewhere private too: a voice recording is personal data. With them, a better voice model can be tried later without recording again.</p>
             <div className="grid gap-1.5">
               {[...samples.map((smp, i) => ({ smp, name: `${done.label}-english-${i + 1}` })), ...(hindiSample ? [{ smp: hindiSample, name: `${done.label}-hindi` }] : [])].map(({ smp, name }) => (
                 <a key={name} href={smp.url} download={`${name}.${(smp.file.name.split(".").pop() || "wav").toLowerCase()}`} className={buttonClass({ variant: "outline", size: "sm" })}>Download {name}</a>

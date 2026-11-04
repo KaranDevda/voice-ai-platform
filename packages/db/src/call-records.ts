@@ -4,6 +4,7 @@ import {
   callBlockReason, orgSettingsSchema, type CallBlockReason, type CallSource, type TranscriptSegment,
 } from "@voiceai/shared";
 import { writeAudit } from "./audit";
+import { chargeCall, outOfCredit } from "./billing";
 import { withOrg, type Db } from "./client";
 import { callLogs, callTranscripts, leads, organizations, users } from "./schema";
 
@@ -44,6 +45,7 @@ export async function saveAiCall(db: Db, actor: AuthUser, input: SaveCallInput):
       const [existing] = await tx.select({ id: callLogs.id }).from(callLogs).where(eq(callLogs.providerCallUuid, input.providerCallUuid));
       return { id: existing!.id, created: false };
     }
+    await chargeCall(tx, actor.orgId, row.id, Math.max(0, Math.round(input.durationS)));
     await tx.insert(callTranscripts).values({ callLogId: row.id, orgId: actor.orgId, teamId: owner?.teamId ?? null, segments: input.segments, language: input.language });
     if (input.handoff) {
       await writeAudit(tx, { orgId: actor.orgId, teamId: owner?.teamId, actorUserId: actor.id, action: "call.handoff_requested", entity: "call_logs", entityId: row.id, after: { reason: input.handoff.reason } });
@@ -65,7 +67,8 @@ export async function checkOutboundCall(db: Db, actor: AuthUser, leadId: string,
     // A lead that is missing, or in another organisation, looks the same: it cannot be called.
     if (!lead) return { allowed: false, reason: "unknown_lead" } as const;
     const [org] = await tx.select({ s: organizations.settingsJson }).from(organizations).where(eq(organizations.id, actor.orgId));
-    const reason = callBlockReason(lead, orgSettingsSchema.parse(org!.s).calling, now);
+    let reason: CallBlockReason | null = callBlockReason(lead, orgSettingsSchema.parse(org!.s).calling, now);
+    if (!reason && (await outOfCredit(tx, actor.orgId))) reason = "no_credit";
     if (!reason) return { allowed: true } as const;
     await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "call.blocked", entity: "leads", entityId: leadId, after: { reason } });
     return { allowed: false, reason } as const;

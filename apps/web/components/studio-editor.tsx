@@ -49,6 +49,10 @@ export function StudioEditor({ voices, initialVoice, cloningReady }: { voices: V
   const [voice, setVoice] = useState(fallback);
   const [save, setSave] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Voice settings (cloned voices). Untouched, the voice's own saved speed and pitch are used.
+  const [speed, setSpeed] = useState(1);
+  const [pitch, setPitch] = useState(0);
+  const [tuned, setTuned] = useState(false);
   const [error, setError] = useState<{ message: string; hint?: string } | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const urlRef = useRef<string | null>(null);
@@ -66,7 +70,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady }: { voices: V
     setError(null);
     const t0 = Date.now();
     try {
-      const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice, save }) });
+      const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice, save, ...(tuned && picked?.group === "cloned" ? { speed, pitch } : {}) }) });
       if (!res.ok) return setError(await apiError(res));
       const blob = await res.blob();
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -113,6 +117,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady }: { voices: V
             ? <Notice tone="info">Hindi and Hinglish are changed into {picked.name}&apos;s own voice. This adds about a second per sentence.</Notice>
             : <Notice tone="info">Hindi and Hinglish are spoken by a built-in {picked.gender} Hindi voice, not {picked.name}&apos;s own voice. To use their own voice, open Voice clone, Add Hindi to an existing voice. If {picked.name} is the wrong gender, fix it under Voices &amp; consent, Edit.</Notice>)}
           {hindi && picked?.group === "cloned" && picked.hindi === false && <Notice tone="warning">{picked.name} has no Hindi version yet, so Hindi will be spoken in a default Hindi voice. Add one under Voice clone, &ldquo;Add Hindi to an existing voice&rdquo;.</Notice>}
+          <p className="text-xs text-muted-foreground">Emotion tags: put <code>[excited]</code>, <code>[calm]</code>, <code>[sad]</code>, <code>[serious]</code>, <code>[angry]</code>, <code>[slow]</code>, <code>[fast]</code> or <code>[pause]</code> before a sentence (Hindi: <code>[खुश]</code>, <code>[शांत]</code>, <code>[उदास]</code>). It applies until the next tag; <code>[neutral]</code> resets. Tags are never spoken. This changes speed, pitch and pauses a little; it is not acting.</p>
           {needsCloning && <Notice tone="warning">Voice cloning is not set up yet. Pick a stock voice for now.</Notice>}
           {error && (
             <div role="alert" className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
@@ -134,6 +139,23 @@ export function StudioEditor({ voices, initialVoice, cloningReady }: { voices: V
         <Card>
           <CardHeader title="Voice" />
           <CardBody><Field label="Choose a voice"><VoicePicker voices={voices} value={voice} onChange={setVoice} language={lang} /></Field></CardBody>
+        </Card>
+        <Card>
+          <CardHeader title="Voice settings" description={picked?.group === "cloned" ? (tuned ? "Custom for this audio" : "Using the voice's saved settings") : "Available for cloned voices"} />
+          <CardBody className="grid gap-5">
+            <label className="grid gap-1 text-sm">
+              <span className="flex justify-between font-medium">Speed <span className="font-normal text-muted-foreground">{speed.toFixed(2)}×</span></span>
+              <input type="range" min={0.8} max={1.25} step={0.01} value={speed} disabled={picked?.group !== "cloned"} onChange={(e) => { setSpeed(Number(e.target.value)); setTuned(true); }} aria-label="Speed" />
+              <span className="flex justify-between text-xs text-muted-foreground"><span>Slower</span><span>Faster</span></span>
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="flex justify-between font-medium">Pitch <span className="font-normal text-muted-foreground">{pitch > 0 ? "+" : ""}{pitch.toFixed(1)} st</span></span>
+              <input type="range" min={-3} max={3} step={0.1} value={pitch} disabled={picked?.group !== "cloned"} onChange={(e) => { setPitch(Number(e.target.value)); setTuned(true); }} aria-label="Pitch" />
+              <span className="flex justify-between text-xs text-muted-foreground"><span>Lower</span><span>Higher</span></span>
+            </label>
+            <button type="button" className="justify-self-start text-xs font-medium text-primary disabled:opacity-40" disabled={!tuned} onClick={() => { setSpeed(1); setPitch(0); setTuned(false); }}>Reset to the voice&apos;s saved settings</button>
+            <p className="text-xs text-muted-foreground">Small changes sound natural; large ones make words harder to understand. Set a voice&apos;s permanent values on Voices &amp; consent.</p>
+          </CardBody>
         </Card>
         {result ? (
           <Card>

@@ -7,10 +7,15 @@ export const ENROLL_COOKIE = "mfa_enroll";
 /** SOP: 12 h idle timeout. The middleware re-issues the cookie on every request, so this slides. */
 export const SESSION_TTL_S = 12 * 60 * 60;
 export const ENROLL_TTL_S = 10 * 60;
+/** While platform staff act as someone else. */
+export const IMPERSONATION_TTL_S = 60 * 60;
 
 export interface SessionClaims {
   sub: string;
   org: string;
+  /** Set while platform staff are acting as this person: the staff member's own user id and organisation. */
+  impBy?: string;
+  impOrg?: string;
 }
 export interface EnrollClaims extends SessionClaims {
   /** Present once the user has started enrolment. */

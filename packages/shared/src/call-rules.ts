@@ -2,7 +2,7 @@
  * The rules an outbound call must pass before it is placed (SOP: DND check before every outbound call, calling window
  * 9:00 to 21:00 IST). One place, so the dialer screen and the voice service can never disagree.
  */
-export type CallBlockReason = "dnd" | "consent_withdrawn" | "consent_denied" | "outside_hours" | "unknown_lead";
+export type CallBlockReason = "dnd" | "consent_withdrawn" | "consent_denied" | "outside_hours" | "unknown_lead" | "no_credit";
 
 export interface CallRuleLead { dndFlag: boolean; consentStatus: "unknown" | "granted" | "denied" | "withdrawn" }
 export interface CallingWindow { windowStart: string; windowEnd: string }
@@ -39,4 +39,5 @@ export const CALL_BLOCK_MESSAGES: Record<CallBlockReason, string> = {
   consent_denied: "This person did not consent to be called.",
   outside_hours: "Calls are only allowed during the calling window (India time).",
   unknown_lead: "That lead does not exist, so it cannot be called.",
+  no_credit: "There is no credit left. Add credit on the Billing page to make calls.",
 };

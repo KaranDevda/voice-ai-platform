@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoPlayAudio, plivoSignatureV3, plivoStreamXml, verifyPlivoSignature } from "./plivo";
+import { createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoMenuXml, plivoPlayAudio, plivoSignatureV3, plivoStreamXml, verifyPlivoSignature } from "./plivo";
 
 const TOKEN = "test-auth-token-0123456789";
 const sign = (text: string) => createHmac("sha256", TOKEN).update(text).digest("base64");
@@ -96,5 +96,24 @@ describe("Plivo REST calls", () => {
   it("turns a refusal into a readable error", async () => {
     const { plivo } = recorder({ status: 401, body: { error: "Authentication credentials invalid" } });
     await expect(plivo.makeCall({ from: "a", to: "b", answerUrl: "https://h/a" })).rejects.toThrow(/Plivo POST \/Call\/ failed \(401\): Authentication credentials invalid/);
+  });
+});
+
+describe("Plivo touch-tone menu", () => {
+  it("plays the prompt, waits for one allowed key, and falls through to the assistant when no key is pressed", () => {
+    const xml = plivoMenuXml({ audioUrl: "https://x.io/a.wav?t=1&lang=en", actionUrl: "https://x.io/menu?lead=1&lang=en", fallbackUrl: "https://x.io/menu?lead=1&lang=en", validDigits: "12" });
+    expect(xml).toContain('<GetDigits action="https://x.io/menu?lead=1&amp;lang=en" method="POST" numDigits="1"');
+    expect(xml).toContain('validDigits="12"');
+    expect(xml).toContain("<Play>https://x.io/a.wav?t=1&amp;lang=en</Play>");
+    expect(xml.indexOf("</GetDigits>")).toBeLessThan(xml.indexOf("<Redirect"));
+  });
+});
+
+describe("Plivo SMS", () => {
+  it("sends a text with the DLT ids and returns Plivo's message id", async () => {
+    let sent: any;
+    const plivo = createPlivo({ authId: "MA1", authToken: "t", fetch: (async (_u: string, init: any) => { sent = JSON.parse(init.body); return new Response(JSON.stringify({ message_uuid: ["m-1"] }), { status: 202 }); }) as any });
+    expect(await plivo.sendSms({ from: "BIZFYL", to: "+919876543210", text: "Hi", dltEntityId: "111", dltTemplateId: "222" })).toEqual({ messageUuid: "m-1" });
+    expect(sent).toMatchObject({ src: "BIZFYL", dst: "+919876543210", text: "Hi", dlt_entity_id: "111", dlt_template_id: "222" });
   });
 });

@@ -22,6 +22,6 @@ describe("hinglishToDevanagari", () => {
     for (const t of ["Our Business plan starts at 4,999 rupees.", "Hello, thanks for calling Bizfy. OTP sent.", ""]) expect(hinglishToDevanagari(t)).toBe(t);
   });
   it("does not turn a long all-capitals word into spelled letters", () => {
-    expect(hinglishToDevanagari("यह IMPORTANT है")).toBe("यह IMPORTANT है");
+    expect(hinglishToDevanagari("यह ABSOLUTELY है")).toBe("यह ABSOLUTELY है");
   });
 });

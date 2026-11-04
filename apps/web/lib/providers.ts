@@ -3,10 +3,11 @@ import { existsSync } from "node:fs";
 import { headers } from "next/headers";
 import { join } from "node:path";
 import {
-  createAskG1, createDeepgramStt, createDeepgramTts, createElevenLabsTts, createPocketTts, kokoroHindiVoiceFor, ProviderError, signVoiceFileId, STOCK_VOICES, stockVoiceById,
+  createAskG1, createChatterbox, createDeepgramStt, createDeepgramTts, createElevenLabsTts, createPocketTts, kokoroHindiVoiceFor, ProviderError, signVoiceFileId, STOCK_VOICES, stockVoiceById,
   voiceFileStem,
 } from "@voiceai/providers";
-import { logUsage, resolveCallVoice } from "@voiceai/db";
+import type { SpeechSynthesizer } from "@voiceai/providers";
+import { getVoiceSampleForEngine, logUsage, resolveCallVoice } from "@voiceai/db";
 import type { AuthUser } from "@voiceai/auth";
 import { getDb } from "./server";
 
@@ -117,7 +118,7 @@ export async function timed<T>(user: AuthUser, provider: string, operation: stri
 export interface VoiceOption { ref: string; name: string; gender: string; group: "cloned" | "stock"; provider: string; detail: string; /** can speak Hindi and Hinglish */ hindi: boolean; /** Hindi and Hinglish are changed into this person's own voice */ hindiOwn?: boolean }
 
 /** A voice reference is "dg:<aura id>" for stock voices or "profile:<uuid>" for a consented clone. */
-export async function resolveVoice(user: AuthUser, ref: string): Promise<{ speak: ReturnType<typeof getStockTts> | ReturnType<typeof getElevenLabs> | ReturnType<typeof getPocketTts>; voiceId: string; provider: string; hindiVoice?: string }> {
+export async function resolveVoice(user: AuthUser, ref: string): Promise<{ speak: SpeechSynthesizer; voiceId: string; provider: string; hindiVoice?: string; prosody?: { speed: number; pitch: number } }> {
   if (ref.startsWith("dg:")) {
     const id = ref.slice(3);
     if (!stockVoiceById(id)) throw new RangeError("unknown voice");
@@ -129,8 +130,23 @@ export async function resolveVoice(user: AuthUser, ref: string): Promise<{ speak
     if (profile.provider !== "elevenlabs" && profile.provider !== "pocket_tts") throw new RangeError("unsupported voice provider");
     // Seeded demo profiles have placeholder ids that ElevenLabs does not know.
     if (profile.providerVoiceId.startsWith("demo-voice-")) throw new RangeError("This is a demo voice with no real ElevenLabs clone behind it. Clone a real staff voice in Voice clone, or pick a stock voice.");
+    if (profile.provider === "pocket_tts" && env("CHATTERBOX_URL")) {
+      // Open-source realistic voice: English, Hindi and Hinglish directly in the person's own voice. If the GPU machine is not
+      // answering, the built-in engine speaks instead and the result says so (it never fails silently or sounds different unannounced).
+      const chatterbox = createChatterbox({ baseUrl: env("CHATTERBOX_URL")!, token: env("CHATTERBOX_TOKEN"), voicesDir: voicesDir(), loadRecording: (id) => getVoiceSampleForEngine(getDb(), user.orgId, id) });
+      const pocket = getPocketTts(await ownBaseUrl());
+      return {
+        provider: "chatterbox", voiceId: profile.providerVoiceId, hindiVoice: kokoroHindiVoiceFor(profile.gender), prosody: { speed: profile.speed, pitch: profile.pitch },
+        speak: {
+          async speak(input) {
+            try { return { ...(await chatterbox.speak(input)), engine: "chatterbox" as const }; }
+            catch (e) { return { ...(await pocket.speak(input)), engine: "fallback" as const, note: `Chatterbox could not be used (${e instanceof Error ? e.message : String(e)}), so the built-in voice engine spoke instead.` }; }
+          },
+        },
+      };
+    }
     return profile.provider === "pocket_tts"
-      ? { speak: getPocketTts(await ownBaseUrl()), voiceId: profile.providerVoiceId, provider: "pocket_tts", hindiVoice: kokoroHindiVoiceFor(profile.gender) }
+      ? { speak: getPocketTts(await ownBaseUrl()), voiceId: profile.providerVoiceId, provider: "pocket_tts", hindiVoice: kokoroHindiVoiceFor(profile.gender), prosody: { speed: profile.speed, pitch: profile.pitch } }
       : { speak: getElevenLabs(), voiceId: profile.providerVoiceId, provider: "elevenlabs" };
   }
   throw new RangeError("unknown voice");

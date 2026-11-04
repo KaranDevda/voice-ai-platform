@@ -309,7 +309,7 @@ export async function listVoiceAdmin(db: Db, user: AuthUser) {
     const profiles = await tx
       .select({
         id: voiceProfiles.id, label: voiceProfiles.label, gender: voiceProfiles.gender, provider: voiceProfiles.provider,
-        status: voiceProfiles.status, createdAt: voiceProfiles.createdAt, revokedAt: voiceProfiles.revokedAt,
+        status: voiceProfiles.status, speed: voiceProfiles.speed, pitch: voiceProfiles.pitch, createdAt: voiceProfiles.createdAt, revokedAt: voiceProfiles.revokedAt,
         donorEmail: donor.email, donorFirst: donor.firstName, donorLast: donor.lastName, consentId: voiceProfiles.consentRecordId, consentGrantedAt: consentRecords.grantedAt,
         consentPurpose: consentRecords.purpose, consentWithdrawn: consentRecords.revokedAt,
       })

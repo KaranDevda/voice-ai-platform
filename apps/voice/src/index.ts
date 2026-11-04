@@ -6,12 +6,12 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { z } from "zod";
 import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims } from "@voiceai/auth";
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
-import { checkOutboundCall, createDb, findLeadIdByPhone, getAgentConfig, getLeadPhone, loadAuthUser, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
+import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getLeadPhone, getPhoneConfig, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, sentTextRecently, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
 import {
-  createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoPlayAudio, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, isBuiltInPocketVoice, signVoiceFileId,
+  createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, createSarvamStt, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
-import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine } from "./engines";
+import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
 import { MulawTo16k } from "./telephony-audio";
 import { hindiToEnglishKeywords, relevantExcerpt } from "./knowledge";
 import { languageNote, sessionLanguageRule } from "./language";
@@ -86,11 +86,18 @@ const pocket = (say?: Say) => {
  */
 export type ListenMode = "close" | "anyone" | "push";
 
+const nameHints = () => (env("STT_NAME_HINTS") ?? "").split(",").map((n) => n.trim()).filter(Boolean).slice(0, 40).join(", ");
+
 /** Local Whisper when it is set up (free, on this machine); otherwise Deepgram's cloud. */
 function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line: string) => void): SttAdapter {
   // English calls can use a small English-only model (WHISPER_URL_EN): about five times faster to decode, but weaker on strong accents.
   const whisper = (language === "en" && env("WHISPER_URL_EN")) || env("WHISPER_URL");
   // STT_HINDI=deepgram sends Hindi and mixed-language calls to Deepgram (nova-3 hears Hindi well and answers in about 0.3 s); English stays on the local model.
+  // STT_PROVIDER=sarvam (or STT_HINDI=sarvam for Hindi and mixed calls only) uses Sarvam's Indian-language speech-to-text; caller audio goes to their cloud.
+  const sarvamKey = env("SARVAM_API_KEY");
+  if (sarvamKey && (env("STT_PROVIDER") === "sarvam" || (env("STT_HINDI") === "sarvam" && language !== "en"))) {
+    return createSarvamStt({ apiKey: sarvamKey, vad: { endSilenceMs: Number(env("ENDPOINTING_MS") ?? 400) }, onTranscribed: (i) => log?.(`transcribed ${i.speechMs} ms of speech in ${i.ms} ms (Sarvam)`) });
+  }
   const viaDeepgram = env("STT_PROVIDER") === "deepgram" || (env("STT_HINDI") === "deepgram" && language !== "en");
   if (!viaDeepgram && whisper) {
     const endSilenceMs = Number(env("ENDPOINTING_MS") ?? 400);
@@ -99,6 +106,8 @@ function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line
       // A higher bar and a longer onset in "close" mode, so a nearby conversation does not start the AI talking or stop it.
       vad: listen === "close" ? { endSilenceMs, floor: 0.03, startMs: 200, minSpeechMs: 400 } : { endSilenceMs },
       closeMic: listen === "close" ? {} : undefined,
+      // Names the recogniser has never heard (staff, products, places) written the way they should come out: STT_NAME_HINTS="Rohan Mehta, Sunita Sharma, रोहन मेहता".
+      names: nameHints() || undefined,
       minConfidence: listen === "close" ? { avgLogprob: -0.85, noSpeechProb: 0.5 } : undefined, // only consulted for quieter-than-usual speech, so normal answers stay fast
       onTranscribed: (i) => { log?.(i.dropped ? `ignored (${i.dropped})${i.avgLogprob !== undefined ? `, confidence ${i.avgLogprob.toFixed(2)}` : ""}` : `transcribed ${i.speechMs} ms of speech in ${i.ms} ms`); },
     });
@@ -109,14 +118,24 @@ function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line
 }
 
 /**
- * AskG1 is the main model. LOCAL_LLM_URL (a llama.cpp server running Llama 3.2) is the backup: when AskG1 cannot be reached
+ * AskG1 is the main model. LOCAL_LLM_URL (a llama.cpp server running Llama 3.2, or any OpenAI-compatible service such as OpenRouter: URL https://openrouter.ai/api, LOCAL_LLM_KEY, LOCAL_LLM_MODEL) is the backup: when AskG1 cannot be reached
  * or is too slow to start answering, the backup answers instead and the page is told, so nobody mistakes it for AskG1.
  */
 const askg1Shared = { inFlight: 0, downUntil: 0 };
-function llm(say?: Say): LlmAdapter {
+function llm(say?: Say, choice?: { model: "default" | "openrouter"; openrouterModel: string }): LlmAdapter {
   const apiKey = env("ASKG1_API_KEY"), baseUrl = env("ASKG1_BASE_URL"), localUrl = env("LOCAL_LLM_URL");
   const maxTokens = Number(env("ASKG1_MAX_TOKENS") ?? 220), temperature = Number(env("ASKG1_TEMPERATURE") ?? 0.3);
-  const local = localUrl ? createAskG1({ apiKey: "local", baseUrl: localUrl, model: "local", maxTokens, temperature }) : null;
+  const local = localUrl ? createAskG1({ apiKey: env("LOCAL_LLM_KEY") ?? "local", baseUrl: localUrl, model: env("LOCAL_LLM_MODEL") ?? "local", maxTokens, temperature }) : null;
+  // The organisation chose another model (Settings -> AI assistant): OpenRouter, with the small local model as backup when there is one.
+  if (choice?.model === "openrouter") {
+    const orKey = env("OPENROUTER_API_KEY") ?? (localUrl?.includes("openrouter.ai") ? env("LOCAL_LLM_KEY") : undefined);
+    if (!orKey) say?.({ type: "notice", message: "This organisation chose an OpenRouter model, but no OpenRouter key is set on the server, so the default AI is answering." });
+    else {
+      const main = createAskG1({ apiKey: orKey, baseUrl: env("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api", model: choice.openrouterModel, maxTokens, temperature, responseTimeoutMs: Number(env("OPENROUTER_FIRST_TRY_MS") ?? 10_000) });
+      const backup = local && !localUrl?.includes("openrouter.ai") ? local : null;
+      return backup ? withFailover(main, backup, { firstTokenTimeoutMs: Number(env("OPENROUTER_FIRST_TOKEN_TIMEOUT_MS") ?? 6000), onBackup: (why) => console.warn(`OpenRouter skipped (${why}); the local model answered`) }) : main;
+    }
+  }
   if (!apiKey || !baseUrl) {
     if (!local) throw new Error("AskG1 is not configured (ASKG1_API_KEY, ASKG1_BASE_URL)");
     say?.({ type: "notice", message: "AskG1 is not configured, so a small local model (Llama 3.2) is answering. It is less accurate than AskG1, especially in Hindi." });
@@ -198,11 +217,11 @@ async function engineFor(voice: string, user: VoiceTokenClaims, say: Say, langua
     }
     const g: Gender = profile.gender === "male" ? "male" : "female";
     // CHATTERBOX_URL set and this person has a reference recording: Hindi and mixed calls are made directly in their own voice (browser calls only).
-    if (profile.provider === "pocket_tts" && env("CHATTERBOX_URL") && language !== "en" && !phone && existsSync(join(env("POCKET_TTS_VOICES_DIR") ?? join(REPO_DIR, ".local/voices"), `${profile.providerVoiceId}.ref.wav`))) {
+    if (profile.provider === "pocket_tts" && env("CHATTERBOX_URL") && language !== "en" && !phone && (existsSync(join(env("POCKET_TTS_VOICES_DIR") ?? join(REPO_DIR, ".local/voices"), `${profile.providerVoiceId}.ref.wav`)) || !!(await getVoiceSampleForEngine(getDb(), user.org, profile.providerVoiceId)))) {
       say({ type: "notice", message: `${profile.label}'s Hindi is made directly in their own voice (Chatterbox).` });
-      return { ...chatterboxEngine(env("CHATTERBOX_URL")!, profile.providerVoiceId), gender: g };
+      return { ...withProsody(chatterboxEngine(env("CHATTERBOX_URL")!, profile.providerVoiceId, { token: env("CHATTERBOX_TOKEN"), loadRecording: (id) => getVoiceSampleForEngine(getDb(), user.org, id), voicesDir: env("POCKET_TTS_VOICES_DIR") ?? join(REPO_DIR, ".local/voices") }), profile), gender: g };
     }
-    if (profile.provider === "pocket_tts") return { ...(phone ? pocketMulawEngine : pocketPcmEngine)(pocket(say), profile.providerVoiceId, kokoroHindiVoiceFor(profile.gender)), gender: g };
+    if (profile.provider === "pocket_tts") return { ...withProsody((phone ? pocketMulawEngine : pocketPcmEngine)(pocket(say), profile.providerVoiceId, kokoroHindiVoiceFor(profile.gender)), profile), gender: g };
     if (profile.provider === "elevenlabs") {
       const apiKey = env("ELEVENLABS_API_KEY");
       if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not set");
@@ -285,14 +304,16 @@ async function buildSession(
   }
   await findWebBase();
   const tts = await engineFor(voice, claims, io.send, p.language, o.phone);
-  tts.cacheKey = `${voice}|${p.language}|${o.phone ? "phone" : "web"}`;
+  tts.cacheKey = `${voice}|${p.language}|${o.phone ? "phone" : "web"}${tts.variant ? `|${tts.variant}` : ""}`;
   if (env("ACK") !== "off") for (const w of p.language === "en" ? ["Sure.", "Let me check."] : p.language === "hi" ? ["जी।"] : ["Sure.", "Let me check.", "जी।"]) void primeAck(tts, w);
   // The organisation's own AI instruction and greeting (Settings), and its knowledge base, when this is a real signed-in user.
   let systemPrompt = systemPromptFor(p.language), greeting = GREETING;
   let ground: ((text: string, previous?: string) => Promise<string[]>) | undefined;
   let handoff: ConstructorParameters<typeof Conversation>[0]["handoff"];
+  let aiChoice: { model: "default" | "openrouter"; openrouterModel: string } | undefined;
   if (user?.permissions.includes("studio.use")) {
     const cfg = await getAgentConfig(getDb(), user);
+    aiChoice = { model: cfg.model, openrouterModel: cfg.openrouterModel };
     systemPrompt = `${cfg.systemPrompt}\n\n${voiceRulesFor(p.language)}`;
     greeting = `${cfg.disclosure} ${cfg.greeting}`.trim();
     handoff = { enabled: { person: true, complaint: cfg.handoffOnComplaint, payment: cfg.handoffOnPayment }, message: { en: cfg.handoffMessage, hi: HANDOFF_HINDI } };
@@ -311,9 +332,10 @@ async function buildSession(
   }
   if (tts.gender) systemPrompt += speakerNote(tts.gender);
   systemPrompt += sessionLanguageRule(p.language);
-  const model = llm(io.send);
+  const model = llm(io.send, aiChoice);
   warmUp(model, systemPrompt);
   const convo = new Conversation({
+    holdUnfinishedMs: Number(env("TURN_HOLD_MS") ?? 0), // e.g. TURN_HOLD_MS=600 with ENDPOINTING_MS=250: wait for the rest when a sentence stops on "and", "my name is", "और"
     stt: sttFor(p.listen, p.language, (l) => console.log(`[${tag}] ${l}`)),
     llm: model, tts, language: p.language, systemPrompt, ground, ack: env("ACK") === "off" ? undefined : (t) => ackFor(t, p.language, true), turnNote: (a, b) => languageNote(a, b, p.language), handoff,
     greeting: p.greeting ? (p.language === "hi" ? GREETING_HI : p.language === "en-hi" ? GREETING_HINGLISH : greeting) : undefined,
@@ -393,28 +415,149 @@ function fromPlivo(req: express.Request): boolean {
  * Plivo asks what to do when a call is answered (a call to our number, or one we placed). We answer with an instruction to open a
  * two-way audio stream to this service. Who is calling as is decided here and carried in a short-lived signed token.
  */
+/** Opens the two-way audio stream to the AI for this call. Used straight from "answer", or after the caller chose "assistant" in the menu. */
+function connectToAi(claims: VoiceTokenClaims, o: { lang?: string; lead?: string; callUuid?: string; from?: string }) {
+  const params = new URLSearchParams({
+    token: signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice }, TOKEN_KEY!, 120),
+    language: o.lang ?? callLanguage.catch("en-hi").parse(env("PLIVO_LANGUAGE")), call: o.callUuid ?? "", from: o.from ?? "",
+    ...(o.lead ? { lead: o.lead } : {}), direction: o.lead ? "outbound" : "inbound",
+  });
+  return plivoStreamXml(`${PUBLIC_URL!.replace(/^http/, "ws")}/plivo/stream?${params}`);
+}
+
+const menuQuery = z.object({ t: z.string().optional(), lead: z.string().uuid().optional(), lang: callLanguage.optional() });
+/** The identity a call runs as: a call we placed carries its own signed token; a call to our number runs as the configured service user. */
+const claimsFor = (t?: string): VoiceTokenClaims | null => t ? verifyVoiceToken(t, TOKEN_KEY!) : env("PLIVO_ORG_ID") && env("PLIVO_AGENT_USER_ID")
+  ? { sub: env("PLIVO_AGENT_USER_ID")!, org: env("PLIVO_ORG_ID")!, voice: env("PLIVO_VOICE") } : null;
+
+/**
+ * Plivo asks what to do when a call is answered (a call to our number, or one we placed). We answer with an instruction to open a
+ * two-way audio stream to this service, or, when the organisation turned on its touch-tone menu, with the menu first.
+ * Who is calling is decided here and carried in a short-lived signed token.
+ */
 app.post("/plivo/answer", async (req, res) => {
   if (!phoneReady()) return void res.status(503).type("text/plain").send("phone line not configured");
   if (!fromPlivo(req)) return void res.status(403).type("text/plain").send("bad signature");
   const body = req.body as Record<string, string>;
-  const q = z.object({ t: z.string().optional(), lead: z.string().uuid().optional(), lang: callLanguage.optional() }).safeParse(req.query);
+  const q = menuQuery.safeParse(req.query);
   if (!q.success) return void res.status(400).type("text/plain").send("bad request");
-  // A call we placed carries its own signed identity; a call to our number runs as the configured service user.
-  const claims = q.data.t ? verifyVoiceToken(q.data.t, TOKEN_KEY!) : env("PLIVO_ORG_ID") && env("PLIVO_AGENT_USER_ID")
-    ? { sub: env("PLIVO_AGENT_USER_ID")!, org: env("PLIVO_ORG_ID")!, voice: env("PLIVO_VOICE") } : null;
+  const claims = claimsFor(q.data.t);
   if (!claims) return void res.type("text/xml").send(plivoHangupXml());
-  const params = new URLSearchParams({
-    token: signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice }, TOKEN_KEY!, 120),
-    language: q.data.lang ?? callLanguage.catch("en-hi").parse(env("PLIVO_LANGUAGE")), call: body.CallUUID ?? "", from: body.From ?? "",
-    ...(q.data.lead ? { lead: q.data.lead } : {}), direction: q.data.lead ? "outbound" : "inbound",
-  });
-  res.type("text/xml").send(plivoStreamXml(`${PUBLIC_URL!.replace(/^http/, "ws")}/plivo/stream?${params}`));
+  const lang = q.data.lang ?? callLanguage.catch("en-hi").parse(env("PLIVO_LANGUAGE"));
+  const ai = { lang: q.data.lang, lead: q.data.lead, callUuid: body.CallUUID, from: body.From };
+  try {
+    const cfg = await getPhoneConfig(getDb(), claims.org);
+    if (cfg.menu.enabled && Object.keys(cfg.menu.options).length > 0) {
+      const pass = new URLSearchParams({ ...(q.data.t ? { t: q.data.t } : {}), ...(q.data.lead ? { lead: q.data.lead } : {}), ...(q.data.lang ? { lang: q.data.lang } : {}) });
+      const audioT = signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice }, TOKEN_KEY!, 900);
+      return void res.type("text/xml").send(plivoMenuXml({
+        audioUrl: `${PUBLIC_URL}/plivo/menu-audio?${new URLSearchParams({ t: audioT, lang })}`,
+        actionUrl: `${PUBLIC_URL}/plivo/menu?${pass}`, fallbackUrl: `${PUBLIC_URL}/plivo/menu?${pass}`, validDigits: Object.keys(cfg.menu.options).join(""),
+      }));
+    }
+  } catch (e) { console.error("menu settings could not be read, connecting straight to the AI:", e instanceof Error ? e.message : e); }
+  res.type("text/xml").send(connectToAi(claims, ai));
 });
 
-/** Plivo asks where to send a call we are handing to a person. */
-app.post("/plivo/transfer", (req, res) => {
+/** The caller pressed a key (or nothing). The key decides: the assistant, a person, or hang up. Anything else goes to the assistant. */
+app.post("/plivo/menu", async (req, res) => {
+  if (!phoneReady()) return void res.status(503).type("text/plain").send("phone line not configured");
   if (!fromPlivo(req)) return void res.status(403).type("text/plain").send("bad signature");
-  const to = env("PLIVO_HANDOFF_NUMBER");
+  const body = req.body as Record<string, string>;
+  const q = menuQuery.safeParse(req.query);
+  const claims = q.success ? claimsFor(q.data.t) : null;
+  if (!q.success || !claims) return void res.type("text/xml").send(plivoHangupXml());
+  const cfg = await getPhoneConfig(getDb(), claims.org).catch(() => null);
+  const choice = cfg?.menu.options[(body.Digits ?? "").trim()] ?? "ai";
+  console.log(`[phone menu] key "${(body.Digits ?? "").trim() || "none"}" -> ${choice}`);
+  if (choice === "hangup") return void res.type("text/xml").send(plivoHangupXml());
+  if (choice === "person") {
+    const to = cfg?.handoffNumber || env("PLIVO_HANDOFF_NUMBER");
+    if (to) return void res.type("text/xml").send(plivoDialXml(to));
+  }
+  res.type("text/xml").send(connectToAi(claims, { lang: q.data.lang, lead: q.data.lead, callUuid: body.CallUUID, from: body.From }));
+});
+
+/** The menu prompt as an audio file, spoken by our own voice (never a cloud voice). Cached; the address carries a short-lived signed token. */
+const menuAudio = new Map<string, Buffer>();
+app.get("/plivo/menu-audio", async (req, res) => {
+  const claims = verifyVoiceToken(String(req.query.t ?? ""), TOKEN_KEY!);
+  const lang = callLanguage.safeParse(req.query.lang);
+  if (!claims || !lang.success) return void res.status(403).type("text/plain").send("forbidden");
+  try {
+    const cfg = await getPhoneConfig(getDb(), claims.org);
+    const text = lang.data === "en" ? cfg.menu.prompt : cfg.menu.promptHi || cfg.menu.prompt;
+    const voice = claims.voice || env("PLIVO_VOICE") || "pocket:alba";
+    const key = `${claims.org}|${voice}|${lang.data}|${text}`;
+    let wav = menuAudio.get(key);
+    if (!wav) {
+      const tts = await engineFor(voice, claims, () => {}, lang.data, true);
+      const parts: Uint8Array[] = [];
+      for await (const c of tts.speak(text, AbortSignal.timeout(30_000))) parts.push(c);
+      const bytes = Buffer.concat(parts);
+      const pcm = tts.encoding === "mulaw" ? mulawToPcm16(bytes) : new Int16Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + (bytes.length & ~1)));
+      const data = Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength), h = Buffer.alloc(44), rate = tts.rate;
+      h.write("RIFF", 0); h.writeUInt32LE(36 + data.length, 4); h.write("WAVEfmt ", 8); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+      h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write("data", 36); h.writeUInt32LE(data.length, 40);
+      wav = Buffer.concat([h, data]);
+      if (menuAudio.size > 50) menuAudio.clear();
+      menuAudio.set(key, wav);
+    }
+    res.type("audio/wav").send(wav);
+  } catch (e) {
+    console.error("menu prompt could not be made:", e instanceof Error ? e.message : e);
+    res.status(502).type("text/plain").send("could not make the prompt");
+  }
+});
+
+/**
+ * A text that came in (Plivo's "message URL" for the number). Filed under the person; STOP switches Do Not Disturb on.
+ * Note: Plivo does not support receiving SMS on Indian numbers, so this works for numbers in other countries.
+ */
+app.post("/plivo/sms", async (req, res) => {
+  if (!fromPlivo(req)) return void res.status(403).type("text/plain").send("bad signature");
+  const body = req.body as Record<string, string>;
+  const org = env("PLIVO_ORG_ID");
+  const from = (body.From ?? "").replace(/[^\d+]/g, "");
+  if (!org || !/^\+?\d{8,15}$/.test(from)) return void res.status(204).end();
+  const text = String(body.Text ?? "");
+  let leadId = "";
+  try { leadId = await recordInboundSms(getDb(), org, from.startsWith("+") ? from : `+${from}`, text); } catch (e) { console.error("incoming text could not be saved:", e instanceof Error ? e.message : e); }
+  res.status(204).end();
+  if (leadId && !/^(stop|unsubscribe|cancel|end|quit|band|बंद)$/i.test(text.trim())) void autoReplyToText(org, leadId, text);
+});
+
+/**
+ * With "answer incoming texts automatically" on (Settings), the AI answers from the knowledge base. The answer is queued like any other
+ * text, so the calling hours, Do Not Disturb, KYC and credit rules all still apply. At most one automatic reply per person per 10 minutes.
+ */
+async function autoReplyToText(orgId: string, leadId: string, incoming: string) {
+  try {
+    const agentId = env("PLIVO_AGENT_USER_ID");
+    if (!agentId) return;
+    const user = await loadAuthUser(getDb(), orgId, agentId);
+    if (!user?.permissions.includes("studio.use")) return;
+    const cfg = await getAgentConfig(getDb(), user);
+    const settings = await getPhoneConfigSms(orgId);
+    if (!settings || (await sentTextRecently(getDb(), user, leadId, 10))) return;
+    const query = hindiToEnglishKeywords(incoming);
+    const found = query ? (await searchKnowledge(getDb(), user, query, 2)).map((r) => `${r.title}: ${relevantExcerpt(r.content, query)}`) : [];
+    const system = `${cfg.systemPrompt}\n\nYou are replying to a TEXT MESSAGE. Reply in the same language and script as the sender, in at most 300 characters, plain text only, no markdown. Use only the facts below; if they do not cover the question, say a colleague will get back to them.\n\nFacts:\n${found.join("\n") || "(none)"}`;
+    let reply = "";
+    for await (const t of llm(undefined, { model: cfg.model, openrouterModel: cfg.openrouterModel }).chat({ messages: [{ role: "system", content: system }, { role: "user", content: incoming.slice(0, 600) }], signal: AbortSignal.timeout(20_000) })) { reply += t; if (reply.length > 600) break; }
+    reply = reply.replace(/\s+/g, " ").trim().slice(0, 320);
+    if (reply) await queueSmsToLead(getDb(), user, { leadId, body: reply });
+  } catch (e) { console.error("automatic text reply failed:", e instanceof Error ? e.message : e); }
+}
+const getPhoneConfigSms = async (orgId: string) => (await getSmsSettings(getDb(), orgId))?.autoReply ? true : null;
+
+/** Plivo asks where to send a call we are handing to a person. */
+app.post("/plivo/transfer", async (req, res) => {
+  if (!fromPlivo(req)) return void res.status(403).type("text/plain").send("bad signature");
+  // The organisation's own number (Settings), else the one set on the server. The address is signed by Plivo, so the org in it can be trusted.
+  const org = z.string().uuid().safeParse(req.query.org);
+  const own = org.success ? (await getPhoneConfig(getDb(), org.data).catch(() => null))?.handoffNumber : "";
+  const to = own || env("PLIVO_HANDOFF_NUMBER");
   res.type("text/xml").send(to ? plivoDialXml(to) : plivoHangupXml());
 });
 
@@ -457,7 +600,7 @@ function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams
   const transfer = () => {
     if (transferring || !plivo || !callUuid || !PUBLIC_URL) return;
     transferring = true;
-    plivo.transferCall({ callUuid, legUrl: `${PUBLIC_URL}/plivo/transfer` }).then(() => console.log(`[${tag}] call handed to a person`), (e) => console.error(`[${tag}] hand-over failed:`, e instanceof Error ? e.message : e));
+    plivo.transferCall({ callUuid, legUrl: `${PUBLIC_URL}/plivo/transfer?org=${claims.org}` }).then(() => console.log(`[${tag}] call handed to a person`), (e) => console.error(`[${tag}] hand-over failed:`, e instanceof Error ? e.message : e));
   };
   const onEvent = (e: ServerEvent) => {
     if (e.type === "clear" && streamId) sendWs(plivoClearAudio(streamId));            // the caller interrupted: drop what is queued

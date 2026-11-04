@@ -19,6 +19,8 @@ export interface LocalWhisperConfig {
   minConfidence?: { avgLogprob?: number; noSpeechProb?: number; when?: "quiet" | "always" };
   /** Hints that help with names Whisper has never heard: the brand, in each script. */
   prompts?: { en?: string; hi?: string; auto?: string };
+  /** Names to add to the built-in hints (staff, products, places), comma separated. Kept alongside the Hindi word list, not instead of it. */
+  names?: string;
   fetch?: typeof fetch;
   /** Called with how long each transcription took, for latency tracking. */
   onTranscribed?: (info: { ms: number; speechMs: number; chars: number; avgLogprob?: number; noSpeechProb?: number; dropped?: string }) => void;
@@ -74,7 +76,9 @@ function wavFromPcm16(pcm: Int16Array, rate: number): Uint8Array {
 export function createLocalWhisper(config: LocalWhisperConfig): SttAdapter {
   const base = config.baseUrl.replace(/\/$/, "");
   const doFetch = config.fetch ?? fetch;
+  const names = config.names?.trim();
   const prompts = { ...DEFAULT_PROMPTS, ...config.prompts };
+  if (names) { prompts.en = `${prompts.en}. ${names}.`; prompts.hi = `${prompts.hi} ${names}।`; prompts.auto = `${prompts.auto} ${names}।`; }
 
   return {
     async open({ language, sampleRate = 16_000 }): Promise<SttSession> {

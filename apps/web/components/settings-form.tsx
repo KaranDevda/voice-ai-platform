@@ -25,8 +25,23 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
           greeting: str("greeting"), disclosure: str("disclosure"), systemPrompt: str("systemPrompt"), handoffMessage: str("handoffMessage"),
           handoffOnComplaint: f.get("handoffOnComplaint") === "on", handoffOnPayment: f.get("handoffOnPayment") === "on",
           handoffAfterLowConfidence: Number(str("handoffAfterLowConfidence")), handoffTimeoutSeconds: Number(str("handoffTimeoutSeconds")),
+          model: str("aiModel") === "openrouter" ? "openrouter" : "default", openrouterModel: str("openrouterModel").trim() || "openai/gpt-4o-mini",
         },
         calling: { windowStart: str("windowStart"), windowEnd: str("windowEnd") },
+        compliance: { requireKyc: f.get("requireKyc") === "on" },
+        sms: { autoReply: f.get("smsAutoReply") === "on" },
+        billing: {
+          enabled: f.get("billingEnabled") === "on", enforce: f.get("billingEnforce") === "on",
+          callPerMinPaise: Math.round(Number(str("callPerMinPaise")) || 0), smsPaise: Math.round(Number(str("smsPaise")) || 0),
+        },
+        phone: {
+          handoffNumber: str("handoffNumber").replace(/[\s-]/g, ""),
+          menu: {
+            enabled: f.get("menuEnabled") === "on", prompt: str("menuPrompt"), promptHi: str("menuPromptHi"),
+            // keys 1 to 3: what each does; "-" means the key is not offered
+            options: Object.fromEntries(["1", "2", "3"].map((k) => [k, str(`menuKey${k}`)]).filter(([, v]) => v && v !== "-")),
+          },
+        },
       },
     };
     setState("saving");
@@ -47,6 +62,15 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
             <Field label="Opening disclosure" hint="Played at the start of every AI call. The law requires telling callers they are speaking to an AI and that the call is recorded."><Textarea name="disclosure" rows={2} required defaultValue={settings.ai.disclosure} /></Field>
             <Field label="Greeting"><Input name="greeting" defaultValue={settings.ai.greeting} /></Field>
             <Field label="Instructions for the AI" hint="Keep it short. The AI answers from the knowledge base."><Textarea name="systemPrompt" rows={5} defaultValue={settings.ai.systemPrompt} /></Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Which AI answers calls" hint="AskG1 is the default. OpenRouter needs a key on the server.">
+                <select name="aiModel" defaultValue={settings.ai.model} className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"><option value="default">AskG1 (default)</option><option value="openrouter">OpenRouter model</option></select>
+              </Field>
+              <Field label="OpenRouter model" hint="Used when OpenRouter is chosen. Check the id on openrouter.ai/models.">
+                <Input name="openrouterModel" list="openrouter-models" defaultValue={settings.ai.openrouterModel} maxLength={100} />
+                <datalist id="openrouter-models"><option value="openai/gpt-4o-mini" /><option value="google/gemini-2.0-flash-001" /><option value="meta-llama/llama-3.1-70b-instruct" /><option value="deepseek/deepseek-chat" /><option value="moonshotai/kimi-k2" /></datalist>
+              </Field>
+            </div>
           </CardBody>
         </Card>
 
@@ -60,6 +84,53 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="handoffOnComplaint" className={check} defaultChecked={settings.ai.handoffOnComplaint} /> Transfer when the caller is making a complaint</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="handoffOnPayment" className={check} defaultChecked={settings.ai.handoffOnPayment} /> Transfer on payment topics</label>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Texts" description="How incoming texts are handled" />
+          <CardBody className="grid gap-4">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="smsAutoReply" className={check} defaultChecked={settings.sms.autoReply} /> Answer incoming texts automatically (the AI replies from the knowledge base)</label>
+            <p className="text-xs text-muted-foreground">Needs a number that can receive texts. Plivo cannot receive texts on Indian numbers. A person gets at most one automatic reply every 10 minutes, and STOP always switches Do Not Disturb on.</p>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Verification (KYC)" description="Your verification level is on the KYC page." />
+          <CardBody className="grid gap-4">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="requireKyc" className={check} defaultChecked={settings.compliance.requireKyc} /> Require KYC before campaigns, texts and follow-ups can run</label>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Billing" description="Prepaid credit for AI calls and texts. Prices are in paise (100 paise = Rs 1). Off by default." />
+          <CardBody className="grid gap-4">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="billingEnabled" className={check} defaultChecked={settings.billing.enabled} /> Charge for AI calls and texts from the credit balance</label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="AI call, per started minute (paise)" hint="150 = Rs 1.50 a minute"><Input name="callPerMinPaise" type="number" min={0} max={100000} step={1} defaultValue={settings.billing.callPerMinPaise} /></Field>
+              <Field label="Text message, each (paise)"><Input name="smsPaise" type="number" min={0} max={100000} step={1} defaultValue={settings.billing.smsPaise} /></Field>
+            </div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="billingEnforce" className={check} defaultChecked={settings.billing.enforce} /> Refuse calls and texts when the balance is zero or less</label>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Phone menu and transfer number" description="What callers hear first, and who a handed-over call goes to" />
+          <CardBody className="grid gap-4">
+            <Field label="Transfer number" hint="Where calls go when the AI hands over or a caller presses the person key. International format, e.g. +919876543210. Empty uses the server's default."><Input name="handoffNumber" inputMode="tel" placeholder="+91..." defaultValue={settings.phone.handoffNumber} /></Field>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="menuEnabled" className={check} defaultChecked={settings.phone.menu.enabled} /> Play a touch-tone menu before the AI answers (inbound calls and campaign calls)</label>
+            <Field label="Menu prompt (English)"><Input name="menuPrompt" defaultValue={settings.phone.menu.prompt} maxLength={300} /></Field>
+            <Field label="Menu prompt (Hindi)" hint="Used for Hindi and Hinglish calls. Spoken by your own voice, so write numbers as words."><Input name="menuPromptHi" defaultValue={settings.phone.menu.promptHi} maxLength={300} /></Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {(["1", "2", "3"] as const).map((k) => (
+                <Field key={k} label={`Key ${k}`}>
+                  <select name={`menuKey${k}`} defaultValue={settings.phone.menu.options[k] ?? "-"} className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm">
+                    <option value="-">Not offered</option><option value="ai">Talk to the assistant</option><option value="person">Speak to a person</option><option value="hangup">Hang up</option>
+                  </select>
+                </Field>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">A caller who presses nothing, or a key that is not offered, goes to the assistant. Your menu prompt must say which key does what.</p>
           </CardBody>
         </Card>
 

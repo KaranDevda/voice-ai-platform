@@ -1,9 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import { assertAuthorized, type AuthUser } from "@voiceai/auth";
 import { consentRecordInputSchema, VOICE_GENDERS, voiceProfileInputSchema, type VoiceGender } from "@voiceai/shared";
+import { PITCH_RANGE, SPEED_RANGE } from "@voiceai/shared";
 import { writeAudit } from "./audit";
 import { withOrg, type Db, type DbTx } from "./client";
-import { consentRecords, users, voiceProfiles } from "./schema";
+import { consentRecords, users, voiceProfiles, voiceSamples } from "./schema";
 
 export class VoiceProfileError extends Error {}
 
@@ -194,22 +195,64 @@ export async function findOrCreateVoiceDonor(db: Db, actor: AuthUser, rawFirst: 
  */
 export async function updateVoiceProfile(db: Db, actor: AuthUser, profileId: string, rawInput: unknown) {
   assertAuthorized(actor, "voice_profiles.manage");
-  const raw = (rawInput ?? {}) as { label?: unknown; gender?: unknown };
+  const raw = (rawInput ?? {}) as { label?: unknown; gender?: unknown; speed?: unknown; pitch?: unknown };
   const label = typeof raw.label === "string" ? raw.label.normalize("NFC").replace(/\s+/g, " ").trim() : "";
   if (!label) throw new VoiceProfileError("enter a name for the voice");
   if (label.length > 80) throw new VoiceProfileError("the name must be 80 characters or fewer");
   if (!(VOICE_GENDERS as readonly unknown[]).includes(raw.gender)) throw new VoiceProfileError("choose male or female");
-  const input = { label, gender: raw.gender as VoiceGender };
+  // Speed and pitch are optional; left out, the voice keeps what it has. Out-of-range values are an error, not silently clamped.
+  const inRange = (v: unknown, r: { min: number; max: number }, what: string) => {
+    if (v === undefined) return undefined;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < r.min || v > r.max) throw new VoiceProfileError(`${what} must be between ${r.min} and ${r.max}`);
+    return Math.round(v * 100) / 100;
+  };
+  const input = { label, gender: raw.gender as VoiceGender, speed: inRange(raw.speed, SPEED_RANGE, "speed"), pitch: inRange(raw.pitch, PITCH_RANGE, "pitch") };
   return withOrg(db, actor.orgId, async (tx) => {
     const [before] = await tx.select().from(voiceProfiles).where(eq(voiceProfiles.id, profileId));
     if (!before) throw new VoiceProfileError("voice profile not found");
     if (before.status !== "active") throw new VoiceProfileError("a revoked voice cannot be edited");
-    if (before.label === input.label && before.gender === input.gender) return before;
-    const [after] = await tx.update(voiceProfiles).set({ label: input.label, gender: input.gender }).where(eq(voiceProfiles.id, profileId)).returning();
+    const speed = input.speed ?? before.speed, pitch = input.pitch ?? before.pitch;
+    if (before.label === input.label && before.gender === input.gender && before.speed === speed && before.pitch === pitch) return before;
+    const [after] = await tx.update(voiceProfiles).set({ label: input.label, gender: input.gender, speed, pitch }).where(eq(voiceProfiles.id, profileId)).returning();
     await writeAudit(tx, {
       orgId: actor.orgId, actorUserId: actor.id, action: "voice_profile.update", entity: "voice_profiles", entityId: profileId,
-      before: { label: before.label, gender: before.gender }, after: { label: after!.label, gender: after!.gender },
+      before: { label: before.label, gender: before.gender, speed: before.speed, pitch: before.pitch }, after: { label: after!.label, gender: after!.gender, speed: after!.speed, pitch: after!.pitch },
     });
     return after!;
   });
+}
+
+/** Keeps the recording a voice was cloned from (replacing any earlier one). Biometric data: managers of voices only. */
+export async function saveVoiceSample(db: Db, actor: AuthUser, profileId: string, audio: Uint8Array, mime = "audio/wav") {
+  assertAuthorized(actor, "voice_profiles.manage");
+  if (!audio.length) throw new VoiceProfileError("the recording is empty");
+  return withOrg(db, actor.orgId, async (tx) => {
+    const [p] = await tx.select({ id: voiceProfiles.id }).from(voiceProfiles).where(eq(voiceProfiles.id, profileId));
+    if (!p) throw new VoiceProfileError("voice profile not found");
+    const values = { orgId: actor.orgId, voiceProfileId: profileId, mime, bytes: audio.length, audio: Buffer.from(audio) };
+    await tx.insert(voiceSamples).values(values).onConflictDoUpdate({ target: voiceSamples.voiceProfileId, set: { mime, bytes: values.bytes, audio: values.audio, createdAt: sql`now()` } });
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "voice_sample.save", entity: "voice_profiles", entityId: profileId, before: null, after: { bytes: audio.length } });
+  });
+}
+
+/** The stored recording of a voice, for playing on the website. */
+export async function getVoiceSample(db: Db, actor: AuthUser, profileId: string) {
+  assertAuthorized(actor, "voice_profiles.manage");
+  return withOrg(db, actor.orgId, async (tx) => {
+    const [row] = await tx.select({ audio: voiceSamples.audio, mime: voiceSamples.mime }).from(voiceSamples).innerJoin(voiceProfiles, eq(voiceProfiles.id, voiceSamples.voiceProfileId)).where(and(eq(voiceSamples.voiceProfileId, profileId), eq(voiceProfiles.status, "active")));
+    return row ?? null;
+  });
+}
+
+/** For the voice engines (not a person): the recording of an active voice, found by the engine's own id for it. */
+export async function getVoiceSampleForEngine(db: Db, orgId: string, providerVoiceId: string) {
+  return withOrg(db, orgId, async (tx) => {
+    const [row] = await tx.select({ audio: voiceSamples.audio }).from(voiceSamples).innerJoin(voiceProfiles, eq(voiceProfiles.id, voiceSamples.voiceProfileId)).where(and(eq(voiceProfiles.providerVoiceId, providerVoiceId), eq(voiceProfiles.status, "active")));
+    return row?.audio ?? null;
+  });
+}
+
+/** Which active voices have a stored recording (for the Voices page). */
+export async function listVoiceSampleIds(db: Db, orgId: string): Promise<Set<string>> {
+  return withOrg(db, orgId, async (tx) => new Set((await tx.select({ id: voiceSamples.voiceProfileId }).from(voiceSamples)).map((r) => r.id)));
 }

@@ -1,4 +1,4 @@
-import { spellOutHindiNumbers } from "@voiceai/shared";
+import { speakableNumbers, spellOutHindiNumbers } from "@voiceai/shared";
 export { hindiNumberWords, spellOutHindiNumbers } from "@voiceai/shared";
 
 /**
@@ -9,6 +9,7 @@ export function forSpeech(text: string): string {
   return text
     .replace(/```[\s\S]*?```/g, " ")              // code blocks
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")       // [label](link) -> label
+    .replace(/\[[^\[\]\n]{1,30}\](?!\()/g, " ")        // [excited]-style tags are never spoken
     .replace(/https?:\/\/\S+/g, " ")              // bare links
     .replace(/[*_#`>~|]+/g, " ")                    // markdown marks
     .replace(/^\s*[-\u2022]\s+/gm, "")             // bullets at line start
@@ -18,5 +19,5 @@ export function forSpeech(text: string): string {
     .trim();
 }
 
-/** What is actually sent to the voice: cleaned of markup, with Hindi numbers spelled out. */
-export const forVoice = (text: string) => spellOutHindiNumbers(forSpeech(text));
+/** What is actually sent to the voice: cleaned of markup, with phone numbers, OTPs, rupee amounts, e-mails and Hindi numbers written the way they are said. */
+export const forVoice = (text: string) => spellOutHindiNumbers(speakableNumbers(forSpeech(text)));

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listLeads } from "@voiceai/db";
 import { LEAD_STATUSES } from "@voiceai/shared";
+import { ContactsImport } from "@/components/contacts-import";
 import { FilterBar } from "@/components/filter-bar";
 import { Forbidden } from "@/components/forbidden";
 import { Badge, LeadStatusBadge } from "@/components/ui/badge";
@@ -19,7 +20,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <PageHeader title="Leads" description="Every caller and prospect, linked to their calls." />
+      <PageHeader title="Leads" description="Every caller and prospect, linked to their calls." actions={<ContactsImport />} />
       <Card>
         <FilterBar action="/leads" q={sp.q} selects={[{ name: "status", value: sp.status, label: "All statuses", options: LEAD_STATUSES.map((s) => [s, titleCase(s)]) }]} />
         {data.rows.length === 0 ? (

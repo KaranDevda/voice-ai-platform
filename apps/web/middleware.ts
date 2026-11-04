@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { RateLimiter } from "@voiceai/shared";
-import { cookieOptions, SESSION_COOKIE, SESSION_TTL_S, signToken, verifyToken, type SessionClaims } from "./lib/session";
+import { cookieOptions, SESSION_COOKIE, SESSION_TTL_S, IMPERSONATION_TTL_S, signToken, verifyToken, type SessionClaims } from "./lib/session";
 
 // Brand images are static and shown on the login page, so they must load before sign-in.
 // The phone app has no browser session: it sends its own device token, which each /api/mobile route checks itself.
 // Voice files are fetched by the TTS server, not a browser; the route itself checks a signed address.
-const PUBLIC = [/^\/login$/, /^\/api\/health$/, /^\/api\/auth\/(login|mfa\/.*)$/, /^\/brand\/[\w.-]+\.png$/, /^\/icon\.png$/, /^\/worklets\/[\w.-]+\.js$/, /^\/api\/mobile\/(register|me|calls|leads|check-call)$/, /^\/api\/mobile\/calls\/[^/]+\/recording$/, /^\/api\/internal\/voice-files\/[0-9a-f]{64}\/[0-9a-f-]{36}(\.[a-z]{2})?\.safetensors$/];
+const PUBLIC = [/^\/login$/, /^\/api\/health$/, /^\/api\/billing\/(razorpay|stripe|paypal|paystack|flutterwave|cryptomus)-webhook$/, /^\/api\/auth\/(login|mfa\/.*)$/, /^\/brand\/[\w.-]+\.png$/, /^\/icon\.png$/, /^\/worklets\/[\w.-]+\.js$/, /^\/api\/mobile\/(register|me|calls|leads|check-call)$/, /^\/api\/mobile\/calls\/[^/]+\/recording$/, /^\/api\/internal\/voice-files\/[0-9a-f]{64}\/[0-9a-f-]{36}(\.[a-z]{2})?\.safetensors$/];
 
 // Per address, per server. Sign-in is tight (the account lockout already stops guessing one account; this stops one address trying many).
 // The address comes from X-Forwarded-For, which only a trusted proxy in front sets; otherwise it can be forged, so this is a brake, not the only lock.
@@ -29,7 +29,9 @@ export async function middleware(req: NextRequest) {
 
   // Slide the idle window.
   const res = NextResponse.next();
-  res.cookies.set(SESSION_COOKIE, await signToken({ sub: claims.sub, org: claims.org }, SESSION_TTL_S, "session"), cookieOptions(SESSION_TTL_S));
+  // Acting as someone else keeps its marker and lasts at most an hour of inactivity.
+  const ttl = claims.impBy ? IMPERSONATION_TTL_S : SESSION_TTL_S;
+  res.cookies.set(SESSION_COOKIE, await signToken({ sub: claims.sub, org: claims.org, ...(claims.impBy && claims.impOrg ? { impBy: claims.impBy, impOrg: claims.impOrg } : {}) }, ttl, "session"), cookieOptions(ttl));
   return res;
 }
 

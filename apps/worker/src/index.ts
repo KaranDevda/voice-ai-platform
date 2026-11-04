@@ -10,9 +10,10 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { createDb, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, saveAnalysis } from "@voiceai/db";
-import { createAskG1, S3Recordings, type LlmAdapter } from "@voiceai/providers";
+import { campaignTick, createDb, crmClaim, crmDone, dialToken, heartbeat, smsDone, smsRound, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, reportDial, saveAnalysis } from "@voiceai/db";
+import { createAskG1, createPlivo, S3Recordings, sendCrmWebhook, type LlmAdapter } from "@voiceai/providers";
 import { analyzeCall } from "./analyze";
+import { renderTemplate } from "@voiceai/shared";
 
 try { process.loadEnvFile(join(fileURLToPath(new URL("..", import.meta.url)), ".env.local")); } catch { /* keys can also come from the real environment */ }
 const env = (k: string) => process.env[k]?.trim() || undefined;
@@ -78,15 +79,78 @@ async function purgeExpired() {
   if (recordings || transcripts) log(`retention: removed ${recordings} recording(s) and ${transcripts} transcript(s) past their retention period`);
 }
 
+/**
+ * Outbound campaigns. Every few seconds: start campaigns whose time has come, settle finished calls (answered = done, otherwise try again
+ * after the delay, up to the limit), and ask the voice service to dial the next people, never more at once than the campaign allows.
+ * The voice service still applies Do Not Disturb, consent and the calling hours (9:00 to 21:00 India time) before it dials.
+ * Needs VOICE_TOKEN_SECRET (or SESSION_SECRET, the same one the voice service uses) and VOICE_SERVICE_URL. Run ONE worker.
+ */
+const voiceUrl = (env("VOICE_SERVICE_URL") ?? "http://127.0.0.1:4001").replace(/\/$/, "");
+const campaignKey = env("VOICE_TOKEN_SECRET") ?? env("SESSION_SECRET");
+if (!campaignKey) log("campaigns are off: set VOICE_TOKEN_SECRET (or SESSION_SECRET) so the runner can ask the voice service to dial");
+async function runCampaigns() {
+  for (const job of await campaignTick(db, 10)) {
+    const tag = `campaign ${job.campaignId.slice(0, 8)} lead ${job.leadId.slice(0, 8)}`;
+    try {
+      const res = await fetch(`${voiceUrl}/plivo/outbound`, {
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${dialToken(job, campaignKey!)}` },
+        body: JSON.stringify({ leadId: job.leadId, language: job.language }), signal: AbortSignal.timeout(20_000),
+      });
+      if (res.status === 202) { log(`${tag}: dialling`); continue; }
+      const b = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
+      if (res.status === 409) { log(`${tag}: not dialled (${b.reason ?? "blocked"})`); await reportDial(db, job.targetId, b.reason === "outside_hours" || b.reason === "no_credit" ? "hours" : "skip", b.reason ?? "blocked"); }
+      else { log(`${tag}: voice service answered ${res.status} ${b.error ?? ""}`); await reportDial(db, job.targetId, "failed", `voice service answered ${res.status}${b.error ? ` (${b.error})` : ""}`); }
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      log(`${tag}: could not reach the voice service: ${why}`);
+      await reportDial(db, job.targetId, "failed", `could not reach the voice service: ${why}`).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Texts. Every few seconds: follow-up steps that are due become queued texts, then queued texts are sent through Plivo (only inside the
+ * calling hours, never to Do Not Disturb). Needs PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN and PLIVO_SMS_SENDER (an approved sender ID or number);
+ * for India also PLIVO_DLT_ENTITY_ID, and each text should carry its DLT template ID. Run ONE worker.
+ */
+const plivoSms = env("PLIVO_AUTH_ID") && env("PLIVO_AUTH_TOKEN") && env("PLIVO_SMS_SENDER") ? createPlivo({ authId: env("PLIVO_AUTH_ID")!, authToken: env("PLIVO_AUTH_TOKEN")!, baseUrl: env("PLIVO_API_BASE") }) : null;
+if (!plivoSms) log("texts are off: set PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN and PLIVO_SMS_SENDER to send SMS");
+async function runSms() {
+  for (const m of await smsRound(db, 20)) {
+    try {
+      const { messageUuid } = await plivoSms!.sendSms({ from: env("PLIVO_SMS_SENDER")!, to: m.phone, text: renderTemplate(m.body, { name: m.personName, fields: m.personFields }), dltEntityId: env("PLIVO_DLT_ENTITY_ID"), dltTemplateId: m.dltTemplateId ?? undefined });
+      await smsDone(db, m.id, true, messageUuid);
+      log(`text ${m.id.slice(0, 8)} sent`);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      log(`text ${m.id.slice(0, 8)} failed: ${why}`);
+      await smsDone(db, m.id, false, undefined, why).catch(() => {});
+    }
+  }
+}
+
+/** CRM webhooks: deliveries that are due are sent, signed; failures are retried later (1 min, 5 min, 30 min, 2 h, 12 h, 12 h). */
+async function runCrm() {
+  const jobs = await crmClaim(db, 20);
+  await Promise.all(jobs.map(async (j) => {
+    const r = await sendCrmWebhook({ id: j.id, event: j.event, payload: j.payload, url: j.url, secret: j.secret });
+    await crmDone(db, j.id, r.ok, r.status, r.error);
+    log(`webhook ${j.id.slice(0, 8)} ${j.event}: ${r.ok ? "delivered" : `failed (${r.error}), attempt ${j.attempts}`}`);
+  }));
+}
+
 const PARALLEL = Math.max(1, Math.min(8, Number(env("WORKER_PARALLEL") ?? 3)));
 let stopping = false;
 for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => { stopping = true; });
 log(`post-call worker started (${askg1 ? "AskG1" : "no AskG1"}${local ? " + local backup" : ""}, ${PARALLEL} calls at a time)`);
-let lastPurge = 0;
+let lastPurge = 0, lastCampaignRound = 0, lastSmsRound = 0, lastCrmRound = 0;
 do {
   if (Date.now() - lastPurge > 3_600_000) { lastPurge = Date.now(); await purgeExpired().catch((e) => log(`retention run failed: ${e instanceof Error ? e.message : e}`)); }
+  if (campaignKey && Date.now() - lastCampaignRound > 5000) { lastCampaignRound = Date.now(); await runCampaigns().then(() => heartbeat(db, "campaign runner", true), (e) => { log(`campaign round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "campaign runner", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
+  if (plivoSms && Date.now() - lastSmsRound > 5000) { lastSmsRound = Date.now(); await runSms().then(() => heartbeat(db, "text sender", true), (e) => { log(`text round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "text sender", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
+  if (Date.now() - lastCrmRound > 5000) { lastCrmRound = Date.now(); await runCrm().then(() => heartbeat(db, "CRM webhooks", true), (e) => { log(`webhook round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "CRM webhooks", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
   let pending: Awaited<ReturnType<typeof listPendingAnalysis>> = [];
-  try { pending = await listPendingAnalysis(db, PARALLEL * 2); } catch (e) { log(`could not read the queue: ${e instanceof Error ? e.message : e}`); }
+  try { pending = await listPendingAnalysis(db, PARALLEL * 2); await heartbeat(db, "call analysis", true); } catch (e) { log(`could not read the queue: ${e instanceof Error ? e.message : e}`); await heartbeat(db, "call analysis", false, String(e instanceof Error ? e.message : e)).catch(() => {}); }
   // Several calls at once: each is mostly waiting for the AI, so this multiplies throughput without more machines.
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(PARALLEL, pending.length) }, async () => { while (!stopping && next < pending.length) await handleOne(pending[next++]!); }));

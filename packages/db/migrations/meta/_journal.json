@@ -64,6 +64,83 @@
       "when": 1793108722024,
       "tag": "0008_analysis_rerun_and_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793109722024,
+      "tag": "0009_voice_speed_pitch",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793110722024,
+      "tag": "0010_voice_samples",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793111722024,
+      "tag": "0011_contacts_custom_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793112722024,
+      "tag": "0012_campaigns",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793113722024,
+      "tag": "0013_sms_sequences",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793114722024,
+      "tag": "0014_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793115722024,
+      "tag": "0015_platform_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793116722024,
+      "tag": "0016_sms_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793117722024,
+      "tag": "0017_profit",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793118722024,
+      "tag": "0018_country_pricing_gateways",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793119722024,
+      "tag": "0019_crm_webhooks",
+      "breakpoints": true
     }
   ]
 }

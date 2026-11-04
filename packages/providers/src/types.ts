@@ -25,6 +25,9 @@ export interface SpeechResult {
   mime: string;
   /** For Hindi and Hinglish from the self-hosted engine: "converted" = changed to the person's own voice, "built-in" = the built-in Hindi voice. */
   hindiVoice?: "converted" | "built-in";
+  /** "chatterbox" = made directly in the person's voice; "fallback" = Chatterbox was set up but failed, so the built-in engine spoke (reason in `note`). */
+  engine?: "chatterbox" | "fallback";
+  note?: string;
 }
 
 /** Whole-clip TTS for the studio, library previews and the agent console. */
