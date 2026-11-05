@@ -13,7 +13,7 @@ describe("price list import", () => {
     expect(r.problems.map((p) => p.row)).toEqual([3, 4, 5, 6]);
   });
   it("needs the column names", () => {
-    expect(() => parseRates("IN,150,25\n")).toThrow(/column names/);
+    expect(() => parseRates("IN,150,25\n")).toThrow(/name the columns/);
     expect(() => parseRates("")).toThrow(/empty/);
   });
 });
