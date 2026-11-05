@@ -34,6 +34,7 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
         billing: {
           enabled: f.get("billingEnabled") === "on", enforce: f.get("billingEnforce") === "on",
           callPerMinPaise: Math.round(Number(str("callPerMinPaise")) || 0), smsPaise: Math.round(Number(str("smsPaise")) || 0),
+          lowBalancePaise: Math.round((Number(str("lowBalanceRupees")) || 0) * 100),
         },
         phone: {
           handoffNumber: str("handoffNumber").replace(/[\s-]/g, ""),
@@ -122,6 +123,7 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
               <Field label="AI call, per started minute (paise)" hint="150 = Rs 1.50 a minute"><Input name="callPerMinPaise" type="number" min={0} max={100000} step={1} defaultValue={settings.billing.callPerMinPaise} /></Field>
               <Field label="Text message, each (paise)"><Input name="smsPaise" type="number" min={0} max={100000} step={1} defaultValue={settings.billing.smsPaise} /></Field>
             </div>
+            <Field label="Low balance alert (Rs)" hint="E-mail the organisation's admins once when the balance falls under this. 0 = off. Needs e-mail (SMTP) set up."><Input name="lowBalanceRupees" type="number" min={0} max={100000} step={1} defaultValue={settings.billing.lowBalancePaise / 100} /></Field>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="billingEnforce" className={check} defaultChecked={settings.billing.enforce} /> Refuse calls and texts when the balance is zero or less</label>
           </CardBody>
         </Card>

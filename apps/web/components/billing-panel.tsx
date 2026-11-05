@@ -18,9 +18,13 @@ const GATEWAYS: { id: Gateway; label: string; currencies: string[] }[] = [
   { id: "cryptomus", label: "Cryptomus (crypto)", currencies: ["USD"] },
 ];
 interface Props {
-  balancePaise: number; billing: { enabled: boolean; callPerMinPaise: number; smsPaise: number; enforce: boolean };
+  balancePaise: number; billing: { enabled: boolean; callPerMinPaise: number; smsPaise: number; enforce: boolean; lowBalancePaise: number };
   canEdit: boolean; isPlatformAdmin: boolean; gateways: Record<Gateway, boolean>;
-  rates: { country: string; callPerMinPaise: number; smsPaise: number }[]; exchange: { currency: string; paisePerUnit: number }[];
+  rates: { country: string; callPerMinPaise: number; smsPaise: number }[]; exchange: { currency: string; paisePerUnit: number; updatedAt: string }[];
+  usage: { days: number; totalPaise: number; calls: { paise: number; count: number }; texts: { paise: number; count: number }; byCountry: { country: string; paise: number }[] };
+  /** Platform staff only. */
+  balances?: { orgId: string; orgName: string; topupsPaise: number; balancePaise: number }[];
+  gatewayStatus?: { id: string; label: string; configured: boolean; missing: string[]; webhookUrl: string; note: string }[];
   ledger: { id: string; deltaPaise: number; reason: string; note: string | null; createdAt: string }[];
   payments: { id: string; gateway: string; amountPaise: number; currency: string; amountMinor: number | null; status: string; createdAt: string }[];
 }
@@ -28,7 +32,7 @@ const rupees = (paise: number) => `${paise < 0 ? "-" : ""}Rs ${(Math.abs(paise) 
 const REASON: Record<string, string> = { topup: "Top-up", usage_call: "AI call", usage_sms: "Text", adjustment: "Adjustment", refund: "Refund" };
 
 /** Balance, adding credit (six gateways), prices by country, exchange rates (staff), the ledger, and a staff adjustment. */
-export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, gateways, rates, exchange, ledger, payments }: Props) {
+export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, gateways, rates, exchange, ledger, payments, usage, balances, gatewayStatus }: Props) {
   const router = useRouter();
   const available = GATEWAYS.filter((g) => gateways[g.id]);
   const [gateway, setGateway] = useState<Gateway>(available[0]?.id ?? "razorpay");
@@ -38,7 +42,8 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
-  const [adj, setAdj] = useState({ rupees: 0, note: "", refund: false });
+  const [adj, setAdj] = useState({ rupees: 0, note: "", refund: false, orgId: "" });
+  const [refreshing, setRefreshing] = useState(false);
   const [rate, setRate] = useState({ country: "", call: 0, sms: 0 });
   const [csv, setCsv] = useState("");
   const [imported, setImported] = useState<{ saved: number; problems: { row: number; reason: string }[] } | null>(null);
@@ -65,9 +70,9 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
   async function adjust(e: FormEvent) {
     e.preventDefault();
     setError(""); setNote("");
-    const { ok, b } = await call("/api/billing/adjust", "POST", { amountPaise: Math.round(adj.rupees * 100), note: adj.note, refund: adj.refund });
+    const { ok, b } = await call("/api/billing/adjust", "POST", { ...(adj.orgId ? { orgId: adj.orgId } : {}), amountPaise: Math.round(adj.rupees * 100), note: adj.note, refund: adj.refund });
     if (!ok) return fail(b, "Could not adjust");
-    setNote(`Balance is now ${rupees(b.balancePaise)}.`); setAdj({ rupees: 0, note: "", refund: false }); router.refresh();
+    setNote(`Balance is now ${rupees(b.balancePaise)}.`); setAdj((a) => ({ rupees: 0, note: "", refund: false, orgId: a.orgId })); router.refresh();
   }
   async function saveRate(e: FormEvent) {
     e.preventDefault();
@@ -94,12 +99,42 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
     setNote(`${b.currency} saved.`); router.refresh();
   }
 
+  async function refreshFx() {
+    setRefreshing(true); setError(""); setNote("");
+    const { ok, b } = await call("/api/billing/exchange-rate/refresh", "POST");
+    setRefreshing(false);
+    if (!ok) return fail(b, "Could not refresh the rates");
+    setNote(`Updated ${b.updated.length} rates${b.skipped.length ? `; skipped ${b.skipped.map((x: { currency: string; why: string }) => `${x.currency} (${x.why})`).join(", ")}` : ""}.`); router.refresh();
+  }
+  async function removeFx(currency: string) {
+    if (!confirm(`Remove the ${currency} rate? People can no longer pay in ${currency} until it is set again.`)) return;
+    const { ok, b } = await call(`/api/billing/exchange-rate?currency=${currency}`, "DELETE");
+    if (!ok) return fail(b, "Could not remove it");
+    router.refresh();
+  }
+  const low = billing.enabled && billing.lowBalancePaise > 0 && balancePaise < billing.lowBalancePaise;
+  const stale = (iso: string) => Date.now() - new Date(iso).getTime() > 36 * 3_600_000;
+
   return (
     <div className="grid gap-6">
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <Card>
         <CardHeader title="Balance" description={billing.enabled ? `Standard prices: AI calls ${rupees(billing.callPerMinPaise)} per minute · texts ${rupees(billing.smsPaise)} each${billing.enforce ? " · calls and texts stop at zero" : ""}` : "Billing is off: nothing is charged. Turn it on in Settings."} />
         <CardBody><p className={`text-3xl font-semibold ${balancePaise <= 0 && billing.enabled ? "text-danger" : ""}`}>{rupees(balancePaise)}</p></CardBody>
+      </Card>
+
+      {low && <p role="status" className="rounded-lg border border-warning bg-warning-soft px-4 py-3 text-sm">Your balance is under the {rupees(billing.lowBalancePaise)} limit you set in Settings. Add credit below{billing.enforce ? ", or calls and texts stop at zero" : ""}.</p>}
+
+      <Card>
+        <CardHeader title={`Spending, last ${usage.days} days`} description="From your credit history" />
+        <CardBody className="grid gap-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div><div className="text-sm text-muted-foreground">Total spent</div><div className="text-xl font-semibold">{rupees(usage.totalPaise)}</div></div>
+            <div><div className="text-sm text-muted-foreground">AI calls</div><div className="text-xl font-semibold">{rupees(usage.calls.paise)}</div><div className="text-xs text-muted-foreground">{usage.calls.count} charged calls</div></div>
+            <div><div className="text-sm text-muted-foreground">Texts</div><div className="text-xl font-semibold">{rupees(usage.texts.paise)}</div><div className="text-xs text-muted-foreground">{usage.texts.count} charged texts</div></div>
+          </div>
+          {usage.byCountry.length > 0 && <p className="text-sm text-muted-foreground">By country: {usage.byCountry.slice(0, 6).map((c) => `${c.country} ${rupees(c.paise)}`).join(" · ")}</p>}
+        </CardBody>
       </Card>
 
       {canEdit && (
@@ -146,9 +181,10 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
 
       {isPlatformAdmin && (
         <Card>
-          <CardHeader title="Exchange rates (platform staff)" description="How many rupees one unit of a currency is worth. Used to credit payments made in that currency; fixed when a payment starts. Not updated automatically." />
+          <CardHeader title="Exchange rates (platform staff)" description="How many rupees one unit of a currency is worth. Used to credit payments made in that currency; fixed when a payment starts. Press the button for today's market rates (a rate that jumps more than 25 percent is skipped for you to check), or set one by hand." />
           <CardBody className="grid gap-4">
-            {exchange.length > 0 && <ul className="text-sm">{exchange.map((e) => <li key={e.currency}>1 {e.currency} = {rupees(e.paisePerUnit)}</li>)}</ul>}
+            {exchange.length > 0 && <ul className="grid gap-1 text-sm">{exchange.map((e) => <li key={e.currency} className="flex flex-wrap items-center gap-2">1 {e.currency} = {rupees(e.paisePerUnit)}<span className="text-xs text-muted-foreground">updated {formatDateTime(e.updatedAt)}</span>{stale(e.updatedAt) && <Badge tone="warning">Over a day old</Badge>}<button type="button" className="text-xs text-muted-foreground underline" onClick={() => void removeFx(e.currency)}>Remove</button></li>)}</ul>}
+            <div><Button type="button" size="sm" variant="outline" disabled={refreshing} onClick={() => void refreshFx()}>{refreshing ? "Fetching…" : "Update all from today's market rates"}</Button></div>
             <form onSubmit={saveFx} className="grid gap-3 sm:grid-cols-3">
               <Field label="Currency"><Input value={fx.currency} onChange={(e) => setFx((x) => ({ ...x, currency: e.target.value.toUpperCase() }))} maxLength={3} required /></Field>
               <Field label="Rupees per 1 unit" hint="e.g. 83.20 for USD"><Input type="number" min={0.01} step="0.01" value={fx.rupees} onChange={(e) => setFx((x) => ({ ...x, rupees: Number(e.target.value) }))} /></Field>
@@ -163,6 +199,7 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
           <CardHeader title="Manual adjustment (platform staff)" description="Add or remove credit by hand, with a note. It is recorded in the audit log." />
           <CardBody>
             <form onSubmit={adjust} className="grid gap-3 sm:grid-cols-4">
+              {balances && balances.length > 0 && <div className="sm:col-span-4"><Field label="Organisation"><Select value={adj.orgId} onChange={(e) => setAdj((a) => ({ ...a, orgId: e.target.value }))}><option value="">This organisation</option>{balances.map((o) => <option key={o.orgId} value={o.orgId}>{o.orgName} ({rupees(o.balancePaise)})</option>)}</Select></Field></div>}
               <Field label="Amount (Rs, negative removes)"><Input type="number" step="0.01" value={adj.rupees} onChange={(e) => setAdj((a) => ({ ...a, rupees: Number(e.target.value) }))} /></Field>
               <div className="sm:col-span-2"><Field label="Why"><Input value={adj.note} onChange={(e) => setAdj((a) => ({ ...a, note: e.target.value }))} maxLength={300} required /></Field></div>
               <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={adj.refund} onChange={(e) => setAdj((a) => ({ ...a, refund: e.target.checked }))} /> It is a refund</label>
@@ -172,18 +209,40 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
           </CardBody>
         </Card>
       )}
+      {isPlatformAdmin && balances && balances.length > 0 && (
+        <Card>
+          <CardHeader title="Customer balances (platform staff)" description="Every organisation's credit and what it added in the last 30 days. Choose one in the adjustment form above to correct or refund." />
+          <Table><thead><tr><Th>Organisation</Th><Th>Balance</Th><Th>Added, 30 days</Th></tr></thead>
+            <tbody>{balances.map((o) => <Tr key={o.orgId}><Td className="font-medium">{o.orgName}</Td><Td className={o.balancePaise <= 0 ? "text-danger" : ""}>{rupees(o.balancePaise)}</Td><Td>{rupees(o.topupsPaise)}</Td></Tr>)}</tbody></Table>
+        </Card>
+      )}
+
+      {isPlatformAdmin && gatewayStatus && (
+        <Card>
+          <CardHeader title="Payment gateways: setup checklist (platform staff)" description="Which gateways have their keys, what is still missing (names only), and the address each gateway must send its payment notices to." />
+          <CardBody className="grid gap-4">
+            {gatewayStatus.map((g) => (
+              <div key={g.id} className="grid gap-1 border-b border-border pb-3 text-sm last:border-0 last:pb-0">
+                <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{g.label}</span><Badge tone={g.configured ? "success" : "neutral"}>{g.configured ? "Keys set" : "Keys missing"}</Badge></div>
+                <div className="text-muted-foreground">Notice address: <code className="break-all">{g.webhookUrl}</code> · {g.note}</div>
+                {g.missing.length > 0 && <div className="text-muted-foreground">Still to set in the website's settings file: {g.missing.join(", ")}</div>}
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      )}
       {!isPlatformAdmin && note && <p role="status" className="text-sm text-success">{note}</p>}
 
       <Card>
-        <CardHeader title="Recent payments" />
+        <CardHeader title="Recent payments" action={<a href="/api/billing/export?kind=payments" className="text-sm text-primary underline">Download CSV</a>} />
         {payments.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No payments yet.</p></CardBody> : (
-          <Table><thead><tr><Th>When</Th><Th>Gateway</Th><Th>Paid</Th><Th>Credited</Th><Th>Status</Th></tr></thead>
-            <tbody>{payments.map((p) => <Tr key={p.id}><Td>{formatDateTime(p.createdAt)}</Td><Td>{titleCase(p.gateway)}</Td><Td>{p.currency === "INR" ? rupees(p.amountPaise) : `${((p.amountMinor ?? 0) / 100).toFixed(2)} ${p.currency}`}</Td><Td>{rupees(p.amountPaise)}</Td><Td><Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : "warning"}>{titleCase(p.status)}</Badge></Td></Tr>)}</tbody></Table>
+          <Table><thead><tr><Th>When</Th><Th>Gateway</Th><Th>Paid</Th><Th>Credited</Th><Th>Status</Th><Th> </Th></tr></thead>
+            <tbody>{payments.map((p) => <Tr key={p.id}><Td>{formatDateTime(p.createdAt)}</Td><Td>{titleCase(p.gateway)}</Td><Td>{p.currency === "INR" ? rupees(p.amountPaise) : `${((p.amountMinor ?? 0) / 100).toFixed(2)} ${p.currency}`}</Td><Td>{rupees(p.amountPaise)}</Td><Td><Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : "warning"}>{titleCase(p.status)}</Badge></Td><Td className="text-right">{p.status === "paid" && <a href={`/billing/receipt/${p.id}`} className="text-sm text-primary underline">Receipt</a>}</Td></Tr>)}</tbody></Table>
         )}
       </Card>
 
       <Card>
-        <CardHeader title="Credit history" description="Every change to the balance" />
+        <CardHeader title="Credit history" description="The latest 50 changes to the balance" action={<span className="flex gap-3 text-sm"><a href="/billing/history" className="text-primary underline">See all, filter</a><a href="/api/billing/export" className="text-primary underline">Download CSV</a></span>} />
         {ledger.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">Nothing yet.</p></CardBody> : (
           <Table><thead><tr><Th>When</Th><Th>What</Th><Th>Change</Th><Th>Note</Th></tr></thead>
             <tbody>{ledger.map((l) => <Tr key={l.id}><Td>{formatDateTime(l.createdAt)}</Td><Td>{REASON[l.reason] ?? l.reason}</Td><Td className={l.deltaPaise < 0 ? "text-danger" : "text-success"}>{l.deltaPaise > 0 ? "+" : ""}{rupees(l.deltaPaise)}</Td><Td className="text-muted-foreground">{l.note ?? ""}</Td></Tr>)}</tbody></Table>

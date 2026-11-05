@@ -91,6 +91,8 @@ export const orgSettingsSchema = z.object({
       smsPaise: z.number().int().min(0).max(100_000).default(0),
       /** With this on, calls and texts are refused when the balance is zero or less. */
       enforce: z.boolean().default(false),
+      /** E-mail the organisation's admins once when the balance falls under this (paise). 0 = no alert. */
+      lowBalancePaise: z.number().int().min(0).max(10_000_000).default(0),
     })
     .prefault({}),
   /** How the organisation's own people see the app: its name, a line under it and its main colour. Empty = the standard look. */

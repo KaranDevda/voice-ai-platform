@@ -155,6 +155,13 @@
       "when": 1793121722024,
       "tag": "0021_widgets",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793122722024,
+      "tag": "0022_low_balance_alerts",
+      "breakpoints": true
     }
   ]
 }

@@ -23,3 +23,22 @@ export const flutterwaveSecretHash = () => env("FLUTTERWAVE_SECRET_HASH") ?? "";
 export const cryptomusApiKey = () => env("CRYPTOMUS_API_KEY") ?? "";
 /** The public address of this website, for the gateway to send the person back to. */
 export const appUrl = (req: Request) => (env("APP_URL") ?? new URL(req.url).origin).replace(/\/$/, "");
+
+/**
+ * For platform staff: per gateway, whether its keys are set, which settings are still missing (names only, never values), and the address the
+ * gateway must be told to send its payment notices to. This is the checklist for connecting a gateway; the keys themselves go in the settings file.
+ */
+export function gatewayStatus(base: string) {
+  const defs: { id: string; label: string; keys: string[]; webhookKeys: string[]; path: string; note: string }[] = [
+    { id: "razorpay", label: "Razorpay", keys: ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"], webhookKeys: ["RAZORPAY_WEBHOOK_SECRET"], path: "razorpay-webhook", note: "Webhook event: payment_link.paid" },
+    { id: "stripe", label: "Stripe", keys: ["STRIPE_SECRET_KEY"], webhookKeys: ["STRIPE_WEBHOOK_SECRET"], path: "stripe-webhook", note: "Webhook events: checkout.session.completed and checkout.session.async_payment_succeeded" },
+    { id: "paypal", label: "PayPal", keys: ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"], webhookKeys: ["PAYPAL_WEBHOOK_ID"], path: "paypal-webhook", note: "Webhook event: PAYMENT.CAPTURE.COMPLETED. Set PAYPAL_BASE_URL to the sandbox address while testing." },
+    { id: "paystack", label: "Paystack", keys: ["PAYSTACK_SECRET_KEY"], webhookKeys: [], path: "paystack-webhook", note: "Webhook event: charge.success (signed with the secret key)" },
+    { id: "flutterwave", label: "Flutterwave", keys: ["FLUTTERWAVE_SECRET_KEY"], webhookKeys: ["FLUTTERWAVE_SECRET_HASH"], path: "flutterwave-webhook", note: "Set the same secret hash in their dashboard" },
+    { id: "cryptomus", label: "Cryptomus", keys: ["CRYPTOMUS_MERCHANT_ID", "CRYPTOMUS_API_KEY"], webhookKeys: [], path: "cryptomus-webhook", note: "Notices are signed with the API key" },
+  ];
+  return defs.map((d) => ({
+    id: d.id, label: d.label, configured: d.keys.every((k) => !!env(k)), missing: [...d.keys, ...d.webhookKeys].filter((k) => !env(k)),
+    webhookUrl: `${base}/api/billing/${d.path}`, note: d.note,
+  }));
+}

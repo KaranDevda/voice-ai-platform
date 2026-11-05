@@ -10,8 +10,8 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { campaignTick, createDb, crmClaim, crmDone, dialToken, heartbeat, smsDone, smsRound, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, reportDial, saveAnalysis } from "@voiceai/db";
-import { createAskG1, createPlivo, S3Recordings, sendCrmWebhook, type LlmAdapter } from "@voiceai/providers";
+import { campaignTick, createDb, crmClaim, crmDone, dialToken, heartbeat, lowBalanceDue, lowBalanceSent, smsDone, smsRound, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, reportDial, saveAnalysis } from "@voiceai/db";
+import { createAskG1, createPlivo, S3Recordings, sendCrmWebhook, sendEmail, smtpFromEnv, type LlmAdapter } from "@voiceai/providers";
 import { analyzeCall } from "./analyze";
 import { renderTemplate } from "@voiceai/shared";
 
@@ -139,16 +139,36 @@ async function runCrm() {
   }));
 }
 
+/**
+ * Low-balance alerts: an organisation with billing on that has set a limit in Settings gets one e-mail to its admins when its credit falls under
+ * it, and another only after it has added credit and dropped under again. Needs the e-mail settings (SMTP_*); without them nothing is sent or marked.
+ */
+const smtp = smtpFromEnv();
+const rupees = (paise: number) => `Rs ${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+async function runLowBalance() {
+  if (!smtp) return;
+  for (const j of await lowBalanceDue(db, 20)) {
+    if (j.emails.length === 0) { log(`low balance for ${j.orgName}: no admin e-mail to tell`); await lowBalanceSent(db, j.orgId); continue; }
+    const link = `${(env("APP_URL") ?? "http://localhost:3000").replace(/\/$/, "")}/billing`;
+    try {
+      for (const to of j.emails) await sendEmail(smtp, { to, subject: `Low credit balance: ${rupees(j.balancePaise)} left`, text: `Hello,\n\nThe credit balance of ${j.orgName} is ${rupees(j.balancePaise)}, under the ${rupees(j.thresholdPaise)} limit set in Settings.\n\nAdd credit here: ${link}\n\nCalls and texts stop at zero if "refuse at zero credit" is on.` });
+      await lowBalanceSent(db, j.orgId);
+      log(`low balance e-mail sent for ${j.orgName} (${j.emails.length})`);
+    } catch (e) { log(`low balance e-mail for ${j.orgName} failed: ${e instanceof Error ? e.message : e}`); }
+  }
+}
+
 const PARALLEL = Math.max(1, Math.min(8, Number(env("WORKER_PARALLEL") ?? 3)));
 let stopping = false;
 for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => { stopping = true; });
 log(`post-call worker started (${askg1 ? "AskG1" : "no AskG1"}${local ? " + local backup" : ""}, ${PARALLEL} calls at a time)`);
-let lastPurge = 0, lastCampaignRound = 0, lastSmsRound = 0, lastCrmRound = 0;
+let lastPurge = 0, lastCampaignRound = 0, lastSmsRound = 0, lastCrmRound = 0, lastLowBalance = 0;
 do {
   if (Date.now() - lastPurge > 3_600_000) { lastPurge = Date.now(); await purgeExpired().catch((e) => log(`retention run failed: ${e instanceof Error ? e.message : e}`)); }
   if (campaignKey && Date.now() - lastCampaignRound > 5000) { lastCampaignRound = Date.now(); await runCampaigns().then(() => heartbeat(db, "campaign runner", true), (e) => { log(`campaign round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "campaign runner", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
   if (plivoSms && Date.now() - lastSmsRound > 5000) { lastSmsRound = Date.now(); await runSms().then(() => heartbeat(db, "text sender", true), (e) => { log(`text round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "text sender", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
   if (Date.now() - lastCrmRound > 5000) { lastCrmRound = Date.now(); await runCrm().then(() => heartbeat(db, "CRM webhooks", true), (e) => { log(`webhook round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "CRM webhooks", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
+  if (smtp && Date.now() - lastLowBalance > 600_000) { lastLowBalance = Date.now(); await runLowBalance().then(() => heartbeat(db, "low balance alerts", true), (e) => { log(`low balance round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "low balance alerts", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
   let pending: Awaited<ReturnType<typeof listPendingAnalysis>> = [];
   try { pending = await listPendingAnalysis(db, PARALLEL * 2); await heartbeat(db, "call analysis", true); } catch (e) { log(`could not read the queue: ${e instanceof Error ? e.message : e}`); await heartbeat(db, "call analysis", false, String(e instanceof Error ? e.message : e)).catch(() => {}); }
   // Several calls at once: each is mostly waiting for the AI, so this multiplies throughput without more machines.

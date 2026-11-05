@@ -1,9 +1,9 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, sql, type SQL } from "drizzle-orm";
 import { assertAuthorized, type AuthUser } from "@voiceai/auth";
 import { orgSettingsSchema, parseRates, type RateProblem } from "@voiceai/shared";
 import { writeAudit } from "./audit";
 import { withOrg, type Db, type DbTx } from "./client";
-import { countryRates, creditLedger, exchangeRates, organizations, payments, users } from "./schema";
+import { countryRates, creditLedger, exchangeRates, LEDGER_REASONS as LEDGER_REASON_LIST, organizations, payments, users } from "./schema";
 
 export class BillingError extends Error {}
 
@@ -178,3 +178,114 @@ export async function setExchangeRate(db: Db, actor: AuthUser, currency: string,
 export async function userEmail(db: Db, actor: AuthUser): Promise<string | null> {
   return withOrg(db, actor.orgId, async (tx) => (await tx.select({ e: users.email }).from(users).where(eq(users.id, actor.id)))[0]?.e ?? null);
 }
+
+// ------------------------------------------------------------------------------------------ history, usage, receipts
+
+export interface LedgerFilter { reason?: string; from?: Date; to?: Date; limit?: number; offset?: number }
+
+/** The credit history, newest first, with an optional kind and date range. `total` is the number of matching rows. */
+export async function listLedger(db: Db, actor: AuthUser, f: LedgerFilter = {}) {
+  assertAuthorized(actor, "org_settings.read");
+  const limit = Math.max(1, Math.min(20_000, Math.round(f.limit ?? 50))), offset = Math.max(0, Math.round(f.offset ?? 0));
+  const where: SQL[] = [];
+  if (f.reason) { if (!(LEDGER_REASON_LIST as readonly string[]).includes(f.reason)) throw new BillingError("unknown kind"); where.push(eq(creditLedger.reason, f.reason as (typeof LEDGER_REASON_LIST)[number])); }
+  if (f.from) where.push(gte(creditLedger.createdAt, f.from));
+  if (f.to) where.push(lt(creditLedger.createdAt, f.to));
+  const cond = where.length ? and(...where) : undefined;
+  return withOrg(db, actor.orgId, async (tx) => ({
+    total: Number((await tx.select({ n: sql<string>`count(*)` }).from(creditLedger).where(cond))[0]!.n),
+    rows: await tx.select({ id: creditLedger.id, deltaPaise: creditLedger.deltaPaise, reason: creditLedger.reason, note: creditLedger.note, country: creditLedger.country, ref: creditLedger.ref, createdAt: creditLedger.createdAt })
+      .from(creditLedger).where(cond).orderBy(desc(creditLedger.createdAt)).limit(limit).offset(offset),
+  }));
+}
+
+export async function listPayments(db: Db, actor: AuthUser, limit = 500) {
+  assertAuthorized(actor, "org_settings.read");
+  return withOrg(db, actor.orgId, (tx) => tx.select({ id: payments.id, gateway: payments.gateway, gatewayPaymentId: payments.gatewayPaymentId, amountPaise: payments.amountPaise, currency: payments.currency, amountMinor: payments.amountMinor, status: payments.status, createdAt: payments.createdAt, paidAt: payments.paidAt })
+    .from(payments).orderBy(desc(payments.createdAt)).limit(Math.max(1, Math.min(20_000, limit))));
+}
+
+/** What was spent in the last `days` days: by service (calls, texts) and by country, from the credit history. */
+export async function usageSummary(db: Db, actor: AuthUser, days = 30) {
+  assertAuthorized(actor, "org_settings.read");
+  const d = Math.max(1, Math.min(366, Math.round(days)));
+  return withOrg(db, actor.orgId, async (tx) => {
+    const rows = await tx.select({ reason: creditLedger.reason, country: creditLedger.country, spent: sql<string>`sum(-${creditLedger.deltaPaise})`, n: sql<string>`count(*)` }).from(creditLedger)
+      .where(and(sql`${creditLedger.reason} in ('usage_call','usage_sms')`, sql`${creditLedger.createdAt} >= now() - make_interval(days => ${d})`)).groupBy(creditLedger.reason, creditLedger.country);
+    const by = { call: { paise: 0, count: 0 }, sms: { paise: 0, count: 0 } }, country = new Map<string, number>();
+    for (const r of rows) { const k = r.reason === "usage_call" ? "call" : "sms"; by[k].paise += Number(r.spent); by[k].count += Number(r.n); const c = r.country ?? "other"; country.set(c, (country.get(c) ?? 0) + Number(r.spent)); }
+    return { days: d, totalPaise: by.call.paise + by.sms.paise, calls: by.call, texts: by.sms, byCountry: [...country.entries()].map(([c, paise]) => ({ country: c, paise })).sort((a, b) => b.paise - a.paise) };
+  });
+}
+
+/** One payment as a receipt: who paid, how, how much, what was credited. Receipts exist only for payments that went through. */
+export async function getReceipt(db: Db, actor: AuthUser, paymentId: string) {
+  assertAuthorized(actor, "org_settings.read");
+  return withOrg(db, actor.orgId, async (tx) => {
+    const [p] = await tx.select().from(payments).where(eq(payments.id, paymentId));
+    if (!p || p.status !== "paid") return null;
+    const [org] = await tx.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, actor.orgId));
+    const [payer] = p.createdBy ? await tx.select({ email: users.email }).from(users).where(eq(users.id, p.createdBy)) : [];
+    const day = (p.paidAt ?? p.createdAt).toISOString().slice(0, 10).replace(/-/g, "");
+    return { number: `R-${day}-${p.id.slice(0, 8).toUpperCase()}`, orgName: org?.name ?? "", payerEmail: payer?.email ?? null, gateway: p.gateway, gatewayPaymentId: p.gatewayPaymentId, currency: p.currency, amountMinor: p.amountMinor, creditedPaise: p.amountPaise, paidAt: p.paidAt ?? p.createdAt };
+  });
+}
+
+// ------------------------------------------------------------------------------------------ staff: balances, live exchange rates
+
+/** Platform staff: every organisation's balance and what it topped up in the last `days` days. */
+export async function platformBalances(db: Db, actor: AuthUser, days = 30) {
+  assertAuthorized(actor, "platform.admin");
+  const r = await db.execute<{ org_id: string; org_name: string; topups_paise: string; balance_paise: string }>(sql`select * from platform_money(${Math.max(1, Math.min(366, Math.round(days)))})`);
+  return r.rows.map((x) => ({ orgId: x.org_id, orgName: x.org_name, topupsPaise: Number(x.topups_paise), balancePaise: Number(x.balance_paise) }));
+}
+
+const AUTO_CURRENCIES = ["USD", "EUR", "GBP", "NGN", "GHS", "ZAR", "KES"];
+
+/**
+ * Platform staff: sets every rate (for the currencies already listed, plus the ones the gateways take) from the market rate of the day
+ * (open.er-api.com, free, no key). Rates are paise per one unit. A rate that comes back strange (zero, or moving more than 25 percent at once) is skipped and listed.
+ */
+export async function refreshExchangeRates(db: Db, actor: AuthUser, fetcher: typeof fetch = fetch) {
+  assertAuthorized(actor, "platform.admin");
+  const res = await fetcher("https://open.er-api.com/v6/latest/INR", { signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  const body = res?.ok ? ((await res.json().catch(() => null)) as { result?: string; rates?: Record<string, number> } | null) : null;
+  if (!body || body.result !== "success" || !body.rates) throw new BillingError("The market rate service did not answer. Try again in a minute, or set the rates by hand.");
+  const existing = new Map((await db.select().from(exchangeRates)).map((r) => [r.currency, Number(r.paisePerUnit)]));
+  const wanted = [...new Set([...existing.keys(), ...AUTO_CURRENCIES])];
+  const updated: { currency: string; paisePerUnit: number }[] = [], skipped: { currency: string; why: string }[] = [];
+  await db.transaction(async (tx) => {
+    for (const c of wanted) {
+      const perInr = body.rates![c];
+      if (!perInr || !Number.isFinite(perInr) || perInr <= 0) { skipped.push({ currency: c, why: "no market rate" }); continue; }
+      const paise = Math.round((100 / perInr) * 1e6) / 1e6, before = existing.get(c);
+      if (before && Math.abs(paise - before) / before > 0.25) { skipped.push({ currency: c, why: `moved ${Math.round((100 * Math.abs(paise - before)) / before)} percent: check it and set it by hand` }); continue; }
+      await tx.execute(sql`insert into exchange_rates (currency, paise_per_unit, updated_at) values (${c}, ${paise}, now()) on conflict (currency) do update set paise_per_unit = excluded.paise_per_unit, updated_at = now()`);
+      updated.push({ currency: c, paisePerUnit: paise });
+    }
+    await tx.execute(sql`select set_config('app.org_id', ${actor.orgId}, true)`);
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "billing.exchange_rate_refresh", entity: "exchange_rates", after: { updated: updated.length, skipped: skipped.length } });
+  });
+  return { updated, skipped };
+}
+
+export async function deleteExchangeRate(db: Db, actor: AuthUser, currency: string) {
+  assertAuthorized(actor, "platform.admin");
+  const c = currency.trim().toUpperCase();
+  await db.transaction(async (tx) => {
+    const gone = await tx.delete(exchangeRates).where(eq(exchangeRates.currency, c)).returning({ c: exchangeRates.currency });
+    if (!gone.length) throw new BillingError("there is no rate for that currency");
+    await tx.execute(sql`select set_config('app.org_id', ${actor.orgId}, true)`);
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "billing.exchange_rate_delete", entity: "exchange_rates", after: { currency: c } });
+  });
+  return { currency: c };
+}
+
+// ------------------------------------------------------------------------------------------ low-balance alerts (worker)
+
+export interface LowBalanceJob { orgId: string; orgName: string; balancePaise: number; thresholdPaise: number; emails: string[] }
+export async function lowBalanceDue(db: Db, limit = 20): Promise<LowBalanceJob[]> {
+  const r = await db.execute<{ org_id: string; org_name: string; balance_paise: string; threshold_paise: string; emails: string[] }>(sql`select * from worker_low_balance_due(${limit})`);
+  return r.rows.map((x) => ({ orgId: x.org_id, orgName: x.org_name, balancePaise: Number(x.balance_paise), thresholdPaise: Number(x.threshold_paise), emails: x.emails }));
+}
+export async function lowBalanceSent(db: Db, orgId: string) { await db.execute(sql`select worker_low_balance_sent(${orgId}::uuid)`); }
