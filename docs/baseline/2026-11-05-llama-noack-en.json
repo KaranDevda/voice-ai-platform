@@ -1,0 +1,222 @@
+[
+ {
+  "firstWordMs": 1831,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 82,
+  "groundMs": 0,
+  "firstSentenceMs": 354,
+  "ttsFirstAudioMs": 1160,
+  "totalMs": 1515,
+  "answerMs": 1515
+ },
+ {
+  "firstWordMs": 611,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 80,
+  "groundMs": 0,
+  "firstSentenceMs": 379,
+  "ttsFirstAudioMs": 53,
+  "totalMs": 434,
+  "answerMs": 434
+ },
+ {
+  "firstWordMs": 690,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 76,
+  "groundMs": 0,
+  "firstSentenceMs": 444,
+  "ttsFirstAudioMs": 79,
+  "totalMs": 523,
+  "answerMs": 523
+ },
+ {
+  "firstWordMs": 563,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 75,
+  "groundMs": 0,
+  "firstSentenceMs": 346,
+  "ttsFirstAudioMs": 51,
+  "totalMs": 397,
+  "answerMs": 397
+ },
+ {
+  "firstWordMs": 298,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 77,
+  "groundMs": 0,
+  "firstSentenceMs": 271,
+  "ttsFirstAudioMs": 62,
+  "totalMs": 333,
+  "answerMs": 333
+ },
+ {
+  "firstWordMs": -6123,
+  "type": "timing",
+  "turn": 3,
+  "llmFirstTokenMs": 109,
+  "groundMs": 0,
+  "firstSentenceMs": 260,
+  "ttsFirstAudioMs": 66,
+  "totalMs": 325,
+  "answerMs": 6694
+ },
+ {
+  "firstWordMs": 786,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 118,
+  "groundMs": 0,
+  "firstSentenceMs": 542,
+  "ttsFirstAudioMs": 149,
+  "totalMs": 691,
+  "answerMs": 691
+ },
+ {
+  "firstWordMs": 827,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 82,
+  "groundMs": 0,
+  "firstSentenceMs": 342,
+  "ttsFirstAudioMs": 187,
+  "totalMs": 529,
+  "answerMs": 529
+ },
+ {
+  "firstWordMs": 1070,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 81,
+  "groundMs": 0,
+  "firstSentenceMs": 436,
+  "ttsFirstAudioMs": 479,
+  "totalMs": 917,
+  "answerMs": 917
+ },
+ {
+  "firstWordMs": 625,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 77,
+  "groundMs": 0,
+  "firstSentenceMs": 456,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 456,
+  "answerMs": 456
+ },
+ {
+  "firstWordMs": 517,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 77,
+  "groundMs": 0,
+  "firstSentenceMs": 350,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 350,
+  "answerMs": 350
+ },
+ {
+  "firstWordMs": 228,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 80,
+  "groundMs": 0,
+  "firstSentenceMs": 281,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 281,
+  "answerMs": 281
+ },
+ {
+  "firstWordMs": -6083,
+  "type": "timing",
+  "turn": 3,
+  "llmFirstTokenMs": 79,
+  "groundMs": 0,
+  "firstSentenceMs": 353,
+  "ttsFirstAudioMs": 48,
+  "totalMs": 401,
+  "answerMs": 5562
+ },
+ {
+  "firstWordMs": 772,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 119,
+  "groundMs": 0,
+  "firstSentenceMs": 502,
+  "ttsFirstAudioMs": 178,
+  "totalMs": 680,
+  "answerMs": 680
+ },
+ {
+  "firstWordMs": 1735,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 181,
+  "groundMs": 0,
+  "firstSentenceMs": 406,
+  "ttsFirstAudioMs": 1091,
+  "totalMs": 1497,
+  "answerMs": 1497
+ },
+ {
+  "firstWordMs": 1763,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 130,
+  "groundMs": 0,
+  "firstSentenceMs": 706,
+  "ttsFirstAudioMs": 755,
+  "totalMs": 1462,
+  "answerMs": 1462
+ },
+ {
+  "firstWordMs": 1050,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 105,
+  "groundMs": 0,
+  "firstSentenceMs": 826,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 826,
+  "answerMs": 826
+ },
+ {
+  "firstWordMs": 945,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 159,
+  "groundMs": 0,
+  "firstSentenceMs": 397,
+  "ttsFirstAudioMs": 216,
+  "totalMs": 613,
+  "answerMs": 613
+ },
+ {
+  "firstWordMs": 530,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 107,
+  "groundMs": 0,
+  "firstSentenceMs": 482,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 482,
+  "answerMs": 482
+ },
+ {
+  "firstWordMs": -6244,
+  "type": "timing",
+  "turn": 3,
+  "llmFirstTokenMs": 106,
+  "groundMs": 0,
+  "firstSentenceMs": 328,
+  "ttsFirstAudioMs": 46,
+  "totalMs": 374,
+  "answerMs": 5973
+ }
+]

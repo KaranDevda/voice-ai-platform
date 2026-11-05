@@ -1,0 +1,49 @@
+[
+ {
+  "firstWordMs": 1916,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 5531,
+  "groundMs": 0,
+  "firstSentenceMs": 7229,
+  "ttsFirstAudioMs": 920,
+  "totalMs": 0,
+  "answerMs": 8149,
+  "ackMs": 0
+ },
+ {
+  "firstWordMs": 4733,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 2315,
+  "groundMs": 0,
+  "firstSentenceMs": 2637,
+  "ttsFirstAudioMs": 126,
+  "totalMs": 2763,
+  "answerMs": 2763
+ },
+ {
+  "firstWordMs": 1965,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 2136,
+  "groundMs": 0,
+  "firstSentenceMs": 2771,
+  "ttsFirstAudioMs": 558,
+  "totalMs": 0,
+  "answerMs": 3330,
+  "ackMs": 0
+ },
+ {
+  "firstWordMs": 1938,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 4582,
+  "groundMs": 0,
+  "firstSentenceMs": 5836,
+  "ttsFirstAudioMs": 1163,
+  "totalMs": 1,
+  "answerMs": 6999,
+  "ackMs": 1
+ }
+]

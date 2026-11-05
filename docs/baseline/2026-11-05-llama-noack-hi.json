@@ -1,0 +1,222 @@
+[
+ {
+  "firstWordMs": 2322,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 184,
+  "groundMs": 0,
+  "firstSentenceMs": 336,
+  "ttsFirstAudioMs": 92,
+  "totalMs": 429,
+  "answerMs": 429
+ },
+ {
+  "firstWordMs": 2860,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 195,
+  "groundMs": 0,
+  "firstSentenceMs": 871,
+  "ttsFirstAudioMs": 12,
+  "totalMs": 884,
+  "answerMs": 884
+ },
+ {
+  "firstWordMs": 2639,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 107,
+  "groundMs": 0,
+  "firstSentenceMs": 812,
+  "ttsFirstAudioMs": 3,
+  "totalMs": 815,
+  "answerMs": 815
+ },
+ {
+  "firstWordMs": 8218,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 110,
+  "groundMs": 0,
+  "firstSentenceMs": 837,
+  "ttsFirstAudioMs": 5522,
+  "totalMs": 6359,
+  "answerMs": 6359
+ },
+ {
+  "firstWordMs": 2829,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 115,
+  "groundMs": 0,
+  "firstSentenceMs": 934,
+  "ttsFirstAudioMs": 9,
+  "totalMs": 943,
+  "answerMs": 943
+ },
+ {
+  "firstWordMs": -2806,
+  "type": "timing",
+  "turn": 3,
+  "llmFirstTokenMs": 4305,
+  "groundMs": 0,
+  "firstSentenceMs": 4543,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 4543,
+  "answerMs": 4543
+ },
+ {
+  "firstWordMs": 2337,
+  "type": "timing",
+  "turn": 2,
+  "llmFirstTokenMs": 113,
+  "groundMs": 0,
+  "firstSentenceMs": 556,
+  "ttsFirstAudioMs": 3,
+  "totalMs": 559,
+  "answerMs": 559
+ },
+ {
+  "firstWordMs": 3491,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 211,
+  "groundMs": 0,
+  "firstSentenceMs": 533,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 533,
+  "answerMs": 533
+ },
+ {
+  "firstWordMs": 5385,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 176,
+  "groundMs": 0,
+  "firstSentenceMs": 1469,
+  "ttsFirstAudioMs": 3,
+  "totalMs": 1475,
+  "answerMs": 1475
+ },
+ {
+  "firstWordMs": 4023,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 163,
+  "groundMs": 0,
+  "firstSentenceMs": 1437,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 1437,
+  "answerMs": 1437
+ },
+ {
+  "firstWordMs": 5246,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 191,
+  "groundMs": 0,
+  "firstSentenceMs": 1981,
+  "ttsFirstAudioMs": 22,
+  "totalMs": 2004,
+  "answerMs": 2004
+ },
+ {
+  "firstWordMs": 4798,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 167,
+  "groundMs": 0,
+  "firstSentenceMs": 1691,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 1691,
+  "answerMs": 1691
+ },
+ {
+  "firstWordMs": 844,
+  "type": "timing",
+  "turn": 3,
+  "llmFirstTokenMs": 816,
+  "groundMs": 0,
+  "firstSentenceMs": 1529,
+  "ttsFirstAudioMs": 6933,
+  "totalMs": 8465,
+  "answerMs": 8465
+ },
+ {
+  "firstWordMs": 5284,
+  "type": "timing",
+  "turn": 2,
+  "llmFirstTokenMs": 204,
+  "groundMs": 0,
+  "firstSentenceMs": 942,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 942,
+  "answerMs": 942
+ },
+ {
+  "firstWordMs": 3700,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 408,
+  "groundMs": 0,
+  "firstSentenceMs": 754,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 754,
+  "answerMs": 754
+ },
+ {
+  "firstWordMs": 5481,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 171,
+  "groundMs": 0,
+  "firstSentenceMs": 1078,
+  "ttsFirstAudioMs": 15,
+  "totalMs": 1111,
+  "answerMs": 1111
+ },
+ {
+  "firstWordMs": 5313,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 202,
+  "groundMs": 0,
+  "firstSentenceMs": 1352,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 1352,
+  "answerMs": 1352
+ },
+ {
+  "firstWordMs": 2768,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 122,
+  "groundMs": 0,
+  "firstSentenceMs": 854,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 854,
+  "answerMs": 854
+ },
+ {
+  "firstWordMs": 2815,
+  "type": "timing",
+  "turn": 1,
+  "llmFirstTokenMs": 110,
+  "groundMs": 0,
+  "firstSentenceMs": 982,
+  "ttsFirstAudioMs": 0,
+  "totalMs": 982,
+  "answerMs": 982
+ },
+ {
+  "firstWordMs": -1839,
+  "type": "timing",
+  "turn": 3,
+  "llmFirstTokenMs": 223,
+  "groundMs": 0,
+  "firstSentenceMs": 931,
+  "ttsFirstAudioMs": 4499,
+  "totalMs": 5430,
+  "answerMs": 5430
+ }
+]

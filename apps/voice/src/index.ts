@@ -131,6 +131,8 @@ function llm(say?: Say, choice?: { model: "default" | "openrouter"; openrouterMo
       return backup ? withFailover(main, backup, { firstTokenTimeoutMs: Number(env("OPENROUTER_FIRST_TOKEN_TIMEOUT_MS") ?? 6000), onBackup: (why) => console.warn(`OpenRouter skipped (${why}); the local model answered`) }) : main;
     }
   }
+  // LLM_PRIMARY=local: the local model (Llama 3.2) is the main model, not only the backup. Much faster to start (about 0.1 s against seconds for AskG1) but less accurate, so it is a choice, off by default.
+  if (env("LLM_PRIMARY") === "local" && local) return local;
   if (!apiKey || !baseUrl) {
     if (!local) throw new Error("AskG1 is not configured (ASKG1_API_KEY, ASKG1_BASE_URL)");
     say?.({ type: "notice", message: "AskG1 is not configured, so a small local model (Llama 3.2) is answering. It is less accurate than AskG1, especially in Hindi." });

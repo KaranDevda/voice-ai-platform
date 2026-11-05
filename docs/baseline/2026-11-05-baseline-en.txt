@@ -1,9 +1,9 @@
 Load test: 20 scripted calls, 1 at a time, 1 question(s) each, voice pocket:alba, en
 Preparing the spoken questions...
 ....................
-Done in 255.6 s
-Calls: 20 of 20 finished all their questions; most sessions open at once: 2
-Time from the end of the question to the first word (20 answers): median 0.28 s, p95 6.32 s, slowest 6.32 s
-Where the time goes (median of 20): listening and writing down the words 0.28 s, AI first word 1.25 s (of which company-knowledge search 0.00 s), AI first sentence 1.42 s, voice first sound 0.07 s, from transcript to first sound 0.00 s
-Real answer heard (the acknowledgement is not counted, 20 answers): median 1.82 s, p95 22.69 s; acknowledgement played on 15 of 20 turns
+Done in 365.4 s
+Calls: 20 of 20 finished all their questions; most sessions open at once: 1
+Time from the end of the question to the first word (20 answers): median 0.27 s, p95 21.37 s, slowest 21.37 s
+Where the time goes (median of 17): listening and writing down the words 0.26 s, AI first word 3.24 s (of which company-knowledge search 0.00 s), AI first sentence 3.31 s, voice first sound 0.06 s, from transcript to first sound 0.00 s
+Real answer heard (the acknowledgement is not counted, 17 answers): median 3.91 s, p95 27.13 s; acknowledgement played on 12 of 17 turns
 Latency gate (median under 1.0 s): MET
