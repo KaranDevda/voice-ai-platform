@@ -10,12 +10,14 @@
 import { writeFileSync } from "node:fs";
 import { createDb, searchKnowledge } from "@voiceai/db";
 import { createAskG1 } from "@voiceai/providers";
-import { knowledgeBlock, systemPromptFor, voiceRulesFor } from "./prompt";
+import { sessionLanguageRule } from "./language";
+import { knowledgeBlock, voiceRulesFor } from "./prompt";
 import { hindiToEnglishKeywords, relevantExcerpt } from "./knowledge";
 
 try { process.loadEnvFile(".env.local"); } catch { /* keys can also come from the real environment */ }
 const arg = (name: string, fallback: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 && process.argv[i + 1] ? process.argv[i + 1]! : fallback; };
 const MODEL = arg("model", "llama");
+const ORG_PROMPT = "You are a helpful, concise phone assistant. Answer only from the knowledge base."; // the default in Settings
 const JSON_OUT = arg("json", "");
 
 interface Q { lang: "en" | "hi"; q: string; must: RegExp[]; trap?: boolean; why: string }
@@ -62,7 +64,8 @@ for (const item of QUESTIONS) {
   const hits = query ? await searchKnowledge(db, user, query, 2) : [];
   kbText += ` ${hits.map((r) => r.content).join(" ")}`;
   const found = hits.map((r) => `${r.title}: ${relevantExcerpt(r.content, query)}`);
-  const system = `${systemPromptFor(item.lang)}\n\n${voiceRulesFor(item.lang)}${item.lang === "hi" ? "\n\nThe caller is speaking Hindi. Reply in Hindi only, written in Devanagari script." : ""}`;
+  // Exactly what a call with a signed-in organisation sends: the organisation's own instruction (Settings default), the voice rules ONCE, and the language rule.
+  const system = `${ORG_PROMPT}\n\n${voiceRulesFor(item.lang)}${sessionLanguageRule(item.lang)}`;
   const messages = [{ role: "system" as const, content: system }, { role: "user" as const, content: `${item.q}\n[note: ${knowledgeBlock(found)}]` }];
   const t0 = performance.now(); let first = 0, answer = "";
   try { for await (const t of llm.chat({ messages, signal: AbortSignal.timeout(100_000) })) { if (!first) first = performance.now() - t0; answer += t; } } catch (e) { answer = `(error: ${e instanceof Error ? e.message : e})`; }

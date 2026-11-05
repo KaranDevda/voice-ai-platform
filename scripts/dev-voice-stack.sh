@@ -44,7 +44,7 @@ if [ -x "$OV_PY" ] && [ -f "$LOCAL/models/openvoice-v2/converter/checkpoint.pth"
   # On the Apple GPU: the same model and the same voice, 0.3 s per sentence instead of 1.3 to 3.5 s. VOICE_CONVERT_DEVICE=cpu goes back.
   PYTORCH_ENABLE_MPS_FALLBACK=1 VOICE_CONVERT_DEVICE="${VOICE_CONVERT_DEVICE:-mps}" "$OV_PY" scripts/voice-convert-server.py > "$LOCAL/logs/voice-convert.log" 2>&1 & pids+=($!)
 else echo "Note: voice conversion is not installed, so Hindi uses the built-in voice. See docs/LOCAL_VOICE_STACK.md."; fi
-# Backup AI (3 calls at once, 8192 tokens each: the Hindi instruction alone is about 5,400 tokens, so 4096 per call made every Hindi request fail): answers when AskG1 is unreachable or slow (VPN off, server down). Needs the complete model file (see docs/LOCAL_VOICE_STACK.md).
+# Backup AI (3 calls at once, 8192 tokens each: a Hindi call sends about 2,700 tokens of instruction, so the old 4096 left little room for knowledge and a long conversation): answers when AskG1 is unreachable or slow (VPN off, server down). Needs the complete model file (see docs/LOCAL_VOICE_STACK.md).
 LLAMA="$LOCAL/llama.cpp/build/bin/llama-server"; LLAMA_MODEL="$LOCAL/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 if [ -x "$LLAMA" ] && [ -f "$LLAMA_MODEL" ] && [ "$(stat -f%z "$LLAMA_MODEL" 2>/dev/null || stat -c%s "$LLAMA_MODEL")" = "2019377696" ]; then
   "$LLAMA" -m "$LLAMA_MODEL" --host 127.0.0.1 --port 8090 -c 24576 -np 3 -ngl 99 > "$LOCAL/logs/llama.log" 2>&1 & pids+=($!)
