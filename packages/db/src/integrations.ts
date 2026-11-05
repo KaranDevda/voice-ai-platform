@@ -64,7 +64,7 @@ export async function retryDelivery(db: Db, actor: AuthUser, deliveryId: string)
 
 // ------------------------------------------------------------------------------------------ the sender (worker)
 
-export interface CrmJob { id: string; event: string; payload: unknown; url: string; secret: string; attempts: number }
+export type CrmJob = { id: string; event: string; payload: unknown; url: string; secret: string; attempts: number };
 
 /** The deliveries that are due now. Run by ONE worker. */
 export async function crmClaim(db: Db, limit = 20): Promise<CrmJob[]> {
