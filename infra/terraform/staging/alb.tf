@@ -83,6 +83,8 @@ locals {
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
+  # Reviewed: with a certificate this listener only redirects to HTTPS (see the default_action below); plain HTTP serving exists for the no-certificate smoke test only.
+  # nosemgrep: terraform.aws.security.insecure-load-balancer-tls-version.insecure-load-balancer-tls-version
   protocol          = "HTTP"
   default_action {
     type             = local.https ? "redirect" : "forward"

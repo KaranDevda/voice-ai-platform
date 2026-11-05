@@ -165,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
                     sim = float(torch.nn.functional.cosine_similarity(conv.extract_se([wav]).flatten(), target.flatten(), dim=0))
                     return self._send(200, json.dumps({"similarity": round(sim, 4)}).encode(), "application/json")
                 tau = float((parse_qs(url.query).get("tau") or [TAU])[0])
-                ckey = (voice_id, tau, os.path.getmtime(fingerprint_path(voice_id)), hashlib.sha1(open(wav, "rb").read()).hexdigest())
+                ckey = (voice_id, tau, os.path.getmtime(fingerprint_path(voice_id)), hashlib.sha256(open(wav, "rb").read()).hexdigest())
                 if ckey in converted:
                     return self._send(200, converted[ckey], "audio/wav")
                 target_f0 = load_f0(voice_id)

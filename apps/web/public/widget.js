@@ -25,7 +25,7 @@
   button.onclick = function () {
     if (frame) return close();
     frame = document.createElement("iframe");
-    frame.src = base + "/widget/frame";
+    frame.src = base + "/widget/frame?o=" + encodeURIComponent(location.origin);
     frame.allow = "microphone";
     frame.title = label;
     frame.style.cssText = "position:fixed;bottom:76px;" + side + ":20px;z-index:2147483000;width:340px;height:380px;max-width:calc(100vw - 40px);border:0;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.35);background:#0d1426";

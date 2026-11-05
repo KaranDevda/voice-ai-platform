@@ -9,6 +9,12 @@ interface Line { who: "you" | "ai"; text: string }
  * A small voice call with the organisation's AI agent, for the frame on a customer's website. The site's script hands over a 60-second
  * voice pass; the microphone and the voice service connection are opened here, on the app's own address.
  */
+/** The address of the site that embedded this frame, given by widget.js in the frame address (?o=). Messages go only to it, and only from it. */
+const parentOrigin: string | null = (() => {
+  if (typeof window === "undefined") return null;
+  try { const o = new URL(new URLSearchParams(window.location.search).get("o") ?? "").origin; return o === "null" ? null : o; } catch { return null; }
+})();
+
 export function WidgetFrame() {
   const [phase, setPhase] = useState<Phase>("waiting");
   const [message, setMessage] = useState("");
@@ -30,14 +36,15 @@ export function WidgetFrame() {
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (e.source !== window.parent || !e.data) return;
+      if (e.source !== window.parent || e.origin !== parentOrigin || !e.data) return;
       if (e.data.type === "voiceai-start" && typeof e.data.token === "string") {
         startRef.current = { token: e.data.token, url: String(e.data.url), language: e.data.language, voice: String(e.data.voice) };
         setPhase("ready");
       } else if (e.data.type === "voiceai-error") { setMessage(String(e.data.message)); setPhase("error"); }
     };
     window.addEventListener("message", onMessage);
-    window.parent.postMessage({ type: "voiceai-ready" }, "*"); // no secret in it: it only tells the page the frame is listening
+    if (!parentOrigin) { setMessage("This widget is not set up correctly on the website."); setPhase("error"); return () => window.removeEventListener("message", onMessage); }
+    window.parent.postMessage({ type: "voiceai-ready" }, parentOrigin); // only the site that embedded this frame (never "*")
     return () => { window.removeEventListener("message", onMessage); stop(); };
   }, [stop]);
 
