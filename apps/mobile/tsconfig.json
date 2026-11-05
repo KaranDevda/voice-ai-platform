@@ -2,5 +2,5 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": { "strict": true, "noEmit": true },
   "include": ["**/*.ts", "**/*.tsx", "../../packages/mobile-core/src/**/*.ts"],
-  "exclude": ["node_modules", "**/*.test.ts"]
+  "exclude": ["node_modules", "**/*.test.ts", "../../packages/mobile-core/src/**/*.test.ts"]
 }
