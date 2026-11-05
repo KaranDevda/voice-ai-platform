@@ -1,7 +1,7 @@
 import { cloningReady } from "@/lib/providers";
 import { Forbidden } from "@/components/forbidden";
 import { StudioEditor } from "@/components/studio-editor";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { requirePageUser } from "@/lib/page-auth";
 import { voiceOptionsFor } from "@/lib/voices";
 

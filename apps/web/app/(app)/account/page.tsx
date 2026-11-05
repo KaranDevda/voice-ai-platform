@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { AccountPanel } from "@/components/account-panel";
 import { profileOf, requirePageUser } from "@/lib/page-auth";

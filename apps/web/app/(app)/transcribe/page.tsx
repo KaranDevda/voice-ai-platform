@@ -1,6 +1,6 @@
 import { Forbidden } from "@/components/forbidden";
 import { TranscribeWorkspace } from "@/components/transcribe-workspace";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { requirePageUser } from "@/lib/page-auth";
 
 export default async function TranscribePage() {

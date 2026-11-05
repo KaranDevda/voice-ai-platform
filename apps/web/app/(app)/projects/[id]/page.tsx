@@ -6,7 +6,7 @@ import { Forbidden } from "@/components/forbidden";
 import { PostButton } from "@/components/post-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { WaveformPlayer } from "@/components/waveform-player";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";

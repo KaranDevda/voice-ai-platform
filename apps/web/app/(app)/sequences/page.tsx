@@ -1,7 +1,7 @@
 import { listSequences } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { SequencesAdmin } from "@/components/sequences-admin";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 

@@ -1,7 +1,7 @@
 import { getBilling, listCountryRates, listExchangeRates, platformBalances, usageSummary } from "@voiceai/db";
 import { BillingPanel } from "@/components/billing-panel";
 import { Forbidden } from "@/components/forbidden";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { gatewayConfigured, gatewayStatus } from "@/lib/payments";
 import { headers } from "next/headers";
 import { allowed, requirePageUser } from "@/lib/page-auth";

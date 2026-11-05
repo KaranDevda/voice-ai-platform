@@ -1,6 +1,7 @@
 import { Forbidden } from "@/components/forbidden";
 import { LibraryGrid } from "@/components/library-grid";
-import { Notice, PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
+import { Notice } from "@/components/ui/page";
 import { requirePageUser } from "@/lib/page-auth";
 import { voiceOptionsFor } from "@/lib/voices";
 

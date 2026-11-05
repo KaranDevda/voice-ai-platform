@@ -1,7 +1,7 @@
 import { getAgentConfig, listKnowledge } from "@voiceai/db";
 import { AgentConsole } from "@/components/agent-console";
 import { Forbidden } from "@/components/forbidden";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { checkProviders } from "@/lib/providers";
 import { getDb } from "@/lib/server";

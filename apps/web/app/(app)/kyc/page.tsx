@@ -1,7 +1,7 @@
 import { getKyc } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { KycPanel } from "@/components/kyc-panel";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 

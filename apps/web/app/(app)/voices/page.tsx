@@ -1,7 +1,8 @@
 import { listVoiceAdmin, listVoiceSampleIds } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { VoiceAdmin } from "@/components/voice-admin";
-import { Notice, PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
+import { Notice } from "@/components/ui/page";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 

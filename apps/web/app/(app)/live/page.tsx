@@ -1,7 +1,7 @@
 import { listLeadOptions } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { LiveVoice } from "@/components/live-voice";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { voiceOptionsFor } from "@/lib/voices";

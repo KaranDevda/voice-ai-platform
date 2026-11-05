@@ -1,7 +1,7 @@
 import { callTimingStats, listCampaigns } from "@voiceai/db";
 import { CampaignsAdmin } from "@/components/campaigns-admin";
 import { Forbidden } from "@/components/forbidden";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 

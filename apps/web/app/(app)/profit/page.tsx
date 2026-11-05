@@ -1,7 +1,7 @@
 import { profitReport } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { ProfitPanel } from "@/components/profit-panel";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 

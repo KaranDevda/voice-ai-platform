@@ -2,7 +2,7 @@ import { listIntegrations, listWidgets } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { IntegrationsPanel } from "@/components/integrations-panel";
 import { WidgetsPanel } from "@/components/widgets-panel";
-import { PageHeader } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page-header";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 
