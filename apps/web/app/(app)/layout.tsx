@@ -8,7 +8,8 @@ import { LanguageSelect } from "@/components/language-select";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { navFor, profileOf, requirePageUser } from "@/lib/page-auth";
-import { asLang, LANG_COOKIE, tr } from "@/lib/i18n";
+import { tr } from "@/lib/i18n";
+import { currentLang, languageOptions, overridesFor } from "@/lib/i18n-server";
 import { SESSION_COOKIE, verifyToken, type SessionClaims } from "@/lib/session";
 import { titleCase } from "@/lib/utils";
 
@@ -23,8 +24,11 @@ function readableOn(hex: string): string {
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requirePageUser();
   const [profile, rawGroups, jar] = [await profileOf(user), navFor(user), await cookies()];
-  const lang = asLang(jar.get(LANG_COOKIE)?.value);
-  const groups = rawGroups.map((g) => ({ label: tr(lang, g.label), items: g.items.map((i) => ({ ...i, label: tr(lang, i.label) })) }));
+  const lang = await currentLang();
+  const over = await overridesFor(lang);
+  const t = (text: string) => over[text] ?? tr(lang, text);
+  const groups = rawGroups.map((g) => ({ label: t(g.label), items: g.items.map((i) => ({ ...i, label: t(i.label) })) }));
+  const langOptions = await languageOptions();
   const brand = profile.brand;
   const brandStyle = brand.primary
     ? ({ "--primary": brand.primary, "--wave": brand.primary, "--primary-soft": `color-mix(in srgb, ${brand.primary} 18%, var(--background))`, "--primary-foreground": readableOn(brand.primary) } as CSSProperties)
@@ -40,7 +44,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <BizfyMark className="h-9 w-9" />
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight">{brand.name || "Bizfy Voice AI"}</div>
-            <div className="text-xs text-muted-foreground">{brand.tagline || tr(lang, "Calls · voices · agents")}</div>
+            <div className="text-xs text-muted-foreground">{brand.tagline || t("Calls · voices · agents")}</div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-3 pb-4"><NavLinks groups={groups} orientation="vertical" /></div>
@@ -56,7 +60,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <div className="truncate text-sm font-medium">{profile.orgName}</div>
             <div className="truncate text-xs text-muted-foreground md:hidden">{profile.email}</div>
           </div>
-          <div className="flex items-center gap-1"><a href="/account" className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{tr(lang, "Account")}</a><LanguageSelect initial={lang} label={tr(lang, "Language")} /><ThemeToggle initial={theme} /><LogoutButton /></div>
+          <div className="flex items-center gap-1"><a href="/account" className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{t("Account")}</a><LanguageSelect initial={lang} label={t("Language")} options={langOptions} /><ThemeToggle initial={theme} /><LogoutButton /></div>
         </header>
         <div className="border-b border-border bg-card md:hidden"><NavLinks groups={groups} orientation="horizontal" /></div>
         <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</main>

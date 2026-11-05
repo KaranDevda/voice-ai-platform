@@ -21,3 +21,4 @@ export * from "./integrations";
 export * from "./widgets";
 export * from "./password";
 export * from "./scheduling";
+export * from "./content";

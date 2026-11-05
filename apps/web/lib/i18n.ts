@@ -53,8 +53,13 @@ const ROWS: Record<string, string[]> = {
 };
 
 /** `text` in the language, or in English when there is no translation. */
-export function tr(lang: Lang, text: string): string {
+/** Every text the interface can translate (the editor lists these). */
+export const TRANSLATABLE: readonly string[] = Object.keys(ROWS);
+/** The built-in translation of `text`, or "" when there is none. */
+export const builtInTranslation = (lang: string, text: string): string => (lang === "en" ? text : ROWS[text]?.[ORDER.indexOf(lang as Lang)] ?? "");
+
+export function tr(lang: string, text: string): string {
   if (lang === "en") return text;
   const row = ROWS[text];
-  return row?.[ORDER.indexOf(lang)] ?? text;
+  return row?.[ORDER.indexOf(lang as Lang)] ?? text;
 }
