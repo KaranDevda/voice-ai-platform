@@ -60,12 +60,22 @@ export function extractJsonObject(text: string): string | null {
   return null;
 }
 
+/** Fixes a stray quote after a number in the two numeric fields, and a trailing comma. Nothing else is touched. */
+export function repairJson(json: string): string {
+  return json.replace(/("(?:sentiment_score|confidence)"\s*:\s*-?\d+(?:\.\d+)?)"/g, "$1").replace(/,(\s*[}\]])/g, "$1");
+}
+
 /** The model's answer as a safe, complete analysis, or null when it cannot be used (the caller then retries later). */
 export function parseAnalysis(text: string): CallAnalysis | null {
-  const json = extractJsonObject(text);
+  // The extractor counts quotes, so a stray one hides the whole object: look again after repairing.
+  const json = extractJsonObject(text) ?? extractJsonObject(repairJson(text));
   if (!json) return null;
   let parsed: z.infer<typeof raw>;
-  try { const r = raw.safeParse(JSON.parse(json)); if (!r.success) return null; parsed = r.data; } catch { return null; }
+  try { const r = raw.safeParse(JSON.parse(json)); if (!r.success) return null; parsed = r.data; } catch {
+    // Small models slip now and then ("confidence": 0", or a comma before the closing brace). At temperature 0 asking again gives the same slip,
+    // so a call could never be analysed: repair those two slips, only for invalid JSON, and still require the full shape.
+    try { const r = raw.safeParse(JSON.parse(repairJson(json))); if (!r.success) return null; parsed = r.data; } catch { return null; }
+  }
   const score = clamp(Number.isFinite(parsed.sentiment_score) ? parsed.sentiment_score! : 0, -1, 1);
   const word = (parsed.sentiment ?? "").toLowerCase();
   // The words and the number must agree: when the model's word contradicts its number, the number decides.

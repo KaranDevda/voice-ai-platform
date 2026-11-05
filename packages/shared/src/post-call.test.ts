@@ -63,3 +63,30 @@ describe("parseAnalysis", () => {
     expect(a.summary).toHaveLength(600); expect(a.nextAction).toHaveLength(300);
   });
 });
+
+describe("parseAnalysis: a model that slips", () => {
+  const ok = '{"summary": "The caller asked about pricing.", "intent": "pricing_inquiry", "sentiment_score": 0.5, "sentiment": "neutral", "next_action": "send prices", "suggested_status": "contacted", "confidence": 0.8, "do_not_call": false}';
+  it("repairs a stray quote after a number (the real case that blocked a call)", () => {
+    const bad = ok.replace('"confidence": 0.8', '"confidence": 0"').replace('"sentiment_score": 0.5', '"sentiment_score": 0.5"');
+    const r = parseAnalysis(bad);
+    expect(r?.summary).toBe("The caller asked about pricing.");
+    expect(r?.sentimentScore).toBe(0.5);
+  });
+  it("repairs the exact answer a model gave for a real call", () => {
+    const real = '{"summary": "The caller asked for pricing details and was connected to a colleague.", "intent": "pricing_inquiry", "sentiment_score": 0.5, "sentiment": "neutral", "next_action": "ask the colleague for pricing details", "suggested_status": "contacted", "confidence": 0", "do_not_call": false}';
+    const r = parseAnalysis(real);
+    expect(r?.intent).toBe("pricing_inquiry");
+    expect(r?.suggestedStatus).toBe("contacted");
+    expect(parseAnalysis(`Here is the analysis:\n${real}`)?.intent).toBe("pricing_inquiry");
+  });
+  it("repairs a trailing comma", () => { expect(parseAnalysis(ok.replace('"do_not_call": false}', '"do_not_call": false,}'))?.doNotCall).toBe(false); });
+  it("leaves a valid answer, and a string that ends in a digit, alone", () => {
+    expect(parseAnalysis(ok)?.intent).toBe("pricing_inquiry");
+    expect(parseAnalysis(ok.replace("asked about pricing.", "asked about plan 5"))?.summary).toContain("plan 5");
+  });
+  it("still refuses what is not an analysis", () => {
+    expect(parseAnalysis('{"summary": 5}')).toBeNull();
+    expect(parseAnalysis("not json at all")).toBeNull();
+    expect(parseAnalysis('{"intent": "x", "confidence": 0"}')).toBeNull(); // repaired but still missing the summary
+  });
+});
