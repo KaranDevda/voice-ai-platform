@@ -21,7 +21,15 @@ const config: NextConfig = {
   // Pages already visited re-open from the browser's memory for 30 s, and the icon library is split per icon.
   experimental: { staleTimes: { dynamic: 30 }, optimizePackageImports: ["lucide-react"] },
   async headers() {
-    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+    // The widget page is the one page other sites may frame (its calls are guarded by the widget's list of sites, checked when the voice pass is issued).
+    const FRAMEABLE = [
+      { key: "Content-Security-Policy", value: "frame-ancestors *; base-uri 'self'; object-src 'none'; form-action 'none'" },
+      ...SECURITY_HEADERS.filter((h) => !["Content-Security-Policy", "X-Frame-Options"].includes(h.key)),
+    ];
+    return [
+      { source: "/widget/frame", headers: FRAMEABLE },
+      { source: "/:path((?!widget/frame$).*)", headers: SECURITY_HEADERS },
+    ];
   },
 };
 

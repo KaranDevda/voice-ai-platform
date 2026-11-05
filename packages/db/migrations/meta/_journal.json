@@ -148,6 +148,13 @@
       "when": 1793120722024,
       "tag": "0020_campaign_ab_amd",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793121722024,
+      "tag": "0021_widgets",
+      "breakpoints": true
     }
   ]
 }

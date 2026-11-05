@@ -1,6 +1,6 @@
 import { boolean, index, integer, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, orgIsolationPolicy, tstz } from "./_common";
-import { organizations } from "./org";
+import { organizations, users } from "./org";
 
 export const CRM_EVENTS = ["call.completed", "call.analyzed", "lead.created", "lead.status_changed"] as const;
 
@@ -39,4 +39,24 @@ export const crmDeliveries = pgTable(
     deliveredAt: tstz("delivered_at"),
   },
   (t) => [index("crm_deliveries_due_idx").on(t.status, t.nextAttemptAt), index("crm_deliveries_org_created_idx").on(t.orgId, t.createdAt), orgIsolationPolicy()],
+).enableRLS();
+
+/** A voice button an organisation puts on its own website. `origins` are the only sites that may start a call with it. */
+export const widgets = pgTable(
+  "widgets",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    name: text("name").notNull(),
+    /** Public. It only says which widget; the sites in `origins` are what keeps it from being used elsewhere. */
+    key: text("key").notNull().unique(),
+    origins: text("origins").array().notNull(),
+    language: text("language", { enum: ["en", "hi", "en-hi"] }).notNull().default("en-hi"),
+    voice: text("voice"),
+    active: boolean("active").notNull().default(true),
+    /** The calls run with this person's permissions. */
+    createdBy: uuid("created_by").notNull().references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index("widgets_org_idx").on(t.orgId), orgIsolationPolicy()],
 ).enableRLS();
