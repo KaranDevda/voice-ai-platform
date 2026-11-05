@@ -7,7 +7,8 @@ Run:  .local/mlx-venv/bin/python scripts/chatterbox-mlx-server.py          (port
 Then set CHATTERBOX_URL=http://127.0.0.1:8771 in apps/web/.env.local (and apps/voice/.env.local) and restart them.
 """
 import hmac, io, json, os, random, re, threading, time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import queue
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np, soundfile as sf
 import mlx.core as mx
 from mlx_audio.tts.utils import load_model
@@ -23,7 +24,21 @@ if HOST not in ("127.0.0.1", "localhost") and not TOKEN:
 MODEL_ID = os.environ.get("CHATTERBOX_MLX_MODEL", "mlx-community/chatterbox-multilingual-v3")
 model = load_model(MODEL_ID)
 SR = int(getattr(model, "sample_rate", 24000))
-lock = threading.Lock()  # one run at a time on the GPU
+jobs: "queue.Queue" = queue.Queue()  # work for the main thread, which owns the model
+
+
+def run_on_model_thread(fn):
+    """Runs fn on the main thread (where the model lives) and waits for the answer, or re-raises its error."""
+    box: dict = {}
+    done = threading.Event()
+    def job():
+        try: box["v"] = fn()
+        except BaseException as e: box["e"] = e
+        done.set()
+    jobs.put(job)
+    done.wait()
+    if "e" in box: raise box["e"]
+    return box["v"]
 conds_cache: dict = {}   # voice id -> (recording mtime, prepared voice)
 os.makedirs(VOICES, exist_ok=True)
 print(f"chatterbox (MLX, Apple silicon) ready, {HOST}:{PORT}", flush=True)
@@ -213,14 +228,17 @@ class H(BaseHTTPRequestHandler):
             if not ID_RE.fullmatch(vid) or lang not in ("auto", "en", "hi") or not text or len(text) > 12000: return self._send(400, b"bad request")
             if not os.path.exists(ref_path(vid)): return self._send(404, b"no reference recording for this voice")
             t0 = time.time()
-            with lock:
-                wav = synth(text, vid, lang, req.get("exaggeration"), req.get("cfg_weight"), req.get("temperature"), req.get("seed"))
+            wav = run_on_model_thread(lambda: synth(text, vid, lang, req.get("exaggeration"), req.get("cfg_weight"), req.get("temperature"), req.get("seed")))
             buf = io.BytesIO(); sf.write(buf, wav, SR, format="WAV", subtype="PCM_16")
             self._send(200, buf.getvalue(), "audio/wav", {"x-seconds": f"{wav.size / SR:.2f}", "x-render-seconds": f"{time.time() - t0:.2f}"})
         except Exception as e:
             self._send(500, str(e).encode()[:300])
 
 
-# One request at a time, on the main thread: MLX streams belong to the thread that loaded the model ("There is no Stream(gpu, 0) in current thread"),
-# and only one run can use the GPU at once anyway. Uploads and health checks wait while a line is being made.
-HTTPServer((HOST, PORT), H).serve_forever()
+# MLX streams belong to the thread that loaded the model ("There is no Stream(gpu, 0) in current thread"), so every synthesis runs on THIS (the main)
+# thread, one at a time. The web server runs on other threads and hands lines to this one through a queue, so health checks, uploads and
+# checks for a voice are answered at once even while a line is being made (the app treats a slow health check as "Chatterbox is down").
+threading.Thread(target=ThreadingHTTPServer((HOST, PORT), H).serve_forever, daemon=True).start()
+while True:
+    job = jobs.get()
+    job()

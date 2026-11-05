@@ -1,27 +1,25 @@
 {
  "model": "askg1",
- "pass": 8,
+ "pass": 13,
  "n": 16,
  "results": [
   {
    "q": "How much does the Starter plan cost?",
-   "a": "The Starter plan costs 1,999 rupees per month. It includes up to 3 users and call recording for 30 days.",
+   "a": "The Starter plan costs 1,999 rupees per month.",
    "ok": true,
    "missing": [],
    "invented": [],
-   "firstMs": 82663.077458,
-   "totalMs": 83238.874667
+   "firstMs": 29094.23425,
+   "totalMs": 29096.682792
   },
   {
    "q": "What is the price of the Business plan and how many users does it include?",
-   "a": "The Business plan starts at 4,999 rupees per month and includes up to",
-   "ok": false,
-   "missing": [
-    "/\\b10\\b|ten/i"
-   ],
+   "a": "The Business plan starts at 4,999 rupees per month and includes up to 10 users.",
+   "ok": true,
+   "missing": [],
    "invented": [],
-   "firstMs": 58642.52116700001,
-   "totalMs": 58745.71750000001
+   "firstMs": 4336.8838749999995,
+   "totalMs": 4631.267874999998
   },
   {
    "q": "Is there a discount if I pay yearly?",
@@ -31,30 +29,28 @@
     "/15/"
    ],
    "invented": [],
-   "firstMs": 56568.24012499998,
-   "totalMs": 57393.787207999994
+   "firstMs": 2641.818959000004,
+   "totalMs": 3349.313667000002
   },
   {
    "q": "What do I get with the Enterprise plan?",
-   "a": "The Enterprise plan includes single sign-on, a dedicated onboarding manager, custom data retention, and priority support. It is priced on request.",
-   "ok": true,
-   "missing": [],
+   "a": "The Enterprise plan adds single sign-on, a dedicated onboarding manager, custom data retention, and priority support.",
+   "ok": false,
+   "missing": [
+    "/request/i"
+   ],
    "invented": [],
-   "firstMs": 58983.563166999986,
-   "totalMs": 59791.147459
+   "firstMs": 4143.926124999998,
+   "totalMs": 4562.0850409999985
   },
   {
    "q": "How long do you keep my call recordings?",
-   "a": "request (4128 tokens) exc",
-   "ok": false,
-   "missing": [
-    "/180/"
-   ],
-   "invented": [
-    "4128"
-   ],
-   "firstMs": 31968.50787499998,
-   "totalMs": 31970.259749999997
+   "a": "Calls are recorded and kept for 180 days by default.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 4572.789083000003,
+   "totalMs": 4572.969916000002
   },
   {
    "q": "And how long are transcripts kept?",
@@ -62,99 +58,82 @@
    "ok": true,
    "missing": [],
    "invented": [],
-   "firstMs": 62736.760499999975,
-   "totalMs": 62736.979292
+   "firstMs": 5182.197249999997,
+   "totalMs": 5182.352958000003
   },
   {
    "q": "Where is my data stored?",
-   "a": "All call recordings, transcripts, and cloned voices are stored in India in encrypted storage.",
+   "a": "All call recordings, transcripts and cloned voices are stored in India in encrypted storage.",
    "ok": true,
    "missing": [],
    "invented": [],
-   "firstMs": 76631.32541700004,
-   "totalMs": 76919.43937500002
+   "firstMs": 2970.146708,
+   "totalMs": 3176.7196659999972
   },
   {
    "q": "How often do calls from the agent app sync?",
-   "a": "Calls sync every two minutes and whenever a call ends.",
+   "a": "Every two minutes and whenever a call ends.",
    "ok": true,
    "missing": [],
    "invented": [],
-   "firstMs": 57541.202541999985,
-   "totalMs": 57541.70641699998
+   "firstMs": 4079.7766249999986,
+   "totalMs": 4079.9240419999987
   },
   {
    "q": "Why are some calls on Android not recorded?",
-   "a": "request (4117 tokens) exc",
-   "ok": false,
-   "missing": [
-    "/android 10|android/i",
-    "/dialer|record/i"
-   ],
-   "invented": [
-    "4117"
-   ],
-   "firstMs": 8066.265458000009,
-   "totalMs": 8066.4537080000155
-  },
-  {
-   "q": "What happens to a cloned voice if the person withdraws consent?",
-   "a": "If the person withdraws consent, the cloned voice is deleted within 24 hours.",
+   "a": "Calls are recorded only if the phone's own dialer records them. Android 10 and newer block most third-party recording.",
    "ok": true,
    "missing": [],
    "invented": [],
-   "firstMs": 62482.50574999995,
-   "totalMs": 62773.41308300005
+   "firstMs": 3944.738833999996,
+   "totalMs": 4445.5965
+  },
+  {
+   "q": "What happens to a cloned voice if the person withdraws consent?",
+   "a": "The voice is deleted within 24 hours.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 4455.447666999993,
+   "totalMs": 4455.665000000001
   },
   {
    "q": "बिज़नेस प्लान की कीमत क्या है?",
-   "a": "request (6352 tokens) exc",
-   "ok": false,
-   "missing": [
-    "/4[,.]?999|४९९९|चार हज़ार नौ सौ निन्यानवे|चार हजार नौ सौ निन्यानवे/"
-   ],
-   "invented": [
-    "6352"
-   ],
-   "firstMs": 7765.094874999952,
-   "totalMs": 7766.120624999981
+   "a": "बिज़नेस प्लान की कीमत 4,999 रुपये प्रति महीना है।",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 28283.133375000005,
+   "totalMs": 29094.715416000006
   },
   {
    "q": "रिकॉर्डिंग कितने दिन तक रखी जाती है?",
-   "a": "request (6404 tokens) exc",
-   "ok": false,
-   "missing": [
-    "/180|एक सौ अस्सी|१८०/"
-   ],
-   "invented": [
-    "6404"
-   ],
-   "firstMs": 20680.575541,
-   "totalMs": 20681.204750000034
+   "a": "रिकॉर्डिंग 180 दिन तक रखी जाती है।",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 38121.472083,
+   "totalMs": 38144.04612499999
   },
   {
    "q": "स्टार्टर प्लान में कितने यूज़र मिलते हैं?",
-   "a": "request (6364 tokens) exc",
-   "ok": false,
+   "a": "स्टार्टर प्लान में तीन यूज़र मिलते हैं।",
+   "ok": true,
    "missing": [],
-   "invented": [
-    "6364"
-   ],
-   "firstMs": 6311.672082999954,
-   "totalMs": 6312.028041000012
+   "invented": [],
+   "firstMs": 11137.758791,
+   "totalMs": 11605.201665999979
   },
   {
    "q": "मेरा डेटा कहाँ स्टोर होता है?",
-   "a": "request (6305 tokens) exc",
+   "a": "मेरा डेटा आपके डेटा के साथ बाहर नहीं ले जाया जाता है। यह आपके डेटा के लिए बंद होता है।",
    "ok": false,
    "missing": [
     "/भारत|इंडिया|India/i"
    ],
-   "invented": [
-    "6305"
-   ],
-   "firstMs": 2230.5532079999102,
-   "totalMs": 2230.6812079999363
+   "invented": [],
+   "firstMs": 10138.718374999997,
+   "totalMs": 12909.182750000007
   },
   {
    "q": "Do you offer a free trial?",
@@ -162,8 +141,8 @@
    "ok": true,
    "missing": [],
    "invented": [],
-   "firstMs": 58126.778333000024,
-   "totalMs": 58899.572916000034
+   "firstMs": 11320.703499999974,
+   "totalMs": 12001.020708999975
   },
   {
    "q": "Which payment methods do you accept?",
@@ -171,8 +150,8 @@
    "ok": true,
    "missing": [],
    "invented": [],
-   "firstMs": 58328.52662500006,
-   "totalMs": 58856.87683299999
+   "firstMs": 25712.081042000005,
+   "totalMs": 26169.849833000015
   }
  ]
 }

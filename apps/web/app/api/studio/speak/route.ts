@@ -8,17 +8,19 @@ import { studioRoute } from "@/lib/studio-route";
 
 const MAX_CHARS = 10_000;
 /** Hindi in a cloned voice is made sentence by sentence (about 3 s each), so a long text needs more than a fixed minute. */
-const speakTimeoutMs = (chars: number) => Math.min(600_000, 60_000 + chars * 150);
+const speakTimeoutMs = (chars: number) => Math.min(900_000, 60_000 + chars * 400);
 const body = z.object({ text: z.string().trim().min(1).max(MAX_CHARS), voice: z.string().min(1), save: z.boolean().default(false), title: z.string().max(200).optional(),
   /** Try other settings without saving them (the preview on the voices page). Without these, the voice's saved speed and pitch are used. */
   /** "natural" (default): each sentence is spoken on its own with human-length pauses between them, so it does not read like one even advert. "off": the engine's own pacing. */
   pacing: z.enum(["natural", "off"]).default("natural"),
+  /** A cloned voice made by Chatterbox: more natural, but roughly 30 seconds for a sentence. */
+  highQuality: z.boolean().default(false),
   speed: z.number().min(0.8).max(1.25).optional(), pitch: z.number().min(-3).max(3).optional() });
 
 export const POST = (req: Request) =>
   studioRoute({ mutation: true }, async (user) => {
     const input = body.parse(await req.json().catch(() => null));
-    const { speak, voiceId, provider, hindiVoice, prosody } = await resolveVoice(user, input.voice);
+    const { speak, voiceId, provider, hindiVoice, prosody } = await resolveVoice(user, input.voice, { highQuality: input.highQuality });
     const t0 = Date.now();
     const spoken = (t: string) => spellOutHindiNumbers(speakableNumbers(t));
     const tagged = hasEmotionTags(input.text);

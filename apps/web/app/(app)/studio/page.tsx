@@ -1,4 +1,4 @@
-import { cloningReady } from "@/lib/providers";
+import { cloningReady, highQualityReady } from "@/lib/providers";
 import { Forbidden } from "@/components/forbidden";
 import { StudioEditor } from "@/components/studio-editor";
 import { PageHeader } from "@/components/ui/page-header";
@@ -13,7 +13,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <PageHeader title="Studio" description="Turn a script into speech in any stock or cloned staff voice." />
-      <StudioEditor voices={voices} initialVoice={sp.voice} cloningReady={cloningReady()} />
+      <StudioEditor voices={voices} initialVoice={sp.voice} cloningReady={cloningReady()} highQualityReady={highQualityReady()} />
     </>
   );
 }

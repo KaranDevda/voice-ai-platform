@@ -41,13 +41,14 @@ const HINTS: Record<Lang, string> = {
 
 interface Result { note: string; url: string; ext: "mp3" | "wav"; bytes: number; ms: number; voice: string; chars: number; assetId: string | null }
 
-export function StudioEditor({ voices, initialVoice, cloningReady }: { voices: VoiceChoice[]; initialVoice?: string; cloningReady: boolean }) {
+export function StudioEditor({ voices, initialVoice, cloningReady, highQualityReady = false }: { voices: VoiceChoice[]; initialVoice?: string; cloningReady: boolean; highQualityReady?: boolean }) {
   // Prefer a cloned voice only when cloning is actually available; otherwise start on a voice that works.
   const fallback = voices.find((v) => v.ref === initialVoice)?.ref ?? (cloningReady ? voices.find((v) => v.group === "cloned" && !v.detail.startsWith("Demo"))?.ref : undefined) ?? "dg:aura-2-thalia-en";
   const [text, setText] = useState("");
   const [lang, setLang] = useState<Lang>("en");
   const [voice, setVoice] = useState(fallback);
   const [save, setSave] = useState(true);
+  const [highQuality, setHighQuality] = useState(false);
   const [busy, setBusy] = useState(false);
   // Voice settings (cloned voices). Untouched, the voice's own saved speed and pitch are used.
   const [speed, setSpeed] = useState(1);
@@ -70,7 +71,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady }: { voices: V
     setError(null);
     const t0 = Date.now();
     try {
-      const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice, save, ...(tuned && picked?.group === "cloned" ? { speed, pitch } : {}) }) });
+      const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice, save, ...(highQuality && picked?.group === "cloned" ? { highQuality: true } : {}), ...(tuned && picked?.group === "cloned" ? { speed, pitch } : {}) }) });
       if (!res.ok) return setError(await apiError(res));
       const blob = await res.blob();
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -126,6 +127,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady }: { voices: V
           )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> Save to Projects</label>
+            {highQualityReady && picked?.group === "cloned" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> High quality voice (more natural, but about 30 seconds a sentence)</label>}
             <Button size="lg" disabled={!text.trim() || over || busy || needsCloning} onClick={() => void generate()}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Wand2 className="h-4 w-4" aria-hidden />}
               {busy ? "Generating…" : "Generate speech"}
