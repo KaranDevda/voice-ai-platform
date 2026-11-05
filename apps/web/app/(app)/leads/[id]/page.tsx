@@ -2,6 +2,7 @@ import { Bot, User } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLeadDetail, listCalls } from "@voiceai/db";
+import { heatOf } from "@voiceai/shared";
 import { Forbidden } from "@/components/forbidden";
 import { Badge, CallStatusBadge, LeadStatusBadge, SentimentBadge, SourceBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -21,11 +22,14 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   if (detail === null) return <Forbidden />;
   if (!detail) notFound();
   const calls = await allowed(() => listCalls(getDb(), user, { leadId: id }, 10));
-  const { lead, ownerEmail, history } = detail;
+  const { lead, ownerEmail, history, scoring, bestHour } = detail;
+  const heat = heatOf(scoring?.score);
+  const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00 to ${String((h + 1) % 24).padStart(2, "0")}:00`;
 
   const rows: Array<[string, React.ReactNode]> = [
     ["Phone", lead.phoneE164], ["Email", lead.email ?? "—"], ["Source", lead.source ?? "—"], ["Owner", ownerEmail ?? "Unassigned"],
-    ["Score", lead.score ?? "—"], ["Created", formatDate(lead.createdAt)],
+    ["Score", scoring ? <span className="inline-flex items-center gap-1.5">{scoring.score}{heat && <Badge tone={heat === "hot" ? "success" : heat === "warm" ? "warning" : "neutral"}>{heat[0]!.toUpperCase() + heat.slice(1)}</Badge>}</span> : "—"],
+    ["Best time to call", bestHour ? `${hourLabel(bestHour.hourIst)} (India time)` : <span className="text-muted-foreground">Not enough answered calls yet</span>], ["Created", formatDate(lead.createdAt)],
     ["Call consent", lead.consentStatus], ["Do not disturb", lead.dndFlag ? <Badge tone="danger">Yes, do not call</Badge> : "No"],
   ];
 
@@ -58,6 +62,13 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               </Table>
             )}
           </Card>
+
+          {scoring && (
+            <Card>
+              <CardHeader title="Why this score" description="Worked out from the pipeline status, the last call, how many calls were answered and how recent they are. 70 or more is hot, 40 to 69 warm." />
+              <CardBody><ul className="grid gap-1.5 text-sm">{scoring.reasons.map((r) => <li key={r} className="flex gap-2"><span aria-hidden className="text-muted-foreground">•</span>{r}</li>)}</ul></CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader title="Status history" description="Every pipeline move, with who or what made it" />

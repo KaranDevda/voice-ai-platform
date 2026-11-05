@@ -1,6 +1,6 @@
 import { aliasedTable, and, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { assertAuthorized, authorize, ForbiddenError, resolveScope, type AuthUser, type ScopedBase } from "@voiceai/auth";
-import { orgSettingsSchema, orgSettingsUpdateSchema, type LeadStatus } from "@voiceai/shared";
+import { HEATS, heatRange, orgSettingsSchema, orgSettingsUpdateSchema, type Heat, type LeadStatus } from "@voiceai/shared";
 import { maskPhone } from "@voiceai/shared";
 import { writeAudit } from "./audit";
 import { withOrg, type Db } from "./client";
@@ -193,7 +193,7 @@ export async function getRecordingForPlay(db: Db, user: AuthUser, id: string) {
 
 // -------------------------------------------------------------------- leads
 
-export interface LeadFilters { q?: string; status?: string; page?: number }
+export interface LeadFilters { q?: string; status?: string; page?: number; /** hot, warm or cold: see the lead score */ heat?: string; /** "score": warmest first */ sort?: string }
 
 export async function listLeads(db: Db, user: AuthUser, f: LeadFilters = {}) {
   const page = Math.max(1, f.page ?? 1);
@@ -203,12 +203,14 @@ export async function listLeads(db: Db, user: AuthUser, f: LeadFilters = {}) {
     const like = `%${f.q.trim()}%`;
     conds.push(or(ilike(leads.name, like), ilike(leads.phoneE164, like), ilike(leads.email, like))!);
   }
+  const scoreOf = sql<number>`lead_score("leads"."id")`;
+  if (f.heat && (HEATS as readonly string[]).includes(f.heat)) { const [lo, hi] = heatRange(f.heat as Heat); conds.push(sql`${scoreOf} between ${lo} and ${hi}`); }
   const owner = aliasedTable(users, "owner");
   const rows = await withOrg(db, user.orgId, (tx) =>
     tx
       .select({
         id: leads.id, name: leads.name, phone: leads.phoneE164, email: leads.email, source: leads.source, status: leads.status,
-        score: leads.score, tags: leads.tags, dnd: leads.dndFlag, ownerEmail: owner.email,
+        score: scoreOf, tags: leads.tags, dnd: leads.dndFlag, ownerEmail: owner.email,
         // Correlated subqueries use fully-qualified SQL: Drizzle drops table names from interpolated columns in single-table queries.
         lastCallAt: sql<string | null>`(select max(c.started_at) from call_logs c where c.lead_id = "leads"."id")`,
         callCount: num(sql`(select count(*) from call_logs c where c.lead_id = "leads"."id")`),
@@ -216,11 +218,11 @@ export async function listLeads(db: Db, user: AuthUser, f: LeadFilters = {}) {
       .from(leads)
       .leftJoin(owner, eq(owner.id, leads.ownerUserId))
       .where(and(...conds))
-      .orderBy(desc(leads.createdAt))
+      .orderBy(...(f.sort === "score" ? [desc(scoreOf), desc(leads.createdAt)] : [desc(leads.createdAt)]))
       .limit(PAGE_SIZE + 1)
       .offset((page - 1) * PAGE_SIZE),
   );
-  return { rows: rows.slice(0, PAGE_SIZE).map((r) => ({ ...r, phone: phone(user, r.phone) })), hasMore: rows.length > PAGE_SIZE, page };
+  return { rows: rows.slice(0, PAGE_SIZE).map((r) => ({ ...r, score: r.score == null ? null : Number(r.score), phone: phone(user, r.phone) })), hasMore: rows.length > PAGE_SIZE, page };
 }
 
 export async function getLeadDetail(db: Db, user: AuthUser, id: string) {
@@ -244,7 +246,15 @@ export async function getLeadDetail(db: Db, user: AuthUser, id: string) {
       .where(eq(leadStatusHistory.leadId, id))
       .orderBy(desc(leadStatusHistory.createdAt));
 
-    return { lead: { ...lead.lead, phoneE164: phone(user, lead.lead.phoneE164) }, ownerEmail: lead.ownerEmail, history };
+    // Why the lead scores what it does, and the hour (India time) at which this person has most often picked up.
+    const sc = (await tx.execute<{ score: number; reasons: string[] }>(sql`select score, reasons from lead_score_detail(${id}::uuid)`)).rows[0];
+    const hr = (await tx.execute<{ hour: number; n: string }>(sql`select extract(hour from started_at at time zone 'Asia/Kolkata')::int as hour, count(*)::text as n from call_logs where lead_id = ${id}::uuid and status = 'connected' group by 1 order by count(*) desc, 1 limit 1`)).rows[0];
+    const answered = Number((await tx.execute<{ n: string }>(sql`select count(*)::text as n from call_logs where lead_id = ${id}::uuid and status = 'connected'`)).rows[0]?.n ?? 0);
+    return {
+      lead: { ...lead.lead, phoneE164: phone(user, lead.lead.phoneE164) }, ownerEmail: lead.ownerEmail, history,
+      scoring: sc ? { score: Number(sc.score), reasons: sc.reasons } : null,
+      bestHour: hr && answered >= 2 ? { hourIst: Number(hr.hour), answered } : null,
+    };
   });
 }
 

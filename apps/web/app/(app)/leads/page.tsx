@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listLeads } from "@voiceai/db";
-import { LEAD_STATUSES } from "@voiceai/shared";
+import { heatOf, HEATS, LEAD_STATUSES } from "@voiceai/shared";
 import { ContactsImport } from "@/components/contacts-import";
 import { FilterBar } from "@/components/filter-bar";
 import { Forbidden } from "@/components/forbidden";
@@ -12,17 +12,21 @@ import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { formatDateTime, titleCase } from "@/lib/utils";
 
-export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string }> }) {
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string; heat?: string; sort?: string }> }) {
   const user = await requirePageUser();
   const sp = await searchParams;
-  const data = await allowed(() => listLeads(getDb(), user, { q: sp.q, status: sp.status, page: Number(sp.page) || 1 }));
+  const data = await allowed(() => listLeads(getDb(), user, { q: sp.q, status: sp.status, heat: sp.heat, sort: sp.sort, page: Number(sp.page) || 1 }));
   if (!data) return <Forbidden />;
 
   return (
     <>
       <PageHeader title="Leads" description="Every caller and prospect, linked to their calls." actions={<ContactsImport />} />
       <Card>
-        <FilterBar action="/leads" q={sp.q} selects={[{ name: "status", value: sp.status, label: "All statuses", options: LEAD_STATUSES.map((s) => [s, titleCase(s)]) }]} />
+        <FilterBar action="/leads" q={sp.q} selects={[
+          { name: "status", value: sp.status, label: "All statuses", options: LEAD_STATUSES.map((s) => [s, titleCase(s)]) },
+          { name: "heat", value: sp.heat, label: "Any score", options: HEATS.map((h) => [h, `${titleCase(h)} leads`]) },
+          { name: "sort", value: sp.sort, label: "Newest first", options: [["score", "Highest score first"]] },
+        ]} />
         {data.rows.length === 0 ? (
           <EmptyState title="No leads match" description="Try clearing the filters." />
         ) : (
@@ -36,7 +40,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                     <div className="text-xs text-muted-foreground">{l.phone}</div>
                   </Td>
                   <Td><div className="flex items-center gap-1.5"><LeadStatusBadge status={l.status} />{l.dnd && <Badge tone="danger">DND</Badge>}</div></Td>
-                  <Td className="tabular-nums">{l.score ?? "—"}</Td>
+                  <Td><div className="flex items-center gap-1.5"><span className="tabular-nums">{l.score ?? "—"}</span>{heatOf(l.score) && <Badge tone={heatOf(l.score) === "hot" ? "success" : heatOf(l.score) === "warm" ? "warning" : "neutral"}>{titleCase(heatOf(l.score)!)}</Badge>}</div></Td>
                   <Td>{l.source ?? "—"}</Td>
                   <Td>{l.ownerEmail ?? <span className="text-muted-foreground">Unassigned</span>}</Td>
                   <Td className="tabular-nums">{l.callCount}</Td>
@@ -46,7 +50,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             </tbody>
           </Table>
         )}
-        <Pager basePath="/leads" params={{ q: sp.q, status: sp.status }} page={data.page} hasMore={data.hasMore} />
+        <Pager basePath="/leads" params={{ q: sp.q, status: sp.status, heat: sp.heat, sort: sp.sort }} page={data.page} hasMore={data.hasMore} />
       </Card>
     </>
   );

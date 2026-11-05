@@ -14,7 +14,19 @@ type Action = "start" | "pause" | "resume" | "cancel";
 const TONE: Record<string, "success" | "danger" | "neutral" | "warning"> = { running: "success", completed: "neutral", cancelled: "danger", paused: "warning", scheduled: "neutral", draft: "neutral" };
 
 /** Create campaigns and run them: start, pause, resume, cancel, with the live count of who is waiting, ringing, done or failed. */
-export function CampaignsAdmin({ campaigns }: { campaigns: Campaign[] }) {
+interface HourStat { hourIst: number; attempts: number; answered: number; rate: number }
+interface Timing { totalAttempts: number; days: number; minAttempts: number; best: HourStat[]; hours: HourStat[] }
+const hourText = (h: number) => `${String(h).padStart(2, "0")}:00`;
+/** The next time it is `hourIst`:00 in India, as the local "YYYY-MM-DDTHH:mm" a datetime-local field wants. */
+function nextAtIst(hourIst: number): string {
+  const now = new Date(), istNow = new Date(now.getTime() + 330 * 60_000);
+  let t = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate(), hourIst) - 330 * 60_000;
+  if (t < now.getTime() + 5 * 60_000) t += 86_400_000;
+  const d = new Date(t), p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+export function CampaignsAdmin({ campaigns, timing }: { campaigns: Campaign[]; timing: Timing | null }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [tags, setTags] = useState("");
@@ -62,7 +74,10 @@ export function CampaignsAdmin({ campaigns }: { campaigns: Campaign[] }) {
             <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required /></Field>
             <Field label="Tags" hint="Comma separated, e.g. diwali, vip"><Input value={tags} onChange={(e) => setTags(e.target.value)} required /></Field>
             <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="en-hi">Hindi + English</option><option value="hi">Hindi</option><option value="en">English</option></Select></Field>
-            <Field label="Start at (optional)" hint="Empty: press Start yourself"><Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} /></Field>
+            <Field label="Start at (optional)" hint={timing?.best[0] ? undefined : "Empty: press Start yourself"}>
+              <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
+              {timing?.best[0] && <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setStartAt(nextAtIst(timing.best[0]!.hourIst))}>Use the best time: {hourText(timing.best[0].hourIst)} India time</button>}
+            </Field>
             <Field label="Calls at once" hint="1 to 20"><Input type="number" min={1} max={20} value={concurrent} onChange={(e) => setConcurrent(Number(e.target.value))} /></Field>
             <Field label="Tries per person" hint="1 to 5"><Input type="number" min={1} max={5} value={attempts} onChange={(e) => setAttempts(Number(e.target.value))} /></Field>
             <Field label="Minutes between tries" hint="5 to 1440"><Input type="number" min={5} max={1440} value={retry} onChange={(e) => setRetry(Number(e.target.value))} /></Field>
@@ -76,6 +91,28 @@ export function CampaignsAdmin({ campaigns }: { campaigns: Campaign[] }) {
           {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
         </CardBody>
       </Card>
+
+      {timing && (
+        <Card>
+          <CardHeader title="Best time to call" description={timing.totalAttempts === 0 ? "No outbound calls in the last 90 days yet." : `Share of outbound calls that were answered, by hour (India time), from ${timing.totalAttempts} calls in the last ${timing.days} days.`} />
+          <CardBody className="grid gap-3">
+            {timing.best.length > 0
+              ? <p className="text-sm">Best hours: {timing.best.map((h) => `${hourText(h.hourIst)} (${Math.round(h.rate * 100)}% answered, ${h.attempts} calls)`).join(" · ")}</p>
+              : <p className="text-sm text-muted-foreground">Not enough calls yet to say (at least {timing.minAttempts} in an hour).</p>}
+            {timing.hours.length > 0 && (
+              <div className="grid gap-1" role="img" aria-label="Answer rate by hour of the day">
+                {timing.hours.map((h) => (
+                  <div key={h.hourIst} className="grid grid-cols-[3rem_1fr_9rem] items-center gap-2 text-xs">
+                    <span className="tabular-nums text-muted-foreground">{hourText(h.hourIst)}</span>
+                    <span className="h-2 rounded bg-muted"><span className="block h-2 rounded bg-primary" style={{ width: `${Math.round(h.rate * 100)}%` }} /></span>
+                    <span className="tabular-nums text-muted-foreground">{Math.round(h.rate * 100)}% of {h.attempts}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader title="Your campaigns" description={live ? "Updating every few seconds" : undefined} />

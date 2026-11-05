@@ -20,3 +20,4 @@ export * from "./profit";
 export * from "./integrations";
 export * from "./widgets";
 export * from "./password";
+export * from "./scheduling";

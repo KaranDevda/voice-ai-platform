@@ -13,3 +13,4 @@ export * from "./contact-import";
 export * from "./sms-template";
 export * from "./rate-import";
 export * from "./password-policy";
+export * from "./lead-heat";
