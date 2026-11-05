@@ -7,7 +7,7 @@ Run:  .local/mlx-venv/bin/python scripts/chatterbox-mlx-server.py          (port
 Then set CHATTERBOX_URL=http://127.0.0.1:8771 in apps/web/.env.local (and apps/voice/.env.local) and restart them.
 """
 import hmac, io, json, os, random, re, threading, time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import numpy as np, soundfile as sf
 import mlx.core as mx
 from mlx_audio.tts.utils import load_model
@@ -53,7 +53,13 @@ def split_sentences(text):
             cut = cut if cut > 40 else MAX_CHARS
             out.append(s[:cut + 1].strip()); s = s[cut + 1:].strip()
         if s: out.append(s)
-    return out
+    # A very short piece ("Hi!", "Okay.") made on its own comes out as babble ("Hi, bike"): join it to the sentence after it (or before it, at the end).
+    merged = []
+    for s in out:
+        if merged and len(re.findall(r"\w", merged[-1])) < 8: merged[-1] = f"{merged[-1]} {s}"
+        else: merged.append(s)
+    if len(merged) > 1 and len(re.findall(r"\w", merged[-1])) < 8: merged[-2] = f"{merged[-2]} {merged.pop()}"
+    return merged
 
 
 def split_runs(sentence, forced):
@@ -83,7 +89,7 @@ def plausible_seconds(text, lang):
     """Rough lower and upper bounds for how long these words take to say, to catch cut-off or looping output."""
     n = len(re.findall(r"\w", text))
     per = 0.075 if lang == "hi" else 0.065  # seconds per letter, at a normal pace
-    return max(0.25, n * per * 0.45), n * per * 2.2 + 0.8
+    return max(0.25, n * per * 0.45), n * per * 1.7 + 0.7
 
 
 def trim(x, floor_db=-42.0, keep=0.04):
@@ -100,10 +106,13 @@ def trim(x, floor_db=-42.0, keep=0.04):
 def make_run(text, lang, vid, exag, cfg, temp, seed):
     lo, hi = plausible_seconds(text, lang)
     best, best_gap = None, 1e9
+    # The speech model makes 25 tokens a second. A line that runs on (it repeats itself and never stops) is cut at about 1.15x the longest plausible
+    # length, so a bad try costs seconds instead of the 40 s of the model's own limit, and the next try can replace it.
+    cap = max(40, int(hi * 25 * 1.15))
     for attempt in range(3):
         mx.random.seed(seed + attempt * 7919)
         conds = voice_conds(vid, exag)
-        parts = [np.array(r.audio, dtype=np.float32).reshape(-1) for r in model.generate(text=text, conds=conds, lang_code=lang, exaggeration=exag, cfg_weight=cfg, temperature=temp, repetition_penalty=2.0, verbose=False)]
+        parts = [np.array(r.audio, dtype=np.float32).reshape(-1) for r in model.generate(text=text, conds=conds, lang_code=lang, exaggeration=exag, cfg_weight=cfg, temperature=temp, repetition_penalty=2.0, max_new_tokens=cap, verbose=False)]
         wav = trim(np.concatenate(parts)) if parts else np.zeros(0, dtype=np.float32)
         secs = wav.size / SR
         gap = 0 if lo <= secs <= hi else min(abs(secs - lo), abs(secs - hi))
@@ -212,4 +221,6 @@ class H(BaseHTTPRequestHandler):
             self._send(500, str(e).encode()[:300])
 
 
-ThreadingHTTPServer((HOST, PORT), H).serve_forever()
+# One request at a time, on the main thread: MLX streams belong to the thread that loaded the model ("There is no Stream(gpu, 0) in current thread"),
+# and only one run can use the GPU at once anyway. Uploads and health checks wait while a line is being made.
+HTTPServer((HOST, PORT), H).serve_forever()
