@@ -1,32 +1,46 @@
 import { cookies } from "next/headers";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { BizfyMark } from "@/components/brand";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks } from "@/components/nav-links";
+import { LanguageSelect } from "@/components/language-select";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { navFor, profileOf, requirePageUser } from "@/lib/page-auth";
+import { asLang, LANG_COOKIE, tr } from "@/lib/i18n";
 import { SESSION_COOKIE, verifyToken, type SessionClaims } from "@/lib/session";
 import { titleCase } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+/** Black or white text, whichever reads better on the colour (a strict #rrggbb, already checked by the settings schema). */
+function readableOn(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 0.4 ? "#000000" : "#ffffff";
+}
+
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requirePageUser();
-  const [profile, groups, jar] = [await profileOf(user), navFor(user), await cookies()];
+  const [profile, rawGroups, jar] = [await profileOf(user), navFor(user), await cookies()];
+  const lang = asLang(jar.get(LANG_COOKIE)?.value);
+  const groups = rawGroups.map((g) => ({ label: tr(lang, g.label), items: g.items.map((i) => ({ ...i, label: tr(lang, i.label) })) }));
+  const brand = profile.brand;
+  const brandStyle = brand.primary
+    ? ({ "--primary": brand.primary, "--wave": brand.primary, "--primary-soft": `color-mix(in srgb, ${brand.primary} 18%, var(--background))`, "--primary-foreground": readableOn(brand.primary) } as CSSProperties)
+    : undefined;
   const theme = jar.get("theme")?.value === "light" ? "light" : "dark";
   const impersonating = !!(await verifyToken<SessionClaims>(jar.get(SESSION_COOKIE)?.value, "session"))?.impBy;
 
   return (
-    <div className="min-h-screen md:flex md:flex-wrap">
+    <div className="min-h-screen md:flex md:flex-wrap" style={brandStyle}>
       {impersonating && <div className="w-full"><ImpersonationBanner email={profile.email} /></div>}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-card md:flex">
         <div className="flex items-center gap-2.5 px-5 py-4">
           <BizfyMark className="h-9 w-9" />
           <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight">Bizfy Voice AI</div>
-            <div className="text-xs text-muted-foreground">Calls · voices · agents</div>
+            <div className="text-sm font-semibold tracking-tight">{brand.name || "Bizfy Voice AI"}</div>
+            <div className="text-xs text-muted-foreground">{brand.tagline || tr(lang, "Calls · voices · agents")}</div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-3 pb-4"><NavLinks groups={groups} orientation="vertical" /></div>
@@ -42,7 +56,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <div className="truncate text-sm font-medium">{profile.orgName}</div>
             <div className="truncate text-xs text-muted-foreground md:hidden">{profile.email}</div>
           </div>
-          <div className="flex items-center gap-1"><ThemeToggle initial={theme} /><LogoutButton /></div>
+          <div className="flex items-center gap-1"><LanguageSelect initial={lang} label={tr(lang, "Language")} /><ThemeToggle initial={theme} /><LogoutButton /></div>
         </header>
         <div className="border-b border-border bg-card md:hidden"><NavLinks groups={groups} orientation="horizontal" /></div>
         <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</main>

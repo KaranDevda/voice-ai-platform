@@ -6,7 +6,7 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { z } from "zod";
 import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims } from "@voiceai/auth";
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
-import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getLeadPhone, getPhoneConfig, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, sentTextRecently, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
+import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getLeadPhone, getPhoneConfig, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, reportMachine, sentTextRecently, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
 import {
   createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, createSarvamStt, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
@@ -276,7 +276,7 @@ async function saveCall(convo: Conversation, r: SessionRecord | null): Promise<v
 }
 
 interface SessionRecord { user: AuthUser; callId: string; startedAt: Date; language: string; direction: "inbound" | "outbound"; leadId?: string; voiceProfileId?: string }
-interface StartParams { voice: string; language: "en" | "hi" | "en-hi"; greeting: boolean; listen: ListenMode; leadId?: string }
+interface StartParams { voice: string; language: "en" | "hi" | "en-hi"; greeting: boolean; listen: ListenMode; leadId?: string; opening?: string }
 
 /** The call may not go ahead (not allowed, or on the Do Not Disturb list). `code` is the WebSocket close code, `event` what the client is told. */
 class SessionRefused extends Error { constructor(public code: number, public event: ServerEvent) { super(event.type); } }
@@ -307,7 +307,7 @@ async function buildSession(
   tts.cacheKey = `${voice}|${p.language}|${o.phone ? "phone" : "web"}${tts.variant ? `|${tts.variant}` : ""}`;
   if (env("ACK") !== "off") for (const w of p.language === "en" ? ["Sure.", "Let me check."] : p.language === "hi" ? ["जी।"] : ["Sure.", "Let me check.", "जी।"]) void primeAck(tts, w);
   // The organisation's own AI instruction and greeting (Settings), and its knowledge base, when this is a real signed-in user.
-  let systemPrompt = systemPromptFor(p.language), greeting = GREETING;
+  let systemPrompt = systemPromptFor(p.language), greeting = GREETING, disclosure = "This call may be recorded.";
   let ground: ((text: string, previous?: string) => Promise<string[]>) | undefined;
   let handoff: ConstructorParameters<typeof Conversation>[0]["handoff"];
   let aiChoice: { model: "default" | "openrouter"; openrouterModel: string } | undefined;
@@ -316,6 +316,7 @@ async function buildSession(
     aiChoice = { model: cfg.model, openrouterModel: cfg.openrouterModel };
     systemPrompt = `${cfg.systemPrompt}\n\n${voiceRulesFor(p.language)}`;
     greeting = `${cfg.disclosure} ${cfg.greeting}`.trim();
+    disclosure = cfg.disclosure; // an A/B opening line replaces the greeting but never the AI and recording notice
     handoff = { enabled: { person: true, complaint: cfg.handoffOnComplaint, payment: cfg.handoffOnPayment }, message: { en: cfg.handoffMessage, hi: HANDOFF_HINDI } };
     const lookup = async (text: string) => {
       // The knowledge base is English and matched by words, so a Hindi question is searched by its English keywords.
@@ -338,7 +339,7 @@ async function buildSession(
     holdUnfinishedMs: Number(env("TURN_HOLD_MS") ?? 0), // e.g. TURN_HOLD_MS=600 with ENDPOINTING_MS=250: wait for the rest when a sentence stops on "and", "my name is", "और"
     stt: sttFor(p.listen, p.language, (l) => console.log(`[${tag}] ${l}`)),
     llm: model, tts, language: p.language, systemPrompt, ground, ack: env("ACK") === "off" ? undefined : (t) => ackFor(t, p.language, true), turnNote: (a, b) => languageNote(a, b, p.language), handoff,
-    greeting: p.greeting ? (p.language === "hi" ? GREETING_HI : p.language === "en-hi" ? GREETING_HINGLISH : greeting) : undefined,
+    greeting: p.greeting ? (p.opening ? `${disclosure} ${p.opening}`.trim() : p.language === "hi" ? GREETING_HI : p.language === "en-hi" ? GREETING_HINGLISH : greeting) : undefined,
     resumeAfterHandoff: !o.phone,
     fallback: p.language === "hi" ? FALLBACK_HI : FALLBACK, send: io.send, sendAudio: io.sendAudio, log: (l) => console.log(`[${tag}] ${l}`),
   });
@@ -416,16 +417,16 @@ function fromPlivo(req: express.Request): boolean {
  * two-way audio stream to this service. Who is calling as is decided here and carried in a short-lived signed token.
  */
 /** Opens the two-way audio stream to the AI for this call. Used straight from "answer", or after the caller chose "assistant" in the menu. */
-function connectToAi(claims: VoiceTokenClaims, o: { lang?: string; lead?: string; callUuid?: string; from?: string }) {
+function connectToAi(claims: VoiceTokenClaims, o: { lang?: string; lead?: string; callUuid?: string; from?: string; op?: string }) {
   const params = new URLSearchParams({
     token: signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice }, TOKEN_KEY!, 120),
     language: o.lang ?? callLanguage.catch("en-hi").parse(env("PLIVO_LANGUAGE")), call: o.callUuid ?? "", from: o.from ?? "",
-    ...(o.lead ? { lead: o.lead } : {}), direction: o.lead ? "outbound" : "inbound",
+    ...(o.lead ? { lead: o.lead } : {}), ...(o.op ? { op: o.op } : {}), direction: o.lead ? "outbound" : "inbound",
   });
   return plivoStreamXml(`${PUBLIC_URL!.replace(/^http/, "ws")}/plivo/stream?${params}`);
 }
 
-const menuQuery = z.object({ t: z.string().optional(), lead: z.string().uuid().optional(), lang: callLanguage.optional() });
+const menuQuery = z.object({ t: z.string().optional(), lead: z.string().uuid().optional(), lang: callLanguage.optional(), op: z.string().max(300).optional() });
 /** The identity a call runs as: a call we placed carries its own signed token; a call to our number runs as the configured service user. */
 const claimsFor = (t?: string): VoiceTokenClaims | null => t ? verifyVoiceToken(t, TOKEN_KEY!) : env("PLIVO_ORG_ID") && env("PLIVO_AGENT_USER_ID")
   ? { sub: env("PLIVO_AGENT_USER_ID")!, org: env("PLIVO_ORG_ID")!, voice: env("PLIVO_VOICE") } : null;
@@ -444,11 +445,11 @@ app.post("/plivo/answer", async (req, res) => {
   const claims = claimsFor(q.data.t);
   if (!claims) return void res.type("text/xml").send(plivoHangupXml());
   const lang = q.data.lang ?? callLanguage.catch("en-hi").parse(env("PLIVO_LANGUAGE"));
-  const ai = { lang: q.data.lang, lead: q.data.lead, callUuid: body.CallUUID, from: body.From };
+  const ai = { lang: q.data.lang, lead: q.data.lead, callUuid: body.CallUUID, from: body.From, op: q.data.op };
   try {
     const cfg = await getPhoneConfig(getDb(), claims.org);
     if (cfg.menu.enabled && Object.keys(cfg.menu.options).length > 0) {
-      const pass = new URLSearchParams({ ...(q.data.t ? { t: q.data.t } : {}), ...(q.data.lead ? { lead: q.data.lead } : {}), ...(q.data.lang ? { lang: q.data.lang } : {}) });
+      const pass = new URLSearchParams({ ...(q.data.t ? { t: q.data.t } : {}), ...(q.data.lead ? { lead: q.data.lead } : {}), ...(q.data.lang ? { lang: q.data.lang } : {}), ...(q.data.op ? { op: q.data.op } : {}) });
       const audioT = signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice }, TOKEN_KEY!, 900);
       return void res.type("text/xml").send(plivoMenuXml({
         audioUrl: `${PUBLIC_URL}/plivo/menu-audio?${new URLSearchParams({ t: audioT, lang })}`,
@@ -475,7 +476,7 @@ app.post("/plivo/menu", async (req, res) => {
     const to = cfg?.handoffNumber || env("PLIVO_HANDOFF_NUMBER");
     if (to) return void res.type("text/xml").send(plivoDialXml(to));
   }
-  res.type("text/xml").send(connectToAi(claims, { lang: q.data.lang, lead: q.data.lead, callUuid: body.CallUUID, from: body.From }));
+  res.type("text/xml").send(connectToAi(claims, { lang: q.data.lang, lead: q.data.lead, callUuid: body.CallUUID, from: body.From, op: q.data.op }));
 });
 
 /** The menu prompt as an audio file, spoken by our own voice (never a cloud voice). Cached; the address carries a short-lived signed token. */
@@ -561,6 +562,20 @@ app.post("/plivo/transfer", async (req, res) => {
   res.type("text/xml").send(to ? plivoDialXml(to) : plivoHangupXml());
 });
 
+/** Plivo reports whether an answering machine picked up (Machine=true). A machine gets no AI conversation: hang up, and the campaign tries again later. */
+app.post("/plivo/machine", async (req, res) => {
+  if (!fromPlivo(req)) return void res.status(403).type("text/plain").send("bad signature");
+  const body = req.body as Record<string, string>;
+  const lead = z.string().uuid().safeParse(req.query.lead);
+  res.status(204).end();
+  if (String(body.Machine).toLowerCase() !== "true" || !lead.success) return;
+  console.log(`[phone] answering machine on call ${body.CallUUID ?? "?"}: hanging up`);
+  try {
+    if (body.CallUUID && plivo) await plivo.hangup(body.CallUUID);
+    await reportMachine(getDb(), lead.data);
+  } catch (e) { console.error("answering machine hang-up failed:", e instanceof Error ? e.message : e); }
+});
+
 /**
  * Places an AI call to a lead. The caller proves who they are with a signed voice token (the website makes one); the same Do Not Disturb,
  * consent and calling-hours check as everywhere else runs BEFORE the phone is dialled.
@@ -568,7 +583,7 @@ app.post("/plivo/transfer", async (req, res) => {
 app.post("/plivo/outbound", express.json({ limit: "4kb" }), async (req, res) => {
   if (!phoneReady() || !env("PLIVO_NUMBER")) return void res.status(503).json({ error: "phone_not_configured" });
   const claims = verifyVoiceToken(/^Bearer (\S+)$/.exec(req.header("authorization") ?? "")?.[1] ?? "", TOKEN_KEY!);
-  const b = z.object({ leadId: z.string().uuid(), language: callLanguage.default("en-hi") }).safeParse(req.body);
+  const b = z.object({ leadId: z.string().uuid(), language: callLanguage.default("en-hi"), opening: z.string().trim().max(300).optional(), detectMachines: z.boolean().optional() }).safeParse(req.body);
   if (!claims || !b.success) return void res.status(claims ? 400 : 401).json({ error: claims ? "invalid_request" : "unauthenticated" });
   try {
     const user = await loadAuthUser(getDb(), claims.org, claims.sub);
@@ -578,7 +593,9 @@ app.post("/plivo/outbound", express.json({ limit: "4kb" }), async (req, res) => 
     const to = await getLeadPhone(getDb(), user, b.data.leadId);
     if (!to) return void res.status(404).json({ error: "unknown_lead" });
     const t = signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice }, TOKEN_KEY!, 600); // 10 minutes to ring and be answered
-    const { callUuid } = await plivo!.makeCall({ from: env("PLIVO_NUMBER")!, to, answerUrl: `${PUBLIC_URL}/plivo/answer?${new URLSearchParams({ t, lead: b.data.leadId, lang: b.data.language })}` });
+    const { callUuid } = await plivo!.makeCall({ from: env("PLIVO_NUMBER")!, to, answerUrl: `${PUBLIC_URL}/plivo/answer?${new URLSearchParams({ t, lead: b.data.leadId, lang: b.data.language, ...(b.data.opening ? { op: b.data.opening } : {}) })}`,
+      ...(b.data.detectMachines ? { machineUrl: `${PUBLIC_URL}/plivo/machine?${new URLSearchParams({ lead: b.data.leadId })}` } : {}),
+    });
     res.status(202).json({ callUuid });
   } catch (e) {
     console.error("outbound call failed:", e instanceof Error ? e.message : e);
@@ -621,7 +638,7 @@ function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams
       const user = env("DATABASE_URL") ? await loadAuthUser(getDb(), claims.org, claims.sub).catch(() => null) : null;
       // An incoming call is filed under the lead with the caller's number, when there is one.
       const leadId = lead ?? (user && from ? await findLeadIdByPhone(getDb(), user, from).catch(() => null) ?? undefined : undefined);
-      const built = await buildSession(claims, { voice: claims.voice ?? "pocket:alba", language: callLanguage.catch("en-hi").parse(q.get("language")), greeting: true, listen: "anyone", leadId: lead },
+      const built = await buildSession(claims, { voice: claims.voice ?? "pocket:alba", language: callLanguage.catch("en-hi").parse(q.get("language")), greeting: true, listen: "anyone", leadId: lead, opening: q.get("op")?.slice(0, 300) || undefined },
         { send: onEvent, sendAudio: (chunk) => sendWs(plivoPlayAudio(chunk)) }, { phone: true, direction: q.get("direction") === "outbound" ? "outbound" : "inbound", callId: callUuid || undefined });
       convo = built.convo; record = built.record && leadId ? { ...built.record, leadId } : built.record;
       sessions.add(convo);

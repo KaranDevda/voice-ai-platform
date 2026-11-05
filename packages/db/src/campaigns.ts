@@ -14,6 +14,10 @@ export interface CampaignInput {
   /** Everyone with ANY of these tags is called. */
   tags: string[];
   startAt?: Date | null; maxConcurrent: number; maxAttempts: number; retryDelayMin: number;
+  /** Hang up on answering machines (default on). */
+  detectMachines?: boolean;
+  /** A/B test: up to 3 opening lines, each person hears one. */
+  openingVariants?: string[];
 }
 
 const inRange = (v: number, lo: number, hi: number, what: string) => {
@@ -33,6 +37,9 @@ export async function createCampaign(db: Db, actor: AuthUser, input: CampaignInp
   const maxConcurrent = inRange(input.maxConcurrent, 1, 20, "calls at once");
   const maxAttempts = inRange(input.maxAttempts, 1, 5, "tries per person");
   const retryDelayMin = inRange(input.retryDelayMin, 5, 1440, "minutes between tries");
+  const openingVariants = (input.openingVariants ?? []).map((v) => v.normalize("NFC").replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (openingVariants.length === 1) throw new CampaignError("an A/B test needs at least two opening lines (or leave them empty)");
+  if (openingVariants.length > 3 || openingVariants.some((v) => v.length > 300)) throw new CampaignError("use up to 3 opening lines of up to 300 characters each");
   if (input.startAt && input.startAt.getTime() < Date.now() - 60_000) throw new CampaignError("the start time is in the past");
   return withOrg(db, actor.orgId, async (tx) => {
     const visible = scopeCondition(actor, "leads.read", { orgId: leads.orgId, teamId: leads.teamId, ownerUserId: leads.ownerUserId });
@@ -44,11 +51,12 @@ export async function createCampaign(db: Db, actor: AuthUser, input: CampaignInp
     const [c] = await tx.insert(campaigns).values({
       orgId: actor.orgId, name, language: input.language, voice: input.voice || null, startAt: input.startAt ?? null,
       status: input.startAt ? "scheduled" : "draft", maxConcurrent, maxAttempts, retryDelayMin, createdBy: actor.id,
+      detectMachines: input.detectMachines ?? true, openingVariants,
     }).returning();
     for (let i = 0; i < people.length; i += 500) {
       await tx.insert(campaignTargets).values(people.slice(i, i + 500).map((p) => ({ orgId: actor.orgId, campaignId: c!.id, leadId: p.id })));
     }
-    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "campaign.create", entity: "campaigns", entityId: c!.id, after: { name, tags: input.tags, people: people.length, startAt: input.startAt ?? null } });
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "campaign.create", entity: "campaigns", entityId: c!.id, after: { name, tags: input.tags, people: people.length, startAt: input.startAt ?? null, variants: openingVariants.length } });
     return { ...c!, people: people.length };
   });
 }
@@ -64,10 +72,15 @@ export async function listCampaigns(db: Db, actor: AuthUser) {
       ? await tx.select({ campaignId: campaignTargets.campaignId, status: campaignTargets.status, n: sql<number>`count(*)::int` }).from(campaignTargets)
           .where(inArray(campaignTargets.campaignId, rows.map((r) => r.id))).groupBy(campaignTargets.campaignId, campaignTargets.status)
       : [];
+    const results = new Map<string, { variant: number; text: string; people: number; reached: number }[]>();
+    for (const c of rows.filter((r) => r.openingVariants.length)) {
+      const v = await tx.execute<{ variant: number; people: string; reached: string }>(sql`select * from campaign_variant_results(${c.id}::uuid)`);
+      results.set(c.id, v.rows.map((r) => ({ variant: r.variant, text: c.openingVariants[r.variant - 1] ?? "", people: Number(r.people), reached: Number(r.reached) })));
+    }
     return rows.map((c) => {
       const k = zero();
       for (const x of counts) if (x.campaignId === c.id) k[x.status] = x.n;
-      return { ...c, counts: k, total: Object.values(k).reduce((a, b) => a + b, 0) };
+      return { ...c, counts: k, total: Object.values(k).reduce((a, b) => a + b, 0), variants: results.get(c.id) ?? [] };
     });
   });
 }
@@ -83,7 +96,11 @@ export async function getCampaign(db: Db, actor: AuthUser, campaignId: string) {
       .from(campaignTargets).innerJoin(leads, eq(leads.id, campaignTargets.leadId)).where(eq(campaignTargets.campaignId, campaignId)).orderBy(campaignTargets.createdAt).limit(500);
     const counts = zero();
     for (const r of await tx.select({ status: campaignTargets.status, n: sql<number>`count(*)::int` }).from(campaignTargets).where(eq(campaignTargets.campaignId, campaignId)).groupBy(campaignTargets.status)) counts[r.status] = r.n;
-    return { ...c, counts, people: people.map((p) => ({ ...p, phone: showPhone ? p.phone : maskPhone(p.phone) })) };
+    const variants = c.openingVariants.length
+      ? (await tx.execute<{ variant: number; people: string; reached: string }>(sql`select * from campaign_variant_results(${campaignId}::uuid)`)).rows
+          .map((r) => ({ variant: r.variant, text: c.openingVariants[r.variant - 1] ?? "", people: Number(r.people), reached: Number(r.reached) }))
+      : [];
+    return { ...c, counts, variants, people: people.map((p) => ({ ...p, phone: showPhone ? p.phone : maskPhone(p.phone) })) };
   });
 }
 
@@ -108,12 +125,12 @@ export async function updateCampaignStatus(db: Db, actor: AuthUser, campaignId: 
 
 // ------------------------------------------------------------------------------------------ the runner (worker)
 
-export interface DialJob { targetId: string; campaignId: string; orgId: string; leadId: string; language: string; voice: string | null; createdBy: string }
+export interface DialJob { targetId: string; campaignId: string; orgId: string; leadId: string; language: string; voice: string | null; createdBy: string; detectMachines: boolean; opening: string | null }
 
 /** One round for the campaign runner: settles finished calls, starts due campaigns, and returns the people to dial now. Run by ONE worker. */
 export async function campaignTick(db: Db, limit = 10): Promise<DialJob[]> {
-  const r = await db.execute<{ target_id: string; campaign_id: string; org_id: string; lead_id: string; language: string; voice: string | null; created_by: string }>(sql`select * from worker_campaign_tick(${limit})`);
-  return r.rows.map((x) => ({ targetId: x.target_id, campaignId: x.campaign_id, orgId: x.org_id, leadId: x.lead_id, language: x.language, voice: x.voice, createdBy: x.created_by }));
+  const r = await db.execute<{ target_id: string; campaign_id: string; org_id: string; lead_id: string; language: string; voice: string | null; created_by: string; detect_machines: boolean; opening: string | null }>(sql`select * from worker_campaign_tick(${limit})`);
+  return r.rows.map((x) => ({ targetId: x.target_id, campaignId: x.campaign_id, orgId: x.org_id, leadId: x.lead_id, language: x.language, voice: x.voice, createdBy: x.created_by, detectMachines: x.detect_machines, opening: x.opening }));
 }
 
 export async function reportDial(db: Db, targetId: string, outcome: "failed" | "hours" | "skip", error?: string) {
@@ -122,3 +139,8 @@ export async function reportDial(db: Db, targetId: string, outcome: "failed" | "
 
 /** The signed pass the voice service wants before it dials: it carries the campaign creator's identity, so their permissions and the calling rules apply. */
 export const dialToken = (job: DialJob, key: string) => signVoiceToken({ sub: job.createdBy, org: job.orgId, voice: job.voice ?? undefined }, key, 120);
+
+/** The phone line heard an answering machine: the campaign's try for this person counts as failed and is repeated later. */
+export async function reportMachine(db: Db, leadId: string) {
+  await db.execute(sql`select worker_campaign_machine(${leadId}::uuid)`);
+}

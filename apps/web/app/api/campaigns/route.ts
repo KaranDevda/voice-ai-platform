@@ -7,6 +7,7 @@ const body = z.object({
   name: z.string().trim().min(1).max(120), language: z.enum(["en", "hi", "en-hi"]).default("en-hi"), voice: z.string().max(100).optional(),
   tags: z.array(z.string().trim().min(1).max(30)).min(1).max(10),
   startAt: z.string().datetime().optional(),
+  detectMachines: z.boolean().default(true), openingVariants: z.array(z.string().trim().max(300)).max(3).default([]),
   maxConcurrent: z.number().int().default(2), maxAttempts: z.number().int().default(2), retryDelayMin: z.number().int().default(60),
 });
 

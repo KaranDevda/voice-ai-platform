@@ -116,8 +116,13 @@ export function createPlivo(config: PlivoConfig) {
 
   return {
     /** Places an outbound call. When the person answers, Plivo fetches `answerUrl` for instructions. Returns Plivo's id for the call. */
-    async makeCall(i: { from: string; to: string; answerUrl: string; hangupUrl?: string }): Promise<{ callUuid: string }> {
-      const r = await call("POST", "/Call/", { from: i.from, to: i.to, answer_url: i.answerUrl, answer_method: "POST", ...(i.hangupUrl ? { hangup_url: i.hangupUrl, hangup_method: "POST" } : {}) });
+    async makeCall(i: { from: string; to: string; answerUrl: string; hangupUrl?: string; machineUrl?: string }): Promise<{ callUuid: string }> {
+      // machineUrl: Plivo listens for an answering machine and posts the result there (Machine=true or false) a few seconds after answer.
+      const r = await call("POST", "/Call/", {
+        from: i.from, to: i.to, answer_url: i.answerUrl, answer_method: "POST",
+        ...(i.hangupUrl ? { hangup_url: i.hangupUrl, hangup_method: "POST" } : {}),
+        ...(i.machineUrl ? { machine_detection: "true", machine_detection_time: 5000, machine_detection_url: i.machineUrl, machine_detection_method: "POST" } : {}),
+      });
       const id = Array.isArray(r.request_uuid) ? r.request_uuid[0] : r.request_uuid;
       return { callUuid: String(id ?? "") };
     },

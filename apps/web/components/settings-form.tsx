@@ -27,6 +27,7 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
           handoffAfterLowConfidence: Number(str("handoffAfterLowConfidence")), handoffTimeoutSeconds: Number(str("handoffTimeoutSeconds")),
           model: str("aiModel") === "openrouter" ? "openrouter" : "default", openrouterModel: str("openrouterModel").trim() || "openai/gpt-4o-mini",
         },
+        brand: { name: str("brandName"), tagline: str("brandTagline"), primary: f.get("brandUse") === "on" ? str("brandPrimary") : "" },
         calling: { windowStart: str("windowStart"), windowEnd: str("windowEnd") },
         compliance: { requireKyc: f.get("requireKyc") === "on" },
         sms: { autoReply: f.get("smsAutoReply") === "on" },
@@ -71,6 +72,17 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
                 <datalist id="openrouter-models"><option value="openai/gpt-4o-mini" /><option value="google/gemini-2.0-flash-001" /><option value="meta-llama/llama-3.1-70b-instruct" /><option value="deepseek/deepseek-chat" /><option value="moonshotai/kimi-k2" /></datalist>
               </Field>
             </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Look and feel" description="Your name and colour for everyone in your organisation. Leave empty for the standard look." />
+          <CardBody className="grid gap-4 sm:grid-cols-3">
+            <Field label="Name in the menu"><Input name="brandName" maxLength={40} placeholder="Bizfy Voice AI" defaultValue={settings.brand.name} /></Field>
+            <Field label="Line under the name"><Input name="brandTagline" maxLength={60} placeholder="Calls · voices · agents" defaultValue={settings.brand.tagline} /></Field>
+            <Field label="Main colour">
+              <div className="flex items-center gap-2"><input type="color" name="brandPrimary" defaultValue={settings.brand.primary || "#2563eb"} className="h-9 w-12 rounded-md border border-border bg-background" aria-label="Main colour" /><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="brandUse" className={check} defaultChecked={!!settings.brand.primary} /> Use it</label></div>
+            </Field>
           </CardBody>
         </Card>
 

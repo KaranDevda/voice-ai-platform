@@ -141,6 +141,13 @@
       "when": 1793119722024,
       "tag": "0019_crm_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793120722024,
+      "tag": "0020_campaign_ab_amd",
+      "breakpoints": true
     }
   ]
 }

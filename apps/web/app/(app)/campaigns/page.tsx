@@ -12,7 +12,7 @@ export default async function CampaignsPage() {
   return (
     <>
       <PageHeader title="Campaigns" description="AI calls to everyone with a tag, on a schedule. Do Not Disturb, consent and calling hours (9:00 to 21:00 India time) are checked before every call." />
-      <CampaignsAdmin campaigns={rows.map((c) => ({ id: c.id, name: c.name, status: c.status, language: c.language, startAt: c.startAt?.toISOString() ?? null, maxConcurrent: c.maxConcurrent, maxAttempts: c.maxAttempts, retryDelayMin: c.retryDelayMin, counts: c.counts, total: c.total }))} />
+      <CampaignsAdmin campaigns={rows.map((c) => ({ id: c.id, name: c.name, status: c.status, language: c.language, startAt: c.startAt?.toISOString() ?? null, maxConcurrent: c.maxConcurrent, maxAttempts: c.maxAttempts, retryDelayMin: c.retryDelayMin, counts: c.counts, total: c.total, detectMachines: c.detectMachines, variants: c.variants }))} />
     </>
   );
 }

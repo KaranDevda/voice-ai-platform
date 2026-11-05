@@ -450,13 +450,16 @@ export async function getUserProfile(db: Db, user: AuthUser) {
   return withOrg(db, user.orgId, async (tx) => {
     const [row] = await tx
       .select({
-        email: users.email, orgName: organizations.name,
+        email: users.email, orgName: organizations.name, settings: organizations.settingsJson,
         roles: sql<string[]>`coalesce((select array_agg(r.key order by r.key) from user_roles ur join roles r on r.id = ur.role_id where ur.user_id = "users"."id"), '{}')`,
       })
       .from(users)
       .innerJoin(organizations, eq(organizations.id, users.orgId))
       .where(eq(users.id, user.id));
-    return row ?? { email: "", orgName: "", roles: [] as string[] };
+    if (!row) return { email: "", orgName: "", roles: [] as string[], brand: orgSettingsSchema.parse({}).brand };
+    const { settings, ...rest } = row;
+    const brand = orgSettingsSchema.safeParse(settings);
+    return { ...rest, brand: brand.success ? brand.data.brand : orgSettingsSchema.parse({}).brand };
   });
 }
 

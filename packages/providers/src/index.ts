@@ -16,3 +16,4 @@ export * from "./sarvam";
 export * from "./pacing";
 export * from "./payments";
 export * from "./crm-webhook";
+export * from "./email";

@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
@@ -24,6 +24,16 @@ export function PlatformPanel({ kyc, numbers, orgs, requests, jobs }: { kyc: Kyc
   const [found, setFound] = useState<Found[] | null>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [mail, setMail] = useState<{ configured: boolean; host?: string; port?: number; from?: string } | null>(null);
+  const [mailTo, setMailTo] = useState("");
+  const [mailMsg, setMailMsg] = useState("");
+  useEffect(() => { void fetch("/api/platform/email").then((r) => r.json()).then(setMail).catch(() => setMail(null)); }, []);
+  async function testMail() {
+    setMailMsg("Sending…");
+    const res = await fetch("/api/platform/email", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: mailTo }) });
+    const b = await res.json().catch(() => ({}));
+    setMailMsg(res.ok ? "Sent. Check that inbox." : b.message ?? "That did not work");
+  }
   const available = numbers.filter((n) => n.status === "available");
 
   async function post(url: string, body: unknown, then?: () => void) {
@@ -111,6 +121,15 @@ export function PlatformPanel({ kyc, numbers, orgs, requests, jobs }: { kyc: Kyc
                 </Tr>
               ))}</tbody></Table>
           )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="E-mail (SMTP)" description="Set on the server: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM. The password is never shown here." />
+        <CardBody className="grid gap-3">
+          <p className="text-sm">{mail === null ? "Checking…" : mail.configured ? <>Connected to <b>{mail.host}:{mail.port}</b>, sending as <b>{mail.from}</b>.</> : "Not set up yet."}</p>
+          {mail?.configured && <div className="flex flex-wrap items-end gap-2"><div className="min-w-64 flex-1"><Field label="Send a test message to"><Input type="email" value={mailTo} onChange={(e) => setMailTo(e.target.value)} /></Field></div><Button onClick={() => void testMail()} disabled={mailTo.length < 5}>Send test</Button></div>}
+          {mailMsg && <p role="status" className="text-sm text-muted-foreground">{mailMsg}</p>}
         </CardBody>
       </Card>
 

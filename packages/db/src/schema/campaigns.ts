@@ -1,4 +1,5 @@
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, orgIsolationPolicy, tstz } from "./_common";
 import { leads } from "./crm";
 import { organizations, users } from "./org";
@@ -21,6 +22,10 @@ export const campaigns = pgTable(
     maxConcurrent: integer("max_concurrent").notNull().default(2),
     maxAttempts: integer("max_attempts").notNull().default(2),
     retryDelayMin: integer("retry_delay_min").notNull().default(60),
+    /** Hang up when the phone line hears an answering machine, and try the person again later. */
+    detectMachines: boolean("detect_machines").notNull().default(true),
+    /** A/B test: up to 3 opening lines; each person gets one (kept for retries). Empty = the agent's normal greeting. */
+    openingVariants: text("opening_variants").array().notNull().default(sql`'{}'::text[]`),
     /** The calls run with this person's permissions. */
     createdBy: uuid("created_by").notNull().references(() => users.id),
     createdAt: createdAt(),
@@ -39,6 +44,8 @@ export const campaignTargets = pgTable(
     leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
     status: text("status", { enum: TARGET_STATUSES }).notNull().default("pending"),
     attempts: integer("attempts").notNull().default(0),
+    /** Which opening line (1 to 3) this person got, when the campaign is an A/B test. */
+    variant: integer("variant"),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     calledAt: tstz("called_at"),
     lastError: text("last_error"),

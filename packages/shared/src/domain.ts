@@ -93,6 +93,15 @@ export const orgSettingsSchema = z.object({
       enforce: z.boolean().default(false),
     })
     .prefault({}),
+  /** How the organisation's own people see the app: its name, a line under it and its main colour. Empty = the standard look. */
+  brand: z
+    .object({
+      name: z.string().trim().max(40).default(""),
+      tagline: z.string().trim().max(60).default(""),
+      /** A 6-digit hex colour like #0f766e, or empty. Only this strict form is ever put into a page. */
+      primary: z.string().regex(/^(#[0-9a-fA-F]{6})?$/, "use a colour like #0f766e").default(""),
+    })
+    .prefault({}),
   /** Texts. With auto-reply on, an incoming text is answered by the AI (from the knowledge base) as a queued text. Needs numbers that can receive SMS (not Indian numbers on Plivo). */
   sms: z.object({ autoReply: z.boolean().default(false) }).prefault({}),
   /** With this on, campaigns, texts and follow-up sequences need the organisation to have passed KYC (basic or business). Off by default. */

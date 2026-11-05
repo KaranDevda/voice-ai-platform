@@ -117,3 +117,18 @@ describe("Plivo SMS", () => {
     expect(sent).toMatchObject({ src: "BIZFYL", dst: "+919876543210", text: "Hi", dlt_entity_id: "111", dlt_template_id: "222" });
   });
 });
+
+describe("Plivo outbound call: answering machine detection", () => {
+  const post = async (machineUrl?: string) => {
+    let sent: Record<string, unknown> = {};
+    const plivo = createPlivo({ authId: "id", authToken: "t", fetch: (async (_u: string, init?: RequestInit) => { sent = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ request_uuid: "r1" }), { status: 201 }); }) as typeof fetch });
+    await plivo.makeCall({ from: "+1", to: "+2", answerUrl: "https://h/answer", machineUrl });
+    return sent;
+  };
+  it("asks Plivo to listen for a machine and report to the address given", async () => {
+    expect(await post("https://h/machine?lead=1")).toMatchObject({ machine_detection: "true", machine_detection_url: "https://h/machine?lead=1", machine_detection_method: "POST" });
+  });
+  it("does not ask for detection when no address is given", async () => {
+    expect(await post()).not.toHaveProperty("machine_detection");
+  });
+});
