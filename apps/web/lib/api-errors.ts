@@ -1,6 +1,6 @@
 import "server-only";
 import { ForbiddenError } from "@voiceai/auth";
-import { AdminError, IntegrationError, ProfitError, BillingError, CampaignError, MessagingError, VoiceProfileError, WidgetError } from "@voiceai/db";
+import { AdminError, IntegrationError, ProfitError, BillingError, CampaignError, MessagingError, VoiceProfileError, WidgetError, PasswordError } from "@voiceai/db";
 import { ProviderError, UnsafeUrlError } from "@voiceai/providers";
 import { ZodError } from "zod";
 import { NotConfiguredError } from "./providers";
@@ -15,6 +15,7 @@ export function toResponse(err: unknown): Response {
   if (err instanceof AdminError) return Response.json({ error: "admin", message: err.message }, { status: 409 });
   if (err instanceof BillingError) return Response.json({ error: "billing", message: err.message }, { status: 402 });
   if (err instanceof MessagingError) return Response.json({ error: "messaging", message: err.message }, { status: 409 });
+  if (err instanceof PasswordError) return Response.json({ error: "password", message: err.message }, { status: 400 });
   if (err instanceof WidgetError) return Response.json({ error: "widget", message: err.message }, { status: 409 });
   if (err instanceof CampaignError) return Response.json({ error: "campaign", message: err.message }, { status: 409 });
   if (err instanceof VoiceProfileError) return Response.json({ error: err.message }, { status: 409 });

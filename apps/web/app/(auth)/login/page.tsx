@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
@@ -41,6 +42,7 @@ export default function LoginPage() {
       )}
       {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
       <Button type="submit" disabled={busy}>{busy ? "Checking…" : needTotp ? "Verify and sign in" : "Continue"}</Button>
+      {!needTotp && <Link href="/forgot-password" className="text-center text-sm text-muted-foreground underline">Forgot your password?</Link>}
     </form>
   );
 }

@@ -5,7 +5,7 @@ import { cookieOptions, SESSION_COOKIE, SESSION_TTL_S, IMPERSONATION_TTL_S, sign
 // Brand images are static and shown on the login page, so they must load before sign-in.
 // The phone app has no browser session: it sends its own device token, which each /api/mobile route checks itself.
 // Voice files are fetched by the TTS server, not a browser; the route itself checks a signed address.
-const PUBLIC = [/^\/login$/, /^\/robots\.txt$/, /^\/widget\.js$/, /^\/widget\/frame$/, /^\/api\/widget\/session$/, /^\/api\/health$/, /^\/api\/billing\/(razorpay|stripe|paypal|paystack|flutterwave|cryptomus)-webhook$/, /^\/api\/auth\/(login|mfa\/.*)$/, /^\/brand\/[\w.-]+\.png$/, /^\/icon\.png$/, /^\/worklets\/[\w.-]+\.js$/, /^\/api\/mobile\/(register|me|calls|leads|check-call)$/, /^\/api\/mobile\/calls\/[^/]+\/recording$/, /^\/api\/internal\/voice-files\/[0-9a-f]{64}\/[0-9a-f-]{36}(\.[a-z]{2})?\.safetensors$/];
+const PUBLIC = [/^\/login$/, /^\/forgot-password$/, /^\/reset-password$/, /^\/api\/auth\/(forgot|reset)$/, /^\/robots\.txt$/, /^\/widget\.js$/, /^\/widget\/frame$/, /^\/api\/widget\/session$/, /^\/api\/health$/, /^\/api\/billing\/(razorpay|stripe|paypal|paystack|flutterwave|cryptomus)-webhook$/, /^\/api\/auth\/(login|mfa\/.*)$/, /^\/brand\/[\w.-]+\.png$/, /^\/icon\.png$/, /^\/worklets\/[\w.-]+\.js$/, /^\/api\/mobile\/(register|me|calls|leads|check-call)$/, /^\/api\/mobile\/calls\/[^/]+\/recording$/, /^\/api\/internal\/voice-files\/[0-9a-f]{64}\/[0-9a-f-]{36}(\.[a-z]{2})?\.safetensors$/];
 
 // Per address, per server. Sign-in is tight (the account lockout already stops guessing one account; this stops one address trying many).
 // The address comes from X-Forwarded-For, which only a trusted proxy in front sets; otherwise it can be forged, so this is a brake, not the only lock.
@@ -14,9 +14,9 @@ const apiLimiter = new RateLimiter(600, 60_000);
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/api/") || pathname === "/login") {
+  if (pathname.startsWith("/api/") || pathname === "/login" || pathname === "/forgot-password" || pathname === "/reset-password") {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-    const gate = /^\/api\/auth\//.test(pathname) || pathname === "/login" ? authLimiter.take(`auth:${ip}`) : apiLimiter.take(`api:${ip}`);
+    const gate = /^\/api\/auth\//.test(pathname) || pathname === "/login" || pathname === "/forgot-password" || pathname === "/reset-password" ? authLimiter.take(`auth:${ip}`) : apiLimiter.take(`api:${ip}`);
     if (!gate.ok) return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "retry-after": String(gate.retryAfterS) } });
   }
   const claims = await verifyToken<SessionClaims>(req.cookies.get(SESSION_COOKIE)?.value, "session");

@@ -36,14 +36,16 @@ export const cookieOptions = (maxAge: number) => ({
   maxAge,
 });
 
-export const signToken = (claims: SessionClaims | EnrollClaims, ttlS: number, kind: "session" | "enroll") =>
+export interface ResetClaims extends SessionClaims { fp: string; em: string }
+export const RESET_TTL_S = 30 * 60;
+export const signToken = (claims: SessionClaims | EnrollClaims | ResetClaims, ttlS: number, kind: "session" | "enroll" | "reset") =>
   new SignJWT({ ...claims, kind })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${ttlS}s`)
     .sign(key());
 
-export async function verifyToken<T extends SessionClaims>(token: string | undefined, kind: "session" | "enroll"): Promise<T | null> {
+export async function verifyToken<T extends SessionClaims>(token: string | undefined, kind: "session" | "enroll" | "reset"): Promise<T | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, key(), { algorithms: ["HS256"] });

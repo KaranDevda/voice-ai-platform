@@ -162,6 +162,13 @@
       "when": 1793122722024,
       "tag": "0022_low_balance_alerts",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793123722024,
+      "tag": "0023_password_reset",
+      "breakpoints": true
     }
   ]
 }
