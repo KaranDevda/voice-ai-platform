@@ -6,9 +6,9 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { z } from "zod";
 import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims } from "@voiceai/auth";
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
-import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getLeadPhone, getPhoneConfig, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, reportMachine, sentTextRecently, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
+import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getLeadPhone, getPhoneConfig, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, reportMachine, getCampaignAudio, sentTextRecently, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
 import {
-  createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
+  createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
 import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
@@ -423,7 +423,7 @@ function connectToAi(claims: VoiceTokenClaims, o: { lang?: string; lead?: string
   return plivoStreamXml(`${PUBLIC_URL!.replace(/^http/, "ws")}/plivo/stream?${params}`);
 }
 
-const menuQuery = z.object({ t: z.string().optional(), lead: z.string().uuid().optional(), lang: callLanguage.optional(), op: z.string().max(300).optional() });
+const menuQuery = z.object({ t: z.string().optional(), lead: z.string().uuid().optional(), lang: callLanguage.optional(), op: z.string().max(300).optional(), ca: z.string().uuid().optional() });
 /** The identity a call runs as: a call we placed carries its own signed token; a call to our number runs as the configured service user. */
 const claimsFor = (t?: string): VoiceTokenClaims | null => t ? verifyVoiceToken(t, TOKEN_KEY!) : env("PLIVO_ORG_ID") && env("PLIVO_AGENT_USER_ID")
   ? { sub: env("PLIVO_AGENT_USER_ID")!, org: env("PLIVO_ORG_ID")!, voice: env("PLIVO_VOICE") } : null;
@@ -441,6 +441,8 @@ app.post("/plivo/answer", async (req, res) => {
   if (!q.success) return void res.status(400).type("text/plain").send("bad request");
   const claims = claimsFor(q.data.t);
   if (!claims) return void res.type("text/xml").send(plivoHangupXml());
+  // A campaign that plays a recording: no conversation, no menu. The person hears the file and the call ends.
+  if (q.data.ca && q.data.t) return void res.type("text/xml").send(plivoPlayXml(`${PUBLIC_URL}/plivo/campaign-audio?${new URLSearchParams({ t: q.data.t, ca: q.data.ca })}`));
   const lang = q.data.lang ?? callLanguage.catch("en-hi").parse(env("PLIVO_LANGUAGE"));
   const ai = { lang: q.data.lang, lead: q.data.lead, callUuid: body.CallUUID, from: body.From, op: q.data.op };
   try {
@@ -573,6 +575,37 @@ app.post("/plivo/machine", async (req, res) => {
   } catch (e) { console.error("answering machine hang-up failed:", e instanceof Error ? e.message : e); }
 });
 
+/** The recording an audio campaign plays. Plivo fetches it; the short-lived signed token in the address says which organisation and campaign it is for. */
+app.get("/plivo/campaign-audio", async (req, res) => {
+  const claims = TOKEN_KEY ? verifyVoiceToken(String(req.query.t ?? ""), TOKEN_KEY) : null;
+  const ca = z.string().uuid().safeParse(req.query.ca);
+  if (!claims || !ca.success) return void res.status(401).type("text/plain").send("unauthorized");
+  try {
+    const a = await getCampaignAudio(getDb(), claims.org, ca.data);
+    if (!a) return void res.status(404).type("text/plain").send("no recording");
+    res.set({ "content-type": a.mime, "content-length": String(a.data.length), "cache-control": "private, no-store" }).send(a.data);
+  } catch (e) { console.error("campaign audio could not be read:", e instanceof Error ? e.message : e); res.status(502).type("text/plain").send("could not read the recording"); }
+});
+
+/** Plivo says an audio-campaign call has ended. It is saved as an answered call (so the campaign counts the person as reached and the minutes are charged) or as a missed one. */
+app.post("/plivo/hangup", async (req, res) => {
+  if (!fromPlivo(req)) return void res.status(403).type("text/plain").send("bad signature");
+  res.status(204).end();
+  try {
+    const body = req.body as Record<string, string>;
+    const claims = TOKEN_KEY ? verifyVoiceToken(String(req.query.t ?? ""), TOKEN_KEY) : null;
+    const lead = z.string().uuid().safeParse(req.query.lead);
+    if (!claims || !lead.success || !body.CallUUID) return;
+    const user = await loadAuthUser(getDb(), claims.org, claims.sub);
+    if (!user?.permissions.includes("calls.place")) return;
+    const seconds = Math.max(0, Math.round(Number(body.BillDuration ?? body.Duration ?? 0) || 0));
+    await saveAiCall(getDb(), user, {
+      providerCallUuid: body.CallUUID, direction: "outbound", source: "ai_outbound", startedAt: new Date(Date.now() - seconds * 1000), durationS: seconds,
+      segments: seconds > 0 ? [{ speaker: "ai", startMs: 0, endMs: seconds * 1000, text: "A recorded message was played." }] : [], language: "en", leadId: lead.data, answered: seconds > 0,
+    });
+  } catch (e) { console.error("audio call could not be saved:", e instanceof Error ? e.message : e); }
+});
+
 /**
  * Places an AI call to a lead. The caller proves who they are with a signed voice token (the website makes one); the same Do Not Disturb,
  * consent and calling-hours check as everywhere else runs BEFORE the phone is dialled.
@@ -580,7 +613,7 @@ app.post("/plivo/machine", async (req, res) => {
 app.post("/plivo/outbound", express.json({ limit: "4kb" }), async (req, res) => {
   if (!phoneReady() || !env("PLIVO_NUMBER")) return void res.status(503).json({ error: "phone_not_configured" });
   const claims = verifyVoiceToken(/^Bearer (\S+)$/.exec(req.header("authorization") ?? "")?.[1] ?? "", TOKEN_KEY!);
-  const b = z.object({ leadId: z.string().uuid(), language: callLanguage.default("en-hi"), opening: z.string().trim().max(300).optional(), detectMachines: z.boolean().optional() }).safeParse(req.body);
+  const b = z.object({ leadId: z.string().uuid(), language: callLanguage.default("en-hi"), opening: z.string().trim().max(300).optional(), detectMachines: z.boolean().optional(), campaignAudio: z.string().uuid().optional() }).safeParse(req.body);
   if (!claims || !b.success) return void res.status(claims ? 400 : 401).json({ error: claims ? "invalid_request" : "unauthenticated" });
   try {
     const user = await loadAuthUser(getDb(), claims.org, claims.sub);
@@ -590,7 +623,8 @@ app.post("/plivo/outbound", express.json({ limit: "4kb" }), async (req, res) => 
     const to = await getLeadPhone(getDb(), user, b.data.leadId);
     if (!to) return void res.status(404).json({ error: "unknown_lead" });
     const t = signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice }, TOKEN_KEY!, 600); // 10 minutes to ring and be answered
-    const { callUuid } = await plivo!.makeCall({ from: env("PLIVO_NUMBER")!, to, answerUrl: `${PUBLIC_URL}/plivo/answer?${new URLSearchParams({ t, lead: b.data.leadId, lang: b.data.language, ...(b.data.opening ? { op: b.data.opening } : {}) })}`,
+    const { callUuid } = await plivo!.makeCall({ from: env("PLIVO_NUMBER")!, to, answerUrl: `${PUBLIC_URL}/plivo/answer?${new URLSearchParams({ t, lead: b.data.leadId, lang: b.data.language, ...(b.data.opening ? { op: b.data.opening } : {}), ...(b.data.campaignAudio ? { ca: b.data.campaignAudio } : {}) })}`,
+      ...(b.data.campaignAudio ? { hangupUrl: `${PUBLIC_URL}/plivo/hangup?${new URLSearchParams({ t, lead: b.data.leadId })}` } : {}),
       ...(b.data.detectMachines ? { machineUrl: `${PUBLIC_URL}/plivo/machine?${new URLSearchParams({ lead: b.data.leadId })}` } : {}),
     });
     res.status(202).json({ callUuid });

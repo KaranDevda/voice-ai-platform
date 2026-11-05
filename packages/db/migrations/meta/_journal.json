@@ -183,6 +183,13 @@
       "when": 1793125722024,
       "tag": "0025_content",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793126722024,
+      "tag": "0026_campaign_audio",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { textArray } from "./sql-array";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { assertAuthorized, type AuthUser } from "@voiceai/auth";
 import { maskPhone } from "@voiceai/shared";
@@ -19,7 +20,7 @@ async function reachableByTags(tx: Parameters<Parameters<typeof withOrg>[2]>[0],
   if (tags.length === 0) throw new MessagingError("choose at least one tag");
   const visible = scopeCondition(actor, "leads.read", { orgId: leads.orgId, teamId: leads.teamId, ownerUserId: leads.ownerUserId });
   const people = await tx.select({ id: leads.id }).from(leads)
-    .where(and(visible, eq(leads.dndFlag, false), sql`${leads.consentStatus} not in ('denied','withdrawn')`, sql`${leads.tags} && ${tags}::text[]`)).limit(5001);
+    .where(and(visible, eq(leads.dndFlag, false), sql`${leads.consentStatus} not in ('denied','withdrawn')`, sql`${leads.tags} && ${textArray(tags)}`)).limit(5001);
   if (people.length === 0) throw new MessagingError("nobody with those tags can be messaged (check the tags, Do Not Disturb and consent)");
   if (people.length > 5000) throw new MessagingError("at most 5000 people at a time; use a narrower tag");
   return people.map((p) => p.id);

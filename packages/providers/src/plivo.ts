@@ -61,6 +61,8 @@ export const plivoDialXml = (toNumber: string) => `<?xml version="1.0" encoding=
 export const plivoMenuXml = (o: { audioUrl: string; actionUrl: string; fallbackUrl: string; validDigits: string; timeoutS?: number }) =>
   `<?xml version="1.0" encoding="UTF-8"?><Response><GetDigits action="${esc(o.actionUrl)}" method="POST" numDigits="1" timeout="${o.timeoutS ?? 6}" retries="1" validDigits="${esc(o.validDigits)}"><Play>${esc(o.audioUrl)}</Play></GetDigits><Redirect method="POST">${esc(o.fallbackUrl)}</Redirect></Response>`;
 
+/** Plays an audio file (given by address) to the person who answered, then ends the call. */
+export const plivoPlayXml = (audioUrl: string) => `<?xml version="1.0" encoding="UTF-8"?><Response><Play>${esc(audioUrl)}</Play><Hangup/></Response>`;
 export const plivoHangupXml = () => `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`;
 
 // ---------------------------------------------------------------------------------------------- the audio stream

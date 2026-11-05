@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoMenuXml, plivoPlayAudio, plivoSignatureV3, plivoStreamXml, verifyPlivoSignature } from "./plivo";
+import { createPlivo, parsePlivoStreamMessage, plivoPlayXml, plivoClearAudio, plivoDialXml, plivoMenuXml, plivoPlayAudio, plivoSignatureV3, plivoStreamXml, verifyPlivoSignature } from "./plivo";
 
 const TOKEN = "test-auth-token-0123456789";
 const sign = (text: string) => createHmac("sha256", TOKEN).update(text).digest("base64");
@@ -131,4 +131,9 @@ describe("Plivo outbound call: answering machine detection", () => {
   it("does not ask for detection when no address is given", async () => {
     expect(await post()).not.toHaveProperty("machine_detection");
   });
+});
+
+describe("plivoPlayXml", () => {
+  it("plays the file and then hangs up", () => { expect(plivoPlayXml("https://v.example.com/a.wav?x=1&y=2")).toBe('<?xml version="1.0" encoding="UTF-8"?><Response><Play>https://v.example.com/a.wav?x=1&amp;y=2</Play><Hangup/></Response>'); });
+  it("escapes an address that tries to break out of the XML", () => { expect(plivoPlayXml("https://x/</Play><Dial>")).not.toContain("<Dial>"); });
 });

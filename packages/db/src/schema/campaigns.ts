@@ -1,8 +1,10 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, orgIsolationPolicy, tstz } from "./_common";
 import { leads } from "./crm";
 import { organizations, users } from "./org";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
 export const CAMPAIGN_STATUSES = ["draft", "scheduled", "running", "paused", "completed", "cancelled"] as const;
 export const TARGET_STATUSES = ["pending", "calling", "done", "failed", "skipped"] as const;
@@ -24,6 +26,8 @@ export const campaigns = pgTable(
     retryDelayMin: integer("retry_delay_min").notNull().default(60),
     /** Hang up when the phone line hears an answering machine, and try the person again later. */
     detectMachines: boolean("detect_machines").notNull().default(true),
+    /** "ai": an AI conversation (the default). "audio": a pre-recorded message is played when the person answers. */
+    mode: text("mode", { enum: ["ai", "audio"] }).notNull().default("ai"),
     /** A/B test: up to 3 opening lines; each person gets one (kept for retries). Empty = the agent's normal greeting. */
     openingVariants: text("opening_variants").array().notNull().default(sql`'{}'::text[]`),
     /** The calls run with this person's permissions. */
@@ -56,4 +60,18 @@ export const campaignTargets = pgTable(
     index("campaign_targets_due_idx").on(t.campaignId, t.status, t.nextAttemptAt),
     orgIsolationPolicy(),
   ],
+).enableRLS();
+
+/** The recording an audio campaign plays (MP3 or WAV, at most 5 MB). */
+export const campaignAudio = pgTable(
+  "campaign_audio",
+  {
+    campaignId: uuid("campaign_id").primaryKey().references(() => campaigns.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    name: text("name").notNull(),
+    mime: text("mime", { enum: ["audio/mpeg", "audio/wav"] }).notNull(),
+    data: bytea("data").notNull(),
+    createdAt: createdAt(),
+  },
+  () => [orgIsolationPolicy()],
 ).enableRLS();

@@ -17,6 +17,8 @@ export interface SaveCallInput {
   durationS: number;
   segments: TranscriptSegment[];
   language: string;
+  /** The call was answered even though no caller words were heard (a pre-recorded message was played). Without it, a call with no caller speech is saved as missed. */
+  answered?: boolean;
   leadId?: string | null;
   voiceProfileId?: string | null;
   /** Set when the AI asked for a person to take over: why, and what the caller said. */
@@ -29,7 +31,7 @@ export interface SaveCallInput {
  */
 export async function saveAiCall(db: Db, actor: AuthUser, input: SaveCallInput): Promise<{ id: string; created: boolean }> {
   assertAuthorized(actor, "calls.place");
-  const spoke = input.segments.some((s) => s.speaker === "caller");
+  const spoke = input.answered ?? input.segments.some((s) => s.speaker === "caller");
   return withOrg(db, actor.orgId, async (tx) => {
     const [owner] = await tx.select({ teamId: users.teamId }).from(users).where(eq(users.id, actor.id));
     const [row] = await tx
