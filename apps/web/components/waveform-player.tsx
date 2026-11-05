@@ -134,7 +134,7 @@ export function WaveformPlayer({ src, lazy = false, controllerRef, onTime, downl
           className="flex h-12 min-w-0 flex-1 cursor-pointer items-center gap-px overflow-hidden"
         >
           {peaks.map((p, i) => (
-            <span key={i} className="min-w-0 flex-1 rounded-full" style={{ height: `${p * 100}%`, background: i / BARS <= ratio && ready ? "var(--wave)" : "var(--wave-dim)" }} />
+            <span key={i} className="min-w-0 flex-1 rounded-full" style={{ height: `${(p * 100).toFixed(2)}%`, /* rounded: Math.sin differs in the last digits between the server and the browser, which React reports as a mismatch */ background: i / BARS <= ratio && ready ? "var(--wave)" : "var(--wave-dim)" }} />
           ))}
         </div>
         <div className="w-[5.25rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground">
