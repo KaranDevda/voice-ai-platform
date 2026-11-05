@@ -56,7 +56,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <div className="truncate text-sm font-medium">{profile.orgName}</div>
             <div className="truncate text-xs text-muted-foreground md:hidden">{profile.email}</div>
           </div>
-          <div className="flex items-center gap-1"><a href="/account" className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">Account</a><LanguageSelect initial={lang} label={tr(lang, "Language")} /><ThemeToggle initial={theme} /><LogoutButton /></div>
+          <div className="flex items-center gap-1"><a href="/account" className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{tr(lang, "Account")}</a><LanguageSelect initial={lang} label={tr(lang, "Language")} /><ThemeToggle initial={theme} /><LogoutButton /></div>
         </header>
         <div className="border-b border-border bg-card md:hidden"><NavLinks groups={groups} orientation="horizontal" /></div>
         <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</main>

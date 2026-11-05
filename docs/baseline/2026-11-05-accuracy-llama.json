@@ -1,0 +1,162 @@
+{
+ "model": "llama",
+ "pass": 11,
+ "n": 16,
+ "results": [
+  {
+   "q": "How much does the Starter plan cost?",
+   "a": "The Starter plan costs 1,999 rupees per month and includes up to 3 users and call recording for 30 days.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 10631.272417,
+   "totalMs": 11352.475124999999
+  },
+  {
+   "q": "What is the price of the Business plan and how many users does it include?",
+   "a": "The Business plan costs 4,999 rupees per month and includes up to 10 users, the AI phone assistant, call tracking for agent mobile phones, and transcripts with AI summaries.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 384.28608299999905,
+   "totalMs": 1421.712125
+  },
+  {
+   "q": "Is there a discount if I pay yearly?",
+   "a": "आपकी मदद के लिए धन्यवाद। हालांकि हमारे पास यह जानकारी नहीं है कि कोई विशेष सालाना डिस्काउंट है, लेकिन हम आपको एक डेमो का आयोजन करने में मदद कर सकते हैं या आपको हमारी टीम से संपर्क करने के लिए कह सकते हैं। आपका नाम क्या है?",
+   "ok": false,
+   "missing": [
+    "/15/"
+   ],
+   "invented": [],
+   "firstMs": 201.937582999999,
+   "totalMs": 3144.023457999998
+  },
+  {
+   "q": "What do I get with the Enterprise plan?",
+   "a": "आपकी मदद के लिए धन्यवाद। Bizfy की Enterprise योजना में सिंगल साइन-ऑन, एक निजी ऑनबोर्डिंग मैनेजर, व्यक्तिगत डेटा संरक्षण और प्राथमिकता समर्थन शामिल हैं।",
+   "ok": false,
+   "missing": [
+    "/single sign|SSO/i",
+    "/request/i"
+   ],
+   "invented": [],
+   "firstMs": 291.6000000000022,
+   "totalMs": 2251.490833
+  },
+  {
+   "q": "How long do you keep my call recordings?",
+   "a": "We keep your call recordings for 180 days by default. This means that after 180 days, the recordings will be automatically deleted.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 491.791792,
+   "totalMs": 1291.633791999997
+  },
+  {
+   "q": "And how long are transcripts kept?",
+   "a": "We keep call recordings for 180 days by default, and transcripts for one year.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 383.28070899999875,
+   "totalMs": 842.4954589999979
+  },
+  {
+   "q": "Where is my data stored?",
+   "a": "Your data is stored in India in encrypted storage.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 294.89837500000067,
+   "totalMs": 564.5340840000026
+  },
+  {
+   "q": "How often do calls from the agent app sync?",
+   "a": "Calls from the agent app sync every two minutes and whenever a call ends.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 381.9965830000001,
+   "totalMs": 782.9698749999989
+  },
+  {
+   "q": "Why are some calls on Android not recorded?",
+   "a": "Hello, I understand you're calling about call recording on Android. On Android 10 and newer, third-party recording apps are blocked, so calls are only recorded if the phone's own dialer records them.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 490.71991700000217,
+   "totalMs": 1613.676083000002
+  },
+  {
+   "q": "What happens to a cloned voice if the person withdraws consent?",
+   "a": "If the person withdraws consent, their cloned voice will be deleted within 24 hours.",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 294.8361659999973,
+   "totalMs": 775.0044999999991
+  },
+  {
+   "q": "बिज़नेस प्लान की कीमत क्या है?",
+   "a": "बिल्कुल, बिज़नेस प्लान की कीमत है 4,999 रुपये प्रति माह, और इसमें 10 उपयोगकर्ताओं की सुविधा भी है।",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 11804.056291,
+   "totalMs": 13477.498458000002
+  },
+  {
+   "q": "रिकॉर्डिंग कितने दिन तक रखी जाती है?",
+   "a": "कॉल रिकॉर्डिंग केवल 30 दिन तक सेव रहती है।",
+   "ok": false,
+   "missing": [
+    "/180|एक सौ अस्सी|१८०/"
+   ],
+   "invented": [],
+   "firstMs": 525.3531249999942,
+   "totalMs": 1125.708666999999
+  },
+  {
+   "q": "स्टार्टर प्लान में कितने यूज़र मिलते हैं?",
+   "a": "जी बिल्कुल, स्टार्टर प्लान में 3 यूज़र मिलते हैं।",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 416.1187090000021,
+   "totalMs": 1154.111334000001
+  },
+  {
+   "q": "मेरा डेटा कहाँ स्टोर होता है?",
+   "a": "मेरे पास आपके डेटा के बारे में विस्तार से जानकारी नहीं है। अगर आप अपने डेटा को स्टोर करने के बारे में जानना चाहते हैं, तो मैं आपको अपने साथी से जोड़ देता हूँ।",
+   "ok": false,
+   "missing": [
+    "/भारत|इंडिया|India/i"
+   ],
+   "invented": [],
+   "firstMs": 226.33975000000646,
+   "totalMs": 2557.4322910000046
+  },
+  {
+   "q": "Do you offer a free trial?",
+   "a": "I do not have the free trial details with me. I can arrange a demo for you, or connect you with the team. Which would you prefer?",
+   "ok": true,
+   "missing": [],
+   "invented": [],
+   "firstMs": 535.6734999999971,
+   "totalMs": 1359.4418329999971
+  },
+  {
+   "q": "Which payment methods do you accept?",
+   "a": "We accept various payment methods, including credit/debit cards and online payment gateways. Would you like to know more about our payment options or is there something else I can help you with?",
+   "ok": false,
+   "missing": [
+    "did not say it lacks the information"
+   ],
+   "invented": [],
+   "firstMs": 378.42616600000474,
+   "totalMs": 1414.9663750000036
+  }
+ ]
+}

@@ -45,6 +45,10 @@ const ROWS: Record<string, string[]> = {
   "Provider logs": ["Registros de proveedores", "Journaux des fournisseurs", "سجلات المزودين", "服务商日志", "प्रोवाइडर लॉग", "Logs de provedores", "Журналы провайдеров", "プロバイダーログ", "Anbieter-Protokolle"],
   "Settings": ["Ajustes", "Paramètres", "الإعدادات", "设置", "सेटिंग्स", "Configurações", "Настройки", "設定", "Einstellungen"],
   "Calls · voices · agents": ["Llamadas · voces · agentes", "Appels · voix · agents", "مكالمات · أصوات · وكلاء", "通话 · 声音 · 坐席", "कॉल · आवाज़ें · एजेंट", "Chamadas · vozes · agentes", "Звонки · голоса · агенты", "通話 · 音声 · エージェント", "Anrufe · Stimmen · Agenten"],
+  "My account": ["Mi cuenta", "Mon compte", "حسابي", "我的账户", "मेरा खाता", "Minha conta", "Мой аккаунт", "マイアカウント", "Mein Konto"],
+  "Account": ["Cuenta", "Compte", "الحساب", "账户", "खाता", "Conta", "Аккаунт", "アカウント", "Konto"],
+  "Credit history": ["Historial de crédito", "Historique des crédits", "سجل الرصيد", "额度记录", "क्रेडिट इतिहास", "Histórico de créditos", "История баланса", "クレジット履歴", "Guthabenverlauf"],
+  "KYC verification": ["Verificación KYC", "Vérification KYC", "التحقق من الهوية (KYC)", "实名认证审核", "केवाईसी सत्यापन", "Verificação KYC", "Проверка KYC", "KYC確認", "KYC-Prüfung"],
   "Language": ["Idioma", "Langue", "اللغة", "语言", "भाषा", "Idioma", "Язык", "言語", "Sprache"],
 };
 
