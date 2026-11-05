@@ -14,9 +14,12 @@ const HINDI_ASK = /\?|क्या|कितना|कितनी|कितन�
  * Only a real question or request earns an acknowledgement. Statements (a name, a date, "that works for me"), greetings, thanks
  * and short replies get none, because "Sure." after "My name is Karan" sounds wrong. Questions get "Let me check.", requests "Sure.".
  */
+/** Greetings, thanks and short replies: no acknowledgement, and no "one moment" even when the AI is slow. */
+export const isSmallTalk = (userText: string): boolean => userText.trim().split(/\s+/).length < 4 || SKIP.test(userText.trim());
+
 export function ackFor(userText: string, language: "en" | "hi" | "en-hi", fastHindi = false): string | null {
   const text = userText.trim();
-  if (text.split(/\s+/).length < 4 || SKIP.test(text)) return null;
+  if (isSmallTalk(text)) return null;
   if (language === "hi" || DEVANAGARI.test(text)) return fastHindi && HINDI_ASK.test(text) ? "जी।" : null;
   if (REQUEST.test(text)) return "Sure.";
   return text.endsWith("?") || QUESTION.test(text) ? "Let me check." : null;

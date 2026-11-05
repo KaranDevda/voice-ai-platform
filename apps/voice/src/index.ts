@@ -8,7 +8,7 @@ import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims 
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
 import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getLeadPhone, getPhoneConfig, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, reportMachine, sentTextRecently, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
 import {
-  createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, createSarvamStt, isBuiltInPocketVoice, signVoiceFileId,
+  createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
 import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
@@ -93,11 +93,6 @@ function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line
   // English calls can use a small English-only model (WHISPER_URL_EN): about five times faster to decode, but weaker on strong accents.
   const whisper = (language === "en" && env("WHISPER_URL_EN")) || env("WHISPER_URL");
   // STT_HINDI=deepgram sends Hindi and mixed-language calls to Deepgram (nova-3 hears Hindi well and answers in about 0.3 s); English stays on the local model.
-  // STT_PROVIDER=sarvam (or STT_HINDI=sarvam for Hindi and mixed calls only) uses Sarvam's Indian-language speech-to-text; caller audio goes to their cloud.
-  const sarvamKey = env("SARVAM_API_KEY");
-  if (sarvamKey && (env("STT_PROVIDER") === "sarvam" || (env("STT_HINDI") === "sarvam" && language !== "en"))) {
-    return createSarvamStt({ apiKey: sarvamKey, vad: { endSilenceMs: Number(env("ENDPOINTING_MS") ?? 400) }, onTranscribed: (i) => log?.(`transcribed ${i.speechMs} ms of speech in ${i.ms} ms (Sarvam)`) });
-  }
   const viaDeepgram = env("STT_PROVIDER") === "deepgram" || (env("STT_HINDI") === "deepgram" && language !== "en");
   if (!viaDeepgram && whisper) {
     const endSilenceMs = Number(env("ENDPOINTING_MS") ?? 400);

@@ -3,6 +3,8 @@ import { SentenceChunker } from "./sentences";
 import { knowledgeBlock } from "./prompt";
 import { forVoice } from "./speech-text";
 import { looksUnfinished } from "./turn-end";
+import { isSmallTalk } from "./ack";
+import { dropFiller } from "./filler";
 import { askAgainSlow, greetingFix, sorryAgain, stillWorking, strictNote, wrongLanguage } from "./language";
 import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
@@ -374,7 +376,9 @@ export class Conversation {
         const ackText = this.o.ack?.(this.history.at(-1)?.role === "user" ? this.history.at(-1)!.content : "") ?? null;
         if (ackText) ackDone = sayAck(ackText).catch(() => {});
         // AskG1 sometimes takes 10 to 40 s to start: after 6 s without a word the caller hears that we are still on it, instead of silence.
-        waitTimer = setTimeout(() => { if (!tFirstToken && !signal.aborted) void ackDone.then(() => sayAck(stillWorking(this.o.language))).catch(() => {}); }, 6000);
+        // Not for small talk ("Hi, how are you?"): "one moment, I am checking that" makes no sense there.
+        const askedSomething = !isSmallTalk(this.history.at(-1)?.role === "user" ? this.history.at(-1)!.content : "");
+        waitTimer = setTimeout(() => { if (askedSomething && !tFirstToken && !signal.aborted) void ackDone.then(() => sayAck(stillWorking(this.o.language))).catch(() => {}); }, 6000);
         const lastUser = [...this.history].reverse().find((m) => m.role === "user")?.content ?? "";
         // Knowledge lookup must never stop a reply: if it fails the model answers without it and is told nothing matched.
         const tGround = this.now();
@@ -415,8 +419,10 @@ export class Conversation {
                 if (attempt === 0 && !spoken.length) { restart = true; break; }
                 continue;
               }
+              const spokenSentence = dropFiller(sentence);
+              if (!spokenSentence) continue; // only stalling ("Sure, let me check that."): the real acknowledgement is ack.ts, for real questions only
               if (!tFirstSentence) tFirstSentence = this.now();
-              await say(sentence);
+              await say(spokenSentence);
               if (signal.aborted) break;
             }
             if (restart) break;
@@ -430,7 +436,7 @@ export class Conversation {
             if (rest && !cutOff && wrongLanguage(rest, lang)) {
               violated = true;
               if (attempt === 0 && !spoken.length) { strict = true; this.o.log?.(`wrong language in the reply, asking again (${lang})`); continue; }
-            } else if (rest && !cutOff) { if (!tFirstSentence) tFirstSentence = this.now(); await say(rest); }
+            } else if (rest && !cutOff && dropFiller(rest)) { if (!tFirstSentence) tFirstSentence = this.now(); await say(dropFiller(rest)); }
           }
           break;
         }

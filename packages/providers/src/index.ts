@@ -12,7 +12,6 @@ export * from "./plivo";
 export * from "./s3-recordings";
 export * from "./prosody";
 export * from "./chatterbox";
-export * from "./sarvam";
 export * from "./pacing";
 export * from "./payments";
 export * from "./crm-webhook";

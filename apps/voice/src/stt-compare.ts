@@ -45,10 +45,6 @@ providers.push({ name: "whisper (local, small)", run: async (wav) => {
   const f = new FormData(); f.set("file", new Blob([wav as unknown as BlobPart], { type: "audio/wav" }), "a.wav"); f.set("language", "hi"); f.set("response_format", "json"); f.set("temperature", "0.0");
   const r = await fetch(`${WHISPER}/inference`, { method: "POST", body: f }); return ((await r.json()) as { text?: string }).text ?? "";
 } });
-if (process.env.SARVAM_API_KEY) providers.push({ name: "sarvam saarika:v2.5", run: async (wav) => {
-  const f = new FormData(); f.set("file", new Blob([wav as unknown as BlobPart], { type: "audio/wav" }), "a.wav"); f.set("model", "saarika:v2.5"); f.set("language_code", "hi-IN");
-  const r = await fetch("https://api.sarvam.ai/speech-to-text", { method: "POST", headers: { "api-subscription-key": process.env.SARVAM_API_KEY! }, body: f }); return ((await r.json()) as { transcript?: string }).transcript ?? "";
-} });
 if (process.env.DEEPGRAM_API_KEY) providers.push({ name: "deepgram nova-3", run: async (wav) => {
   const r = await fetch("https://api.deepgram.com/v1/listen?model=nova-3&language=hi&smart_format=false", { method: "POST", headers: { authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, "content-type": "audio/wav" }, body: wav as unknown as BodyInit });
   return ((await r.json()) as { results?: { channels?: { alternatives?: { transcript?: string }[] }[] } }).results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
