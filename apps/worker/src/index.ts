@@ -15,7 +15,13 @@ import { createAskG1, createPlivo, S3Recordings, sendCrmWebhook, sendEmail, smtp
 import { analyzeCall } from "./analyze";
 import { renderTemplate } from "@voiceai/shared";
 
-try { process.loadEnvFile(join(fileURLToPath(new URL("..", import.meta.url)), ".env.local")); } catch { /* keys can also come from the real environment */ }
+// The web and voice apps share the local development env file. Load worker-specific
+// values first, then fill in anything missing from the voice app's env. Node keeps
+// existing process.env values, so shell/CI overrides and worker-specific settings win.
+const workerDir = fileURLToPath(new URL("..", import.meta.url));
+for (const envFile of [join(workerDir, ".env.local"), join(workerDir, "../voice/.env.local")]) {
+  try { process.loadEnvFile(envFile); } catch { /* optional; production uses the real environment */ }
+}
 const env = (k: string) => process.env[k]?.trim() || undefined;
 const log = (m: string) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
 
@@ -110,15 +116,15 @@ async function runCampaigns() {
 
 /**
  * Texts. Every few seconds: follow-up steps that are due become queued texts, then queued texts are sent through Plivo (only inside the
- * calling hours, never to Do Not Disturb). Needs PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN and PLIVO_SMS_SENDER (an approved sender ID or number);
- * for India also PLIVO_DLT_ENTITY_ID, and each text should carry its DLT template ID. Run ONE worker.
+ * calling hours, never to Do Not Disturb). Needs PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN and PLIVO_SMS_SENDER (an approved sender ID or number).
+ * Plivo currently routes India SMS over ILDO and has deprecated its DLT request fields. Run ONE worker.
  */
 const plivoSms = env("PLIVO_AUTH_ID") && env("PLIVO_AUTH_TOKEN") && env("PLIVO_SMS_SENDER") ? createPlivo({ authId: env("PLIVO_AUTH_ID")!, authToken: env("PLIVO_AUTH_TOKEN")!, baseUrl: env("PLIVO_API_BASE") }) : null;
 if (!plivoSms) log("texts are off: set PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN and PLIVO_SMS_SENDER to send SMS");
 async function runSms() {
   for (const m of await smsRound(db, 20)) {
     try {
-      const { messageUuid } = await plivoSms!.sendSms({ from: env("PLIVO_SMS_SENDER")!, to: m.phone, text: renderTemplate(m.body, { name: m.personName, fields: m.personFields }), dltEntityId: env("PLIVO_DLT_ENTITY_ID"), dltTemplateId: m.dltTemplateId ?? undefined });
+      const { messageUuid } = await plivoSms!.sendSms({ from: env("PLIVO_SMS_SENDER")!, to: m.phone, text: renderTemplate(m.body, { name: m.personName, fields: m.personFields }) });
       await smsDone(db, m.id, true, messageUuid);
       log(`text ${m.id.slice(0, 8)} sent`);
     } catch (e) {

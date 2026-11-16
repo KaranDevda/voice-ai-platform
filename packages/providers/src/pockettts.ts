@@ -226,17 +226,25 @@ export function createPocketTts(config: PocketTtsConfig): TtsAdapter & SpeechSyn
   async function request(text: string, voiceId: string, signal?: AbortSignal, forced?: PocketLanguage) {
     const language = forced ?? detectPocketLanguage(text);
     const server = serverFor(language);
-    const form = new FormData();
-    form.set("text", text);
-    if (isBuiltInPocketVoice(voiceId)) {
-      // Built-in names belong to the English model; other languages speak in their own default voice.
-      if (language === "en") form.set("voice_url", voiceId);
-    } else {
-      if (!UUID.test(voiceId) || !config.voiceUrl) throw new PocketTtsError("unknown voice", 400);
-      if (language === "en" || (await hasFile(voiceId, language))) form.set("voice_url", config.voiceUrl(voiceId, language));
-      else config.onVoiceMissing?.(voiceId, language); // no file for this language: default voice for it, not an error
+    const makeForm = async () => {
+      const form = new FormData();
+      form.set("text", text);
+      if (isBuiltInPocketVoice(voiceId)) {
+        // Built-in names belong to the English model; other languages speak in their own default voice.
+        if (language === "en") form.set("voice_url", voiceId);
+      } else {
+        if (!UUID.test(voiceId) || !config.voiceUrl) throw new PocketTtsError("unknown voice", 400);
+        if (language === "en" || (await hasFile(voiceId, language))) form.set("voice_url", config.voiceUrl(voiceId, language));
+        else config.onVoiceMissing?.(voiceId, language); // no file for this language: default voice for it, not an error
+      }
+      return form;
+    };
+    const send = async () => doFetch(`${server}/tts`, { method: "POST", body: await makeForm(), signal });
+    let res = await send();
+    if (res.status >= 500 && !signal?.aborted) {
+      await res.body?.cancel().catch(() => {});
+      res = await send();
     }
-    const res = await doFetch(`${server}/tts`, { method: "POST", body: form, signal });
     if (!res.ok || !res.body) throw new PocketTtsError(`Pocket TTS failed: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
     return res.body;
   }

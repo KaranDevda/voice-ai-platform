@@ -136,6 +136,19 @@ describe("Pocket TTS adapter", () => {
       expect(calls.map((c) => [c.url, c.voice])).toEqual([["http://en/tts", `http://files/${ID}.safetensors`], ["http://hi/tts", `http://files/${ID}.hi.safetensors`]]);
     });
 
+    it("retries a transient server error once", async () => {
+      let calls = 0;
+      const f = (async () => {
+        calls++;
+        const body = calls === 1 ? "Internal Server Error" : new ReadableStream<Uint8Array>({ start(c) { c.enqueue(hiBytes); c.close(); } });
+        return new Response(body, { status: calls === 1 ? 500 : 200 });
+      }) as typeof fetch;
+      const tts = createPocketTts({ ...cfg(), fetch: f });
+      const r = await tts.speak({ text: "नमस्ते", voiceId: ID });
+      expect(calls).toBe(2);
+      expect(r.mime).toBe("audio/wav");
+    });
+
     it("speaks Hindi in the Hindi default voice for a built-in English voice name", async () => {
       const { calls, f } = twoServers();
       const tts = createPocketTts({ ...cfg(), fetch: f });

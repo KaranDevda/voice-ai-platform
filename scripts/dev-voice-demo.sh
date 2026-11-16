@@ -53,7 +53,7 @@ else
   echo " DEMO MODE: the AI answers are fixed text (plan prices only)."
   echo " It is a stand-in, NOT the real AskG1."
   echo "=============================================================="
-  node scripts/fake-askg1.mjs & pids+=($!)
+  PORT=8099 node scripts/fake-askg1.mjs & pids+=($!)
   sleep 1
   export ASKG1_BASE_URL=http://127.0.0.1:8099
 fi

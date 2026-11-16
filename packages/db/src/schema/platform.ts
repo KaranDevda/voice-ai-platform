@@ -2,7 +2,7 @@ import { index, integer, jsonb, pgTable, text, unique, uuid, vector } from "driz
 import { createdAt, id, orgIsolationPolicy, tstz } from "./_common";
 import { organizations, teams, users } from "./org";
 
-/** Must match the embedding model's output size (SOP: vector(1536)). */
+/** Must match the configured embedding model's output size. */
 export const EMBEDDING_DIMENSIONS = 1536;
 
 export const kbDocuments = pgTable(

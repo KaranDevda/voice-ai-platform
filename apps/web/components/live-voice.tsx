@@ -80,7 +80,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
 
   function onAudio(buf: ArrayBuffer) {
     const p = play.current;
-    if (!p) return;
+    if (!p || !buf.byteLength) return;
     if (awaitingSound.current !== null && heardAt.current !== null) {
       pendingPerceived.current.set(awaitingSound.current, Math.round(performance.now() - heardAt.current));
       awaitingSound.current = null;
@@ -105,7 +105,12 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
     switch (e.type) {
       case "ready": {
         const a = e.audio as { rate: number };
-        play.current = { ctx: new AudioContext({ sampleRate: a.rate }), next: 0, sources: [], rate: a.rate };
+        if (!play.current) {
+          setError("Audio playback did not initialize. Stop and start the call again.");
+          stop();
+          return;
+        }
+        play.current.rate = a.rate;
         setPhase("live");
         break;
       }
@@ -143,6 +148,9 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
     setError(""); setNotice(""); setLines([]); setTimings([]); setPartial("");
     setPhase("connecting");
     try {
+      const output = new AudioContext();
+      play.current = { ctx: output, next: 0, sources: [], rate: 24_000 };
+      await output.resume();
       const tokenRes = await fetch("/api/voice/token", { method: "POST" });
       if (!tokenRes.ok) {
         const why = (await tokenRes.json().catch(() => ({}))) as { message?: string };

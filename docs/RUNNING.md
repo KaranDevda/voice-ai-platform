@@ -42,6 +42,8 @@ Admin, managers and QA ask for a 2FA code: `pnpm demo:code` (changes every 30 s)
 | `DEEPGRAM_API_KEY` | Transcription and stock voices (Studio, Transcribe, Library, console microphone). |
 | `ELEVENLABS_API_KEY` | Cloned staff voices (Voice clone, cloned voices in Studio). Optional `ELEVENLABS_BASE_URL`, `ELEVENLABS_MODEL_ID`. |
 | `ASKG1_API_KEY`, `ASKG1_BASE_URL`, `ASKG1_MODEL` | Agent console. AskG1 is only reachable on the company VPN (`tailscale up --login-server=https://vpn.bizfylabs.com`). |
+| `EMBEDDING_URL`, `EMBEDDING_MODEL`, `EMBEDDING_API_KEY` | Optional OpenAI-compatible embeddings endpoint; set in both web and voice environments. It must return 1536 values per input. Without it, knowledge search uses keywords. Knowledge text and live caller questions are sent to this configured endpoint. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `APP_URL` | Password-reset and new-device alert e-mail. `APP_URL` is required in production so reset links use a trusted origin. |
 
 The Launchpad shows which of these are connected. A missing key never breaks the app: the feature that needs it says so.
 

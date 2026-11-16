@@ -7,6 +7,10 @@ describe("hinglishToDevanagari", () => {
     expect(hinglishToDevanagari("आप एक AI assistant से बात कर रहे हैं, और यह call record हो सकती है।")).toBe("आप एक ए आई असिस्टेंट से बात कर रहे हैं, और यह कॉल रिकॉर्ड हो सकती है।");
     expect(hinglishToDevanagari("बताइए, मैं आपकी कैसे help कर सकता हूँ?")).toBe("बताइए, मैं आपकी कैसे हेल्प कर सकता हूँ?");
   });
+  it("converts Roman Hindi words inside an already mixed Devanagari sentence", () => {
+    expect(hinglishToDevanagari("मेरा Business plan ka monthly price kya hai aur usme kitne users hain?"))
+      .toBe("मेरा बिज़नेस प्लान का मंथली प्राइस क्या है और उसमें कितने यूज़र्स हैं?");
+  });
   it("is not case sensitive and keeps punctuation", () => {
     expect(hinglishToDevanagari("नमस्ते! BUSINESS Plan, call-back।")).toBe("नमस्ते! बिज़नेस प्लान, कॉल-बैक।");
   });

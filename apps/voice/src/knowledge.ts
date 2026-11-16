@@ -1,3 +1,5 @@
+import { detectCallerLanguage } from "./language";
+
 const STOP = new Set(["the", "and", "for", "are", "you", "your", "what", "how", "does", "can", "with", "that", "this", "have", "has", "from", "about", "much", "many", "per", "tell", "please", "there", "any", "get", "give", "need", "want"]);
 
 const words = (text: string) => (text.toLowerCase().match(/[\p{L}\p{M}\p{N}]{3,}/gu) ?? []).filter((w) => !STOP.has(w));
@@ -20,6 +22,34 @@ export function relevantExcerpt(content: string, query: string, max = 380): stri
     chosen.push(c); used += c.p.length + 1;
   }
   return chosen.sort((a, b) => a.i - b.i).map((c) => c.p).join(" ").slice(0, max + 60);
+}
+
+/** A named plan absent from the retrieved company knowledge must not be answered from a different plan's details. */
+export function unknownPlanReply(
+  question: string,
+  passages: string[],
+  session: "en" | "hi" | "en-hi",
+  previous?: string,
+): string | null {
+  const requested = /([\p{L}\p{N}][\p{L}\p{N}'-]*)\s+plans?(?![\p{L}\p{N}])/iu.exec(question)?.[1];
+  const generic = /^(?:the|a|an|what|which|other|another|this|that|my|your|our|any|all|best|cheapest|available|different)$/iu;
+  if (!requested || generic.test(requested)) return null;
+  const plan = requested.toLocaleLowerCase();
+  const known = new RegExp(`${plan.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+plans?(?![\\p{L}\\p{N}])`, "iu");
+  if (passages.some((passage) => known.test(passage))) return null;
+
+  const language = session === "en" ? "en" : session === "hi" ? "hi" : detectCallerLanguage(question) ?? (previous ? detectCallerLanguage(previous) : undefined) ?? "en";
+  const name = `${requested[0]!.toLocaleUpperCase()}${requested.slice(1)}`;
+  if (language === "hi") return `माफ़ कीजिए, ${name} plan की जानकारी अभी मेरे पास नहीं है। क्या मैं आपको टीम से जोड़ दूँ?`;
+  if (language === "hinglish") return `माफ़ कीजिए, ${name} plan की reliable details अभी मेरे पास नहीं हैं। क्या मैं आपको team से connect करूँ?`;
+  return `I don't have reliable details for the ${name} plan. Would you like me to connect you with the team?`;
+}
+
+/** Whisper can split "What are your plans?" into "What are you?" and "plants do you have?". */
+export function normalizeBizfyPlanQuestion(text: string, previous?: string): string {
+  const combined = `${previous ?? ""} ${text}`.replace(/\s+/g, " ").trim();
+  if (/\bwhat are you\s*[?.!,]*\s*plants?\s+do you have\b/i.test(combined)) return "What plans do you have?";
+  return text;
 }
 
 /**

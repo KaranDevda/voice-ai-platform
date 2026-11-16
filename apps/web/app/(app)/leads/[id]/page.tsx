@@ -1,9 +1,11 @@
 import { Bot, User } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getLeadDetail, listCalls } from "@voiceai/db";
+import { getLeadDetail, listCalls, listSequences, listSmsForLead } from "@voiceai/db";
 import { heatOf } from "@voiceai/shared";
 import { Forbidden } from "@/components/forbidden";
+import { LeadSms } from "@/components/lead-sms";
+import { LeadSequenceEnrollment } from "@/components/lead-sequence-enrollment";
 import { Badge, CallStatusBadge, LeadStatusBadge, SentimentBadge, SourceBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -23,6 +25,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   if (detail === null) return <Forbidden />;
   if (!detail) notFound();
   const calls = await allowed(() => listCalls(getDb(), user, { leadId: id }, 10));
+  const texts = await allowed(() => listSmsForLead(getDb(), user, id));
+  const sequences = await allowed(() => listSequences(getDb(), user));
   const { lead, ownerEmail, history, scoring, bestHour } = detail;
   const heat = heatOf(scoring?.score);
   const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00 to ${String((h + 1) % 24).padStart(2, "0")}:00`;
@@ -98,6 +102,9 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               )}
             </CardBody>
           </Card>
+
+          {texts && <LeadSms leadId={lead.id} history={texts.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() }))} />}
+          {sequences && <LeadSequenceEnrollment leadId={lead.id} sequences={sequences.map((s) => ({ id: s.id, name: s.name, status: s.status }))} />}
         </div>
 
         <Card className="content-start">

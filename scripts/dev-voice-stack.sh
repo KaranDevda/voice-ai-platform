@@ -23,6 +23,7 @@ free_port() { # port, text that identifies OUR program in its command line (a mi
   for _ in 1 2 3 4 5 6 7 8 9 10; do lsof -ti :"$1" -sTCP:LISTEN >/dev/null 2>&1 || return 0; sleep 0.3; done
 }
 free_port 8090 "llama-server"; free_port 4001 "src/index.ts"; free_port 8767 "whisper-server"; free_port 8770 "whisper-server"; free_port 8769 "voice-convert-server"; free_port 8765 "pocket-tts"; free_port 8768 "pocket-tts"; free_port 8768 "kokoro-server"
+if [ -x "$LOCAL/mlx-venv/bin/python" ]; then free_port 8771 "chatterbox-mlx-server.py"; fi
 mkdir -p "$LOCAL/logs"
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null || true' EXIT INT TERM
@@ -44,6 +45,13 @@ if [ -x "$OV_PY" ] && [ -f "$LOCAL/models/openvoice-v2/converter/checkpoint.pth"
   # On the Apple GPU: the same model and the same voice, 0.3 s per sentence instead of 1.3 to 3.5 s. VOICE_CONVERT_DEVICE=cpu goes back.
   PYTORCH_ENABLE_MPS_FALLBACK=1 VOICE_CONVERT_DEVICE="${VOICE_CONVERT_DEVICE:-mps}" "$OV_PY" scripts/voice-convert-server.py > "$LOCAL/logs/voice-convert.log" 2>&1 & pids+=($!)
 else echo "Note: voice conversion is not installed, so Hindi uses the built-in voice. See docs/LOCAL_VOICE_STACK.md."; fi
+# Optional direct voice cloning for Studio Hindi/Hinglish. Keep CHATTERBOX_URL out of apps/voice to protect live-call latency.
+MLX_PY="$LOCAL/mlx-venv/bin/python"
+CHATTERBOX_STATUS="direct Studio clone not installed"
+if [ -x "$MLX_PY" ]; then
+  "$MLX_PY" scripts/chatterbox-mlx-server.py > "$LOCAL/logs/chatterbox.log" 2>&1 & pids+=($!)
+  CHATTERBOX_STATUS="direct Studio clone :8771"
+fi
 # Backup AI (3 calls at once, 8192 tokens each: a Hindi call sends about 2,700 tokens of instruction, so the old 4096 left little room for knowledge and a long conversation): answers when AskG1 is unreachable or slow (VPN off, server down). Needs the complete model file (see docs/LOCAL_VOICE_STACK.md).
 LLAMA="$LOCAL/llama.cpp/build/bin/llama-server"; LLAMA_MODEL="$LOCAL/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 if [ -x "$LLAMA" ] && [ -f "$LLAMA_MODEL" ] && [ "$(stat -f%z "$LLAMA_MODEL" 2>/dev/null || stat -c%s "$LLAMA_MODEL")" = "2019377696" ]; then
@@ -58,5 +66,5 @@ if command -v psql >/dev/null 2>&1; then
   ( sleep 40; V="$(psql -d voiceai_dev -Atc "select 'profile:' || id from voice_profiles where status = 'active' and provider = 'pocket_tts'" 2>/dev/null | paste -sd, - || true)"
     [ -n "$V" ] && (cd apps/voice && pnpm exec tsx src/warm.ts --voices "$V" > "../../$LOCAL/logs/warm.log" 2>&1) ) & pids+=($!)
 fi
-echo "Local voice stack running: speech-to-text :8767, English voice :8765, Hindi voice :8768, voice conversion :8769, backup AI :8090, voice service :4001, post-call worker. Logs in $LOCAL/logs. Ctrl+C to stop."
+echo "Local voice stack running: speech-to-text :8767, English voice :8765, Hindi voice :8768, voice conversion :8769, $CHATTERBOX_STATUS, backup AI :8090, voice service :4001, post-call worker. Logs in $LOCAL/logs. Ctrl+C to stop."
 wait

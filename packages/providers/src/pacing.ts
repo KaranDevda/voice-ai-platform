@@ -101,7 +101,7 @@ export async function speakPaced(
   const first = made[0]!;
   for (const [i, r] of made.entries()) {
     const pcm = wavToPcm(r.audio);
-    if (!pcm) return first.mime === "audio/wav" ? first : engine.speak({ ...input, format: "mp3" }); // not something we can join: give back one plain piece
+    if (!pcm) return engine.speak({ ...input, format: "mp3" }); // not something we can join: speak the full text without pacing
     rate = pcm.rate; hindiVoice = r.hindiVoice ?? hindiVoice;
     parts.push(edge(pcm.samples, rate));
     if (pieces[i]!.pauseAfterMs > 0) parts.push(new Int16Array(Math.round((rate * pieces[i]!.pauseAfterMs) / 1000)));

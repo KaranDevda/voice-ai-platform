@@ -33,4 +33,18 @@ describe("speakPaced", () => {
     const r = await speakPaced({ speak: async () => ({ audio: one, mime: "audio/wav" }) }, { text: "Just one sentence", voiceId: "v" });
     expect(r.audio).toBe(one);
   });
+
+  it("re-speaks the full text if sentence audio cannot be joined", async () => {
+    const full = wav(4800);
+    const calls: string[] = [];
+    const engine = { speak: async ({ text }: { text: string }) => {
+      calls.push(text);
+      return text === "Two."
+        ? { audio: new Uint8Array(8), mime: "audio/wav" }
+        : { audio: text === "One." ? wav(2400) : full, mime: "audio/wav" };
+    } };
+    const r = await speakPaced(engine, { text: "One. Two.", voiceId: "v" }, NATURAL_PACING, mid);
+    expect(calls).toContain("One. Two.");
+    expect(r.audio).toEqual(full);
+  });
 });

@@ -15,7 +15,7 @@ import { Recorder } from "./recorder";
 interface Voice { id: string; label: string; gender: string; donorName: string }
 
 /** A voice file only works in the language it was made for. This adds Hindi to a voice that has only English. */
-export function AddLanguage({ voices, hindiReady, ownVoice = false }: { voices: Voice[]; hindiReady: boolean; ownVoice?: boolean }) {
+export function AddLanguage({ voices, hindiReady, ownVoice = false, unavailableReason }: { voices: Voice[]; hindiReady: boolean; ownVoice?: boolean; unavailableReason: string }) {
   const [voice, setVoice] = useState(voices[0]?.id ?? "");
   const [sample, setSample] = useState<{ file: File; url: string; ms: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,7 +48,7 @@ export function AddLanguage({ voices, hindiReady, ownVoice = false }: { voices: 
     <Card>
       <CardHeader title="Add Hindi to an existing voice" description={ownVoice ? "Voices cloned before this existed speak Hindi in a built-in voice. A fresh recording of the same person, any language, lets Hindi and Hinglish be spoken in their own voice. The existing consent covers it." : "A voice made for English cannot speak Hindi until the same person records a short Hindi sample. The existing consent covers it."} />
       <CardBody className="grid gap-4">
-        {!hindiReady && <Notice tone="warning">The Hindi voice engine is not set up yet (POCKET_TTS_HI_URL and POCKET_TTS_HI_CONFIG), so this stays disabled.</Notice>}
+        {!hindiReady && <Notice tone="warning">{unavailableReason}</Notice>}
         {!voices.length ? <p className="text-sm text-muted-foreground">There are no active cloned voices yet. Clone one above first.</p> : (
           <>
             <Field label="Voice">

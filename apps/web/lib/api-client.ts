@@ -4,6 +4,7 @@ export async function apiError(res: Response): Promise<{ message: string; hint?:
   switch (body.error) {
     case "provider_not_configured": return { message: `${label(body.provider)} is not set up yet.`, hint: body.hint };
     case "provider_unreachable": return { message: `${label(body.provider)} could not be reached.`, hint: "Check your network or VPN connection and try again." };
+    case "provider_timeout": return { message: body.message ?? "Speech generation took too long. Try a shorter script or the faster voice mode." };
     case "provider_error": return { message: `${label(body.provider)} reported a problem: ${body.message ?? "unknown error"}` };
     case "forbidden": return { message: "You do not have permission to do that." };
     case "unauthenticated": return { message: "Your session expired. Sign in again." };

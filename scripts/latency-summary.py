@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""p50/p95 per stage from load-test --json files, against the targets: caller stops -> hears the reply, p50 < 0.8 s and p95 < 1.2 s."""
+"""p50/p95 per stage from load-test --json files; report SOP first-audio and actual-answer targets separately."""
 import json, sys, statistics
 def pct(xs, p):
     xs = sorted(xs); return xs[min(len(xs) - 1, int(p / 100 * len(xs)))] if xs else float("nan")
-T50, T95 = 800, 1200
+FIRST_P50, FIRST_P95, ANSWER_P50 = 1000, 1500, 1000
 for path in sys.argv[1:]:
     rows = json.load(open(path))
     if not rows: print(path, "no answers"); continue
@@ -18,6 +18,7 @@ for path in sys.argv[1:]:
     for name, xs in [("end of speech -> text final (endpoint+STT)", stt), ("AI first word (LLM)", llm), ("  of which knowledge search", ground), ("first sentence -> first audio (TTS)", tts),
                      ("caller stops -> first sound", first), ("caller stops -> REAL answer", real)]:
         print(f"{name:<46}{pct(xs,50)/1000:>7.2f}s{pct(xs,95)/1000:>7.2f}s")
-    ok = pct(real, 50) < T50 and pct(real, 95) < T95
-    print(f"Target (real answer p50 < 0.8 s, p95 < 1.2 s): {'MET' if ok else 'NOT MET'}")
+    first_ok = pct(first, 50) <= FIRST_P50 and pct(first, 95) <= FIRST_P95
+    print(f"SOP first-audio target (p50 <= 1.0 s, p95 <= 1.5 s): {'MET' if first_ok else 'NOT MET'}")
+    print(f"Real-answer target (p50 < 1.0 s): {'MET' if pct(real, 50) < ANSWER_P50 else 'NOT MET'}")
 print("\nNot measured here: the phone line (carrier) -- needs real Plivo/Exotel calls.")

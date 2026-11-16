@@ -6,7 +6,7 @@ import { assertKyc } from "./platform-admin";
 import { withOrg, type Db } from "./client";
 import { scopeCondition } from "./scoped";
 import { textArray } from "./sql-array";
-import { campaignAudio, campaigns, campaignTargets, leads, type CAMPAIGN_STATUSES } from "./schema";
+import { campaignAudio, campaignTemplates, campaigns, campaignTargets, leads, type CAMPAIGN_STATUSES } from "./schema";
 
 export class CampaignError extends Error {}
 
@@ -21,6 +21,11 @@ export interface CampaignInput {
   mode?: "ai" | "audio";
   /** A/B test: up to 3 opening lines, each person hears one. */
   openingVariants?: string[];
+}
+
+export interface CampaignTemplateInput {
+  name: string; language: "en" | "hi" | "en-hi"; tags: string[]; maxConcurrent: number; maxAttempts: number;
+  retryDelayMin: number; detectMachines: boolean; mode: "ai" | "audio"; openingVariants: string[];
 }
 
 const inRange = (v: number, lo: number, hi: number, what: string) => {
@@ -61,6 +66,47 @@ export async function createCampaign(db: Db, actor: AuthUser, input: CampaignInp
     }
     await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "campaign.create", entity: "campaigns", entityId: c!.id, after: { name, tags: input.tags, people: people.length, startAt: input.startAt ?? null, variants: openingVariants.length, mode: input.mode === "audio" ? "audio" : "ai" } });
     return { ...c!, people: people.length };
+  });
+}
+
+/** List the organisation's reusable settings; the actual audience is rebuilt when a template is used. */
+export async function listCampaignTemplates(db: Db, actor: AuthUser) {
+  assertAuthorized(actor, "calls.place");
+  return withOrg(db, actor.orgId, (tx) => tx.select().from(campaignTemplates).orderBy(desc(campaignTemplates.createdAt)).limit(100));
+}
+
+/** Save or update a named campaign template for this organisation. */
+export async function saveCampaignTemplate(db: Db, actor: AuthUser, input: CampaignTemplateInput) {
+  assertAuthorized(actor, "calls.place");
+  const name = input.name.normalize("NFC").replace(/\s+/g, " ").trim();
+  if (!name || name.length > 120) throw new CampaignError("enter a template name of up to 120 characters");
+  const tags = [...new Set(input.tags.map((t) => t.normalize("NFC").trim().toLowerCase()).filter(Boolean))];
+  if (!tags.length || tags.length > 10 || tags.some((t) => t.length > 30)) throw new CampaignError("choose 1 to 10 tags, each up to 30 characters");
+  const maxConcurrent = inRange(input.maxConcurrent, 1, 20, "calls at once");
+  const maxAttempts = inRange(input.maxAttempts, 1, 5, "tries per person");
+  const retryDelayMin = inRange(input.retryDelayMin, 5, 1440, "minutes between tries");
+  const openingVariants = input.mode === "audio" ? [] : input.openingVariants.map((v) => v.normalize("NFC").replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (openingVariants.length === 1) throw new CampaignError("an A/B test needs at least two opening lines (or leave them empty)");
+  if (openingVariants.length > 3 || openingVariants.some((v) => v.length > 300)) throw new CampaignError("use up to 3 opening lines of up to 300 characters each");
+  return withOrg(db, actor.orgId, async (tx) => {
+    const [row] = await tx.insert(campaignTemplates).values({
+      orgId: actor.orgId, name, language: input.language, tags, maxConcurrent, maxAttempts, retryDelayMin,
+      detectMachines: input.detectMachines, mode: input.mode, openingVariants, createdBy: actor.id,
+    }).onConflictDoUpdate({ target: [campaignTemplates.orgId, campaignTemplates.name], set: {
+      language: input.language, tags, maxConcurrent, maxAttempts, retryDelayMin, detectMachines: input.detectMachines, mode: input.mode, openingVariants,
+    } }).returning();
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "campaign_template.save", entity: "campaign_templates", entityId: row!.id, after: { name, mode: input.mode } });
+    return row!;
+  });
+}
+
+export async function deleteCampaignTemplate(db: Db, actor: AuthUser, templateId: string) {
+  assertAuthorized(actor, "calls.place");
+  return withOrg(db, actor.orgId, async (tx) => {
+    const [row] = await tx.delete(campaignTemplates).where(eq(campaignTemplates.id, templateId)).returning({ id: campaignTemplates.id, name: campaignTemplates.name });
+    if (!row) throw new CampaignError("campaign template not found");
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "campaign_template.delete", entity: "campaign_templates", entityId: row.id, after: { name: row.name } });
+    return { id: row.id };
   });
 }
 

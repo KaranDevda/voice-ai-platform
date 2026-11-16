@@ -21,7 +21,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <PageHeader title="Leads" description="Every caller and prospect, linked to their calls." actions={<ContactsImport />} />
+      <PageHeader title="Leads" description="Every caller and prospect, linked to their calls." actions={<ContactsImport canExport={user.permissions.some((p) => p.startsWith("leads.export."))} />} />
       <Card>
         <FilterBar action="/leads" q={sp.q} selects={[
           { name: "status", value: sp.status, label: "All statuses", options: LEAD_STATUSES.map((s) => [s, titleCase(s)]) },

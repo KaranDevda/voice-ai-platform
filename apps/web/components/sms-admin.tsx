@@ -12,13 +12,12 @@ interface Row { id: string; direction: string; body: string; status: string; err
 const TONE: Record<string, "success" | "danger" | "neutral" | "warning"> = { sent: "success", received: "neutral", queued: "warning", sending: "warning", failed: "danger" };
 
 /** Send a text to everyone with a tag, and see what was sent. */
-interface Template { id: string; name: string; body: string; dltTemplateId: string | null }
+interface Template { id: string; name: string; body: string }
 
 export function SmsAdmin({ counts, rows, templates }: { counts: Record<string, number>; rows: Row[]; templates: Template[] }) {
   const router = useRouter();
   const [tags, setTags] = useState("");
   const [text, setText] = useState("");
-  const [dlt, setDlt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -27,7 +26,7 @@ export function SmsAdmin({ counts, rows, templates }: { counts: Record<string, n
   async function send(e: FormEvent) {
     e.preventDefault();
     setBusy(true); setError(""); setNote("");
-    const res = await fetch("/api/sms", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: text, tags: tags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean), ...(dlt.trim() ? { dltTemplateId: dlt.trim() } : {}) }) });
+    const res = await fetch("/api/sms", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: text, tags: tags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean) }) });
     setBusy(false);
     const b = await res.json().catch(() => ({}));
     if (!res.ok) return setError(b.message ?? b.issues?.[0]?.message ?? b.error ?? "Could not queue the message");
@@ -38,11 +37,11 @@ export function SmsAdmin({ counts, rows, templates }: { counts: Record<string, n
 
   function pickTemplate(id: string) {
     const t = templates.find((x) => x.id === id);
-    if (t) { setText(t.body); setDlt(t.dltTemplateId ?? ""); }
+    if (t) setText(t.body);
   }
   async function saveTemplate() {
     setError(""); setNote("");
-    const res = await fetch("/api/sms/templates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: tplName, body: text, ...(dlt.trim() ? { dltTemplateId: dlt.trim() } : {}) }) });
+    const res = await fetch("/api/sms/templates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: tplName, body: text }) });
     const b = await res.json().catch(() => ({}));
     if (!res.ok) return setError(b.message ?? b.issues?.[0]?.message ?? b.error ?? "Could not save the template");
     setNote("Template saved."); setTplName("");
@@ -60,10 +59,9 @@ export function SmsAdmin({ counts, rows, templates }: { counts: Record<string, n
         <CardHeader title="Send a text" description="To everyone with one of these tags (add tags when you import contacts on the Leads page)." />
         <CardBody>
           <form onSubmit={send} className="grid gap-3">
-            <Field label="Tags" hint="Comma separated, e.g. diwali, vip"><Input value={tags} onChange={(e) => setTags(e.target.value)} required /></Field>
+            <Field label="Tags" hint="Use tags already on your imported leads, e.g. diwali or vip. Commas select people matching any listed tag."><Input value={tags} onChange={(e) => setTags(e.target.value)} required /></Field>
             {templates.length > 0 && <Field label="Start from a template"><select defaultValue="" onChange={(e) => pickTemplate(e.target.value)} className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"><option value="">Choose…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>}
-            <Field label="Message" hint={`${text.length} / 1000. Use {{name}}, {{first_name}} or a column from your import, like {{city}}; {{name|there}} gives a fallback. In India the text must match a template registered on DLT.`}><Textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} required /></Field>
-            <Field label="DLT template ID" hint="Digits only. Needed for India."><Input value={dlt} onChange={(e) => setDlt(e.target.value)} inputMode="numeric" maxLength={30} /></Field>
+            <Field label="Message" hint={`${text.length} / 1000. Use {{name}}, {{first_name}} or an imported column like {{city}}; {{name|there}} gives a fallback. Plivo currently routes India SMS over international (ILDO) routes; its DLT fields are deprecated.`}><Textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} required /></Field>
             {error && <p role="alert" className="text-sm text-danger">{error}</p>}
             {note && <p role="status" className="text-sm text-success">{note}</p>}
             <div className="flex flex-wrap items-end gap-2">

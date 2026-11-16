@@ -20,6 +20,31 @@ export async function POST(req: Request) {
     } else {
       input = json.parse(await req.json().catch(() => null));
     }
+    if (req.headers.get("accept")?.includes("application/x-ndjson")) {
+      const encoder = new TextEncoder();
+      let cancelled = false;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const emit = (event: unknown) => { if (!cancelled) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); };
+          void importContacts(getDb(), user, input, (progress) => {
+            if (cancelled) throw new Error("The client cancelled the import");
+            emit({ type: "progress", ...progress });
+          }).then((result) => {
+            emit({ type: "done", result });
+            if (!cancelled) controller.close();
+          }).catch(async (err) => {
+            try {
+              const response = toResponse(err);
+              const body = await response.json().catch(() => ({}));
+              emit({ type: "error", message: body.message ?? body.error ?? "Could not import contacts" });
+            } catch { emit({ type: "error", message: "Could not import contacts" }); }
+            if (!cancelled) controller.close();
+          });
+        },
+        cancel() { cancelled = true; },
+      });
+      return new Response(stream, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+    }
     return Response.json(await importContacts(getDb(), user, input), { status: 201 });
   } catch (err) {
     return toResponse(err);

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { ingestKnowledge } from "@voiceai/db";
+import { chunkText } from "@voiceai/shared";
+import { embeddingsFromEnv } from "@voiceai/providers";
 import { toResponse } from "@/lib/api-errors";
 import { assertSameOrigin, getDb, requireUser } from "@/lib/server";
 
@@ -21,7 +23,10 @@ export async function POST(req: Request) {
     } else {
       input = json.parse(await req.json().catch(() => null));
     }
-    return Response.json(await ingestKnowledge(getDb(), user, input), { status: 201 });
+    const chunks = chunkText(input.text);
+    const embeddingProvider = embeddingsFromEnv();
+    const embeddings = embeddingProvider ? await embeddingProvider.embed(chunks) : undefined;
+    return Response.json(await ingestKnowledge(getDb(), user, input, embeddings), { status: 201 });
   } catch (err) {
     return toResponse(err);
   }

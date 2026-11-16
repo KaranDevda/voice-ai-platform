@@ -110,11 +110,37 @@ describe("Plivo touch-tone menu", () => {
 });
 
 describe("Plivo SMS", () => {
-  it("sends a text with the DLT ids and returns Plivo's message id", async () => {
+  it("sends a text without deprecated DLT fields and returns Plivo's message id", async () => {
     let sent: any;
     const plivo = createPlivo({ authId: "MA1", authToken: "t", fetch: (async (_u: string, init: any) => { sent = JSON.parse(init.body); return new Response(JSON.stringify({ message_uuid: ["m-1"] }), { status: 202 }); }) as any });
-    expect(await plivo.sendSms({ from: "BIZFYL", to: "+919876543210", text: "Hi", dltEntityId: "111", dltTemplateId: "222" })).toEqual({ messageUuid: "m-1" });
-    expect(sent).toMatchObject({ src: "BIZFYL", dst: "+919876543210", text: "Hi", dlt_entity_id: "111", dlt_template_id: "222" });
+    expect(await plivo.sendSms({ from: "BIZFYL", to: "+919876543210", text: "Hi" })).toEqual({ messageUuid: "m-1" });
+    expect(sent).toMatchObject({ src: "BIZFYL", dst: "+919876543210", text: "Hi", type: "sms" });
+    expect(sent).not.toHaveProperty("dlt_entity_id");
+    expect(sent).not.toHaveProperty("dlt_template_id");
+  });
+});
+
+describe("Plivo number inventory", () => {
+  it("searches read-only inventory and normalizes prices and capabilities", async () => {
+    let url = "";
+    const plivo = createPlivo({ authId: "MA1", authToken: "t", fetch: (async (input: string) => {
+      url = input;
+      return new Response(JSON.stringify({ objects: [{ number: "14155559186", sub_type: "local", city: "SAN FRANCISCO", monthly_rental_rate: "0.80", setup_rate: "0", voice_enabled: true, sms_enabled: false }] }), { status: 200 });
+    }) as any });
+    expect(await plivo.searchNumbers({ countryIso: "us", type: "local", pattern: "415", services: "voice", limit: 5 })).toEqual([{
+      number: "14155559186", type: "", subType: "local", city: "SAN FRANCISCO", region: null, monthlyRentalRate: "0.80", setupRate: "0", voiceEnabled: true, smsEnabled: false, restriction: null, restrictionText: null,
+    }]);
+    expect(url).toContain("/PhoneNumber/?country_iso=US&limit=5&offset=0&type=local&pattern=415&services=voice");
+  });
+
+  it("rents a selected number only when the caller invokes buy", async () => {
+    let sent: Record<string, unknown> = {}, url = "";
+    const plivo = createPlivo({ authId: "MA1", authToken: "t", fetch: (async (input: string, init: any) => {
+      url = input; sent = JSON.parse(init.body); return new Response(JSON.stringify({ status: "fulfilled", numbers: [{ number: "14155559186", status: "Success" }] }), { status: 201 });
+    }) as any });
+    expect(await plivo.buyNumber({ number: "+14155559186", complianceApplicationId: "comp-1" })).toEqual({ number: "+14155559186", status: "Success" });
+    expect(url).toContain("/PhoneNumber/14155559186/");
+    expect(sent).toEqual({ compliance_application_id: "comp-1" });
   });
 });
 

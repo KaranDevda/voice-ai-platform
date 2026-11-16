@@ -190,6 +190,20 @@
       "when": 1793126722024,
       "tag": "0026_campaign_audio",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794664711317,
+      "tag": "0027_campaign_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794665177992,
+      "tag": "0028_pending_phone_numbers",
+      "breakpoints": true
     }
   ]
 }

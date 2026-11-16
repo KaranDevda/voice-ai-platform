@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage, LlmAdapter, SttAdapter, SttEvent } from "@voiceai/providers";
 import { Conversation, type ServerEvent, type TtsEngine } from "./pipeline";
 
@@ -51,14 +51,14 @@ function fakeTts(perChunkMs = 0, chunks = 3): TtsEngine {
   };
 }
 
-function setup(over: { language?: "en" | "hi" | "en-hi"; ground?: (t: string, previous?: string) => Promise<string[]>; llm?: LlmAdapter; tts?: TtsEngine; greeting?: string; fallback?: string; chunkMs?: number; handoff?: ConstructorParameters<typeof Conversation>[0]["handoff"] } = {}) {
+function setup(over: { language?: "en" | "hi" | "en-hi"; ground?: (t: string, previous?: string) => Promise<string[]>; llm?: LlmAdapter; tts?: TtsEngine; greeting?: string; fallback?: string; ack?: ConstructorParameters<typeof Conversation>[0]["ack"]; chunkMs?: number; now?: () => number; handoff?: ConstructorParameters<typeof Conversation>[0]["handoff"]; bargeOnVoice?: boolean; log?: (line: string) => void } = {}) {
   const stt = fakeStt();
   const events: ServerEvent[] = [];
   const audio: string[] = [];
   const convo = new Conversation({
     stt: stt.adapter, llm: over.llm ?? fakeLlm("Hello there. How are you today?"), tts: over.tts ?? fakeTts(), language: over.language ?? "en-hi", systemPrompt: "be brief",
-    greeting: over.greeting, fallback: over.fallback, ground: over.ground, handoff: over.handoff, chunkDurationMs: over.chunkMs === undefined ? undefined : () => over.chunkMs!,
-    send: (e) => events.push(e), sendAudio: (c) => audio.push(new TextDecoder().decode(c)),
+    greeting: over.greeting, fallback: over.fallback, ack: over.ack, ground: over.ground, handoff: over.handoff, chunkDurationMs: over.chunkMs === undefined ? undefined : () => over.chunkMs!,
+    send: (e) => events.push(e), sendAudio: (c) => audio.push(new TextDecoder().decode(c)), now: over.now, bargeOnVoice: over.bargeOnVoice, log: over.log,
   });
   return { convo, stt, events, audio };
 }
@@ -78,7 +78,7 @@ describe("Conversation: replies cut off by the length limit", () => {
   it("still speaks a short answer that has no ending punctuation", async () => {
     const { convo, stt, events } = setup({ llm: fakeLlm("Sure thing") });
     await convo.start();
-    stt.fire({ kind: "final", text: "hi" });
+    stt.fire({ kind: "final", text: "tell me something" });
     await until(() => events.some((e) => e.type === "assistant"));
     expect((events.find((e) => e.type === "assistant") as { text: string }).text).toBe("Sure thing");
     await convo.close();
@@ -86,6 +86,23 @@ describe("Conversation: replies cut off by the length limit", () => {
 });
 
 describe("Conversation grounding", () => {
+  it("does not substitute another plan when a named plan is missing from company knowledge", async () => {
+    const seen: ChatMessage[][] = [];
+    const { convo, stt, events } = setup({
+      language: "en",
+      llm: fakeLlm("The Business plan costs 4,999 rupees per month.", { seen }),
+      ground: async () => ["Pricing: The Business plan costs 4,999 rupees per month."],
+    });
+    await convo.start();
+    stt.fire({ kind: "final", text: "Tell me about the Personal plan." });
+    await until(() => events.some((e) => e.type === "assistant"));
+    expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual([
+      "I don't have reliable details for the Personal plan. Would you like me to connect you with the team?",
+    ]);
+    expect(seen).toHaveLength(0);
+    await convo.close();
+  });
+
   it("gives the model the company knowledge found for what the caller said", async () => {
     const seen: ChatMessage[][] = []; const asked: string[] = [];
     const { convo, stt, events } = setup({ llm: fakeLlm("Okay.", { seen }), ground: async (t) => { asked.push(t); return ["Pricing: The Business plan costs 4,999 rupees per month."]; } });
@@ -124,7 +141,7 @@ describe("Conversation grounding", () => {
     const seen: ChatMessage[][] = [];
     const { convo, stt, events } = setup({ llm: fakeLlm("I do not have that.", { seen }), ground: async () => [] });
     await convo.start();
-    stt.fire({ kind: "final", text: "what does the premium plan cost" });
+    stt.fire({ kind: "final", text: "Do you offer a free trial?" });
     await until(() => events.some((e) => e.type === "timing"));
     expect(seen[0]!.at(-1)!.content).toMatch(/company knowledge: none/);
     await convo.close();
@@ -161,7 +178,7 @@ describe("Conversation grounding", () => {
   it("still answers if the knowledge lookup fails", async () => {
     const { convo, stt, events, audio } = setup({ ground: async () => { throw new Error("database down"); } });
     await convo.start();
-    stt.fire({ kind: "final", text: "hello" });
+    stt.fire({ kind: "final", text: "can you help me?" });
     await until(() => audio.length > 0);
     expect(events.some((e) => e.type === "error")).toBe(false);
     await convo.close();
@@ -188,7 +205,7 @@ describe("Conversation grounding", () => {
     const seen: ChatMessage[][] = [];
     const { convo, stt, events } = setup({ llm: fakeLlm("Okay.", { seen }) });
     await convo.start();
-    stt.fire({ kind: "final", text: "hi" });
+    stt.fire({ kind: "final", text: "what is this?" });
     await until(() => events.some((e) => e.type === "timing"));
     expect(seen[0]![0]!.content).toBe("be brief");
     await convo.close();
@@ -220,10 +237,48 @@ describe("Conversation resilience", () => {
 });
 
 describe("Conversation", () => {
+  it("answers a greeting without waiting for or calling the model", async () => {
+    const seen: ChatMessage[][] = [];
+    const { convo, stt, events } = setup({ language: "en", llm: fakeLlm("model answer", { seen }) });
+    await convo.start();
+    stt.fire({ kind: "final", text: "Hi, how are you?" });
+    await until(() => events.some((e) => e.type === "assistant" && (e as { text: string }).text.includes("doing well")));
+    expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual([
+      "Hi! I'm doing well, thank you. How can I help you today?",
+    ]);
+    expect(seen).toHaveLength(0);
+    await convo.close();
+  });
+
+  it("answers identity truthfully and repairs a split plans question before knowledge search", async () => {
+    const asked: string[] = [];
+    const { convo, stt, events } = setup({
+      language: "en",
+      llm: fakeLlm("Bizfy offers Starter, Business, and Enterprise plans."),
+      ground: async (text) => {
+        asked.push(text);
+        return ["Pricing and plans: Bizfy offers Starter, Business, and Enterprise plans."];
+      },
+    });
+    await convo.start();
+    stt.fire({ kind: "final", text: "What are you?" });
+    await until(() => events.some((e) => e.type === "assistant"));
+    await until(() => events.at(-1)?.type === "state" && (events.at(-1) as { state: string }).state === "listening");
+
+    stt.fire({ kind: "final", text: "plants do you have?" });
+    await until(() => events.filter((e) => e.type === "assistant").length >= 2);
+    expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual([
+      "I'm Bizfy's AI voice assistant. I can help with our plans and services.",
+      "Bizfy offers Starter, Business, and Enterprise plans.",
+    ]);
+    expect(asked).toEqual(["What plans do you have?"]);
+    await convo.close();
+  });
+
   it("answers a finished utterance sentence by sentence, in order, and reports stage timings", async () => {
     const { convo, stt, events, audio } = setup();
     await convo.start();
-    stt.fire({ kind: "final", text: "hi" });
+    stt.fire({ kind: "final", text: "tell me something" });
     await until(() => events.some((e) => e.type === "timing"));
     expect(audio).toEqual(["Hello there.#0", "Hello there.#1", "Hello there.#2", "How are you today?#0", "How are you today?#1", "How are you today?#2"]);
     expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual(["Hello there.", "How are you today?"]);
@@ -288,7 +343,7 @@ describe("Conversation", () => {
   it("returns to listening only after the audio it sent has finished playing", async () => {
     const { convo, stt, events } = setup({ llm: fakeLlm("One short reply."), chunkMs: 40 }); // 3 chunks = 120 ms of audio
     await convo.start();
-    stt.fire({ kind: "final", text: "hi" });
+    stt.fire({ kind: "final", text: "what can you do?" });
     await until(() => events.some((e) => e.type === "assistant"));
     expect(events.filter((e) => e.type === "state").at(-1)).toMatchObject({ state: "speaking" });
     await until(() => events.filter((e) => e.type === "state").at(-1)?.state === "listening", 1000);
@@ -326,17 +381,113 @@ describe("Conversation", () => {
   it("can also be interrupted the instant the recogniser hears the caller start, before any words arrive", async () => {
     const { convo, stt, events, audio } = setup({ tts: fakeTts(15, 6) });
     await convo.start();
-    stt.fire({ kind: "final", text: "hi" });
+    stt.fire({ kind: "final", text: "tell me something" });
     await until(() => audio.length >= 2);
     stt.fire({ kind: "speech_started" });
     await until(() => events.some((e) => e.type === "clear"));
     await convo.close();
   });
 
+  it("does not mistake browser speaker echo for caller speech, but still interrupts on recognized words", async () => {
+    const { convo, stt, events } = setup({
+      llm: fakeLlm("The Business plan starts at 4,999 rupees. It includes 10 users and call summaries."),
+      tts: fakeTts(5, 3), chunkMs: 1000, bargeOnVoice: false,
+    });
+    await convo.start();
+    stt.fire({ kind: "final", text: "tell me about the business plan" });
+    await until(() => events.some((e) => e.type === "timing"));
+    await sleep(20);
+    stt.fire({ kind: "speech_started" }); // Raw VAD can fire on the assistant's own speaker audio.
+    await sleep(20);
+    expect(events.some((e) => e.type === "clear")).toBe(false);
+
+    stt.fire({ kind: "partial", text: "please explain more" });
+    await until(() => events.some((e) => e.type === "clear"));
+    await convo.close();
+  });
+
+  it("clears queued browser audio when a final transcript confirms speech without partials", async () => {
+    const { convo, stt, events } = setup({
+      llm: fakeLlm("The Business plan starts at 4,999 rupees. It includes 10 users and call summaries."),
+      tts: fakeTts(5, 3), chunkMs: 1000, bargeOnVoice: false,
+    });
+    await convo.start();
+    stt.fire({ kind: "final", text: "tell me about the business plan" });
+    await until(() => events.some((e) => e.type === "timing"));
+    await sleep(20);
+    stt.fire({ kind: "final", text: "please explain more" });
+    await until(() => events.some((e) => e.type === "clear"));
+    await convo.close();
+  });
+
+  it("does not mistake the wait prompt's echo for an interruption", async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    let chatStarted!: () => void;
+    let signal: AbortSignal | undefined;
+    const started = new Promise<void>((resolve) => { chatStarted = resolve; });
+    const llm: LlmAdapter = {
+      respond: () => (async function* () {})(),
+      async *chat(args) {
+        signal = args.signal;
+        chatStarted();
+        await new Promise<void>((resolve) => { release = resolve; });
+        if (!signal?.aborted) yield "The Business plan costs 4,999 rupees per month.";
+      },
+    };
+    const { convo, stt, events } = setup({ llm, chunkMs: 1000, now: () => Date.now() });
+    try {
+      await convo.start();
+      stt.fire({ kind: "final", text: "I just wanted to know about the business plan." });
+      await started;
+      await vi.advanceTimersByTimeAsync(6000);
+      stt.fire({ kind: "speech_started" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(signal?.aborted).toBe(false);
+      expect(events.some((e) => e.type === "clear")).toBe(false);
+      release();
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      release?.();
+      await convo.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mistake the immediate acknowledgement's echo for an interruption", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const releases: (() => void)[] = [];
+    const llm: LlmAdapter = {
+      respond: () => (async function* () {})(),
+      async *chat({ signal }) {
+        signals.push(signal);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        if (!signal?.aborted) yield "The Business plan costs 4,999 rupees per month.";
+      },
+    };
+    const { convo, stt, events, audio } = setup({ llm, tts: fakeTts(15), ack: () => "Let me check.", chunkMs: 1000 });
+    try {
+      await convo.start();
+      stt.fire({ kind: "final", text: "I just wanted to know about the business plan." });
+      await until(() => signals.length === 1 && audio.length > 0);
+      stt.fire({ kind: "speech_started" });
+      await sleep(20);
+      expect(signals[0]?.aborted).toBe(false);
+      expect(events.some((e) => e.type === "clear")).toBe(false);
+
+      stt.fire({ kind: "final", text: "Actually, I have another question." });
+      await until(() => signals.length === 2);
+      expect(signals[0]?.aborted).toBe(true);
+    } finally {
+      releases.forEach((release) => release());
+      await convo.close();
+    }
+  });
+
   it("speaks the fallback message if the model fails before the caller hears anything", async () => {
     const { convo, stt, events, audio } = setup({ llm: fakeLlm("", { fail: true }), fallback: "Sorry, I am having trouble." });
     await convo.start();
-    stt.fire({ kind: "final", text: "hello" });
+    stt.fire({ kind: "final", text: "help me with something" });
     await until(() => audio.some((a) => a.startsWith("Sorry, I am having trouble.")));
     expect(events.some((e) => e.type === "error")).toBe(true);
     await convo.close();
@@ -350,6 +501,83 @@ describe("Conversation", () => {
     expect(events.some((e) => e.type === "clear")).toBe(false);
     expect(audio).toEqual([]);
     await convo.close();
+  });
+
+  it("does not let a browser transcript from acknowledgement playback cancel the answer", async () => {
+    let clock = 0;
+    let release!: () => void;
+    let calls = 0;
+    const logs: string[] = [];
+    const llm: LlmAdapter = {
+      respond: () => (async function* () {})(),
+      async *chat({ signal }) {
+        calls++;
+        await new Promise<void>((resolve) => { release = resolve; });
+        if (!signal?.aborted) yield "The Business plan starts at 4,999 rupees per month.";
+      },
+    };
+    const { convo, stt, events, audio } = setup({
+      llm, ack: () => "Sure.", chunkMs: 1000, now: () => clock, bargeOnVoice: false, log: (line) => logs.push(line),
+    });
+    try {
+      await convo.start();
+      stt.fire({ kind: "final", text: "Please tell me about the Business plan." });
+      await until(() => audio.length > 0);
+
+      clock = 200;
+      stt.fire({ kind: "speech_started" });
+      await sleep(5); // Let the recogniser loop observe the start before its delayed final.
+      clock = 4000; // Whisper may finish transcribing after the acknowledgement has ended.
+      stt.fire({ kind: "final", text: "FISD FPP" });
+      await sleep(20);
+
+      expect(calls, logs.join("\n")).toBe(1);
+      expect(events.filter((e) => e.type === "user").map((e) => (e as { text: string }).text))
+        .toEqual(["Please tell me about the Business plan."]);
+      release();
+      await until(() => events.some((e) => e.type === "assistant"));
+      expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text).join(" "))
+        .toContain("The Business plan starts at four thousand nine hundred ninety-nine rupees per month.");
+    } finally {
+      release?.();
+      await convo.close();
+    }
+  });
+
+  it("merges a browser follow-up after the acknowledgement while the answer is still pending", async () => {
+    let clock = 0;
+    const releases: Array<() => void> = [];
+    const seen: ChatMessage[][] = [];
+    const llm: LlmAdapter = {
+      respond: () => (async function* () {})(),
+      async *chat({ messages, signal }) {
+        seen.push(messages);
+        await new Promise<void>((resolve) => { releases.push(resolve); });
+        if (!signal?.aborted) yield "The Business plan starts at 4,999 rupees per month.";
+      },
+    };
+    const { convo, stt, events, audio } = setup({
+      llm, ack: () => "Sure.", chunkMs: 1000, now: () => clock, bargeOnVoice: false,
+    });
+    try {
+      await convo.start();
+      stt.fire({ kind: "final", text: "Please tell me about the Business plan." });
+      await until(() => audio.length > 0 && seen.length === 1);
+      clock = 4000; // The acknowledgement has ended, but the model has not answered yet.
+      stt.fire({ kind: "final", text: "Business plan details." });
+      await until(() => seen.length === 2);
+
+      expect(seen[1]!.filter((m) => m.role === "user")).toEqual([
+        { role: "user", content: "Please tell me about the Business plan. Business plan details." },
+      ]);
+      releases.forEach((release) => release());
+      await until(() => events.some((e) => e.type === "assistant"));
+      expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text).join(" "))
+        .toContain("The Business plan starts at four thousand nine hundred ninety-nine rupees per month.");
+    } finally {
+      releases.forEach((release) => release());
+      await convo.close();
+    }
   });
 });
 

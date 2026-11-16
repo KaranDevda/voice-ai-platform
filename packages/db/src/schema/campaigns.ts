@@ -39,6 +39,27 @@ export const campaigns = pgTable(
   (t) => [index("campaigns_org_created_idx").on(t.orgId, t.createdAt), orgIsolationPolicy()],
 ).enableRLS();
 
+/** Reusable campaign settings. A template stores audience tags and call settings, never a copied lead list or schedule. */
+export const campaignTemplates = pgTable(
+  "campaign_templates",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    name: text("name").notNull(),
+    language: text("language").notNull().default("en-hi"),
+    tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+    maxConcurrent: integer("max_concurrent").notNull().default(2),
+    maxAttempts: integer("max_attempts").notNull().default(2),
+    retryDelayMin: integer("retry_delay_min").notNull().default(60),
+    detectMachines: boolean("detect_machines").notNull().default(true),
+    mode: text("mode", { enum: ["ai", "audio"] }).notNull().default("ai"),
+    openingVariants: text("opening_variants").array().notNull().default(sql`'{}'::text[]`),
+    createdBy: uuid("created_by").notNull().references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("campaign_templates_org_name_uq").on(t.orgId, t.name), index("campaign_templates_org_created_idx").on(t.orgId, t.createdAt), orgIsolationPolicy()],
+).enableRLS();
+
 export const campaignTargets = pgTable(
   "campaign_targets",
   {

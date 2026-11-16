@@ -37,7 +37,7 @@ export async function createPairingCode(db: Db, actor: AuthUser, now = new Date(
  * kept. Pairing the same phone again (same fingerprint) replaces its token and un-revokes it, because the person proved
  * who they are with a fresh code.
  */
-export async function registerDevice(db: Db, input: RegisterDeviceInput): Promise<{ deviceId: string; token: string; email: string } | null> {
+export async function registerDevice(db: Db, input: RegisterDeviceInput): Promise<{ deviceId: string; token: string; email: string; isNew: boolean } | null> {
   const claimed = await db.execute<{ org_id: string; user_id: string }>(sql`select * from auth_claim_pairing_code(${sha256(normalizePairingCode(input.code))})`);
   const row = claimed.rows[0];
   if (!row) return null;
@@ -46,6 +46,8 @@ export async function registerDevice(db: Db, input: RegisterDeviceInput): Promis
   const token = `vd_${randomBytes(32).toString("base64url")}`;
   return withOrg(db, row.org_id, async (tx) => {
     const [owner] = await tx.select({ teamId: users.teamId, email: users.email }).from(users).where(eq(users.id, row.user_id));
+    const [existing] = await tx.select({ id: devices.id }).from(devices)
+      .where(and(eq(devices.userId, row.user_id), eq(devices.deviceFingerprint, input.fingerprint))).limit(1);
     const values = {
       orgId: row.org_id, teamId: owner?.teamId ?? null, userId: row.user_id, platform: input.platform, deviceFingerprint: input.fingerprint,
       name: input.name ?? null, appVersion: input.appVersion ?? null, workSimSlot: input.workSimSlot ?? null, tokenHash: sha256(token), revokedAt: null,
@@ -56,7 +58,7 @@ export async function registerDevice(db: Db, input: RegisterDeviceInput): Promis
       .onConflictDoUpdate({ target: [devices.userId, devices.deviceFingerprint], set: { ...values, orgId: undefined, userId: undefined, deviceFingerprint: undefined } })
       .returning({ id: devices.id });
     await writeAudit(tx, { orgId: row.org_id, teamId: owner?.teamId, actorUserId: row.user_id, action: "device.register", entity: "devices", entityId: d!.id, after: { platform: input.platform } });
-    return { deviceId: d!.id, token, email: owner?.email ?? "" };
+    return { deviceId: d!.id, token, email: owner?.email ?? "", isNew: !existing };
   });
 }
 

@@ -1,5 +1,5 @@
 import { textArray } from "./sql-array";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { assertAuthorized, type AuthUser } from "@voiceai/auth";
 import { maskPhone } from "@voiceai/shared";
 import { writeAudit } from "./audit";
@@ -74,6 +74,14 @@ export async function listSms(db: Db, actor: AuthUser) {
   });
 }
 
+/** Complete two-way SMS history for one visible lead, oldest first. */
+export async function listSmsForLead(db: Db, actor: AuthUser, leadId: string) {
+  assertAuthorized(actor, "calls.place");
+  const visible = scopeCondition(actor, "leads.read", { orgId: leads.orgId, teamId: leads.teamId, ownerUserId: leads.ownerUserId });
+  return withOrg(db, actor.orgId, async (tx) => tx.select({ id: smsMessages.id, direction: smsMessages.direction, body: smsMessages.body, status: smsMessages.status, error: smsMessages.error, createdAt: smsMessages.createdAt })
+    .from(smsMessages).innerJoin(leads, eq(leads.id, smsMessages.leadId)).where(and(visible, eq(smsMessages.leadId, leadId))).orderBy(asc(smsMessages.createdAt)));
+}
+
 // ------------------------------------------------------------------------------------------ sequences
 
 export interface SequenceInput { name: string; steps: { delayMin: number; body: string; dltTemplateId?: string | null }[] }
@@ -124,6 +132,24 @@ export async function enrollTags(db: Db, actor: AuthUser, sequenceId: string, ta
     }
     await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "sequence.enroll", entity: "sequences", entityId: sequenceId, after: { added, tags } });
     return { added, alreadyIn: ids.length - added };
+  });
+}
+
+/** Enrols one visible, reachable lead in an active sequence. */
+export async function enrollLead(db: Db, actor: AuthUser, sequenceId: string, leadId: string) {
+  assertAuthorized(actor, "calls.place");
+  const visible = scopeCondition(actor, "leads.read", { orgId: leads.orgId, teamId: leads.teamId, ownerUserId: leads.ownerUserId });
+  return withOrg(db, actor.orgId, async (tx) => {
+    const [q] = await tx.select({ id: sequences.id }).from(sequences).where(and(eq(sequences.id, sequenceId), eq(sequences.status, "active")));
+    if (!q) throw new MessagingError("active sequence not found");
+    await assertKyc(tx, actor.orgId);
+    const [lead] = await tx.select({ id: leads.id, dnd: leads.dndFlag, consent: leads.consentStatus }).from(leads).where(and(visible, eq(leads.id, leadId)));
+    if (!lead) throw new MessagingError("lead not found");
+    if (lead.dnd) throw new MessagingError("this number is on Do Not Disturb and cannot be enrolled");
+    if (lead.consent === "denied" || lead.consent === "withdrawn") throw new MessagingError("this person has no consent to be messaged");
+    const inserted = await tx.insert(sequenceEnrollments).values({ orgId: actor.orgId, sequenceId, leadId }).onConflictDoNothing().returning({ id: sequenceEnrollments.id });
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "sequence.enroll", entity: "sequences", entityId: sequenceId, after: { added: inserted.length, leadId } });
+    return { added: inserted.length, alreadyIn: inserted.length ? 0 : 1 };
   });
 }
 

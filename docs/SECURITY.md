@@ -12,6 +12,7 @@ What is in place, what is checked, and what is still open. Only what is tested i
 ## Not done, and why
 - **Verified against real AWS:** nothing here has been run against AWS. `infra/terraform/staging` passes `terraform validate` only; it needs an AWS account (CEO approval, it costs money) and a first `terraform plan`. See its README for the runbook.
 - **Limit shared across servers:** needs a WAF rule or Redis. Terraform has a load balancer (not applied) but no WAF yet.
-- **Password reset and new-device alerts:** both send email. There is no email provider chosen (for example SES). Decision needed before building.
+- **Password reset:** implemented with a single-use, 30-minute signed link and non-enumerating response. It needs `SMTP_*` and (in production) `APP_URL`; verify delivery with the deployment's chosen SMTP service.
+- **New-device alerts:** pairing a new phone sends an e-mail when `SMTP_HOST` and `SMTP_FROM` are configured. Re-pairing the same device does not send another alert. Verify delivery with the deployment's chosen SMTP service.
 - **Full CSP for scripts:** `script-src` is left open because Next injects inline scripts; tightening needs per-request nonces.
 - **Penetration test / external review:** not done.

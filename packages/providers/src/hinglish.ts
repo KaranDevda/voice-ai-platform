@@ -47,7 +47,7 @@ const ROMAN_HINDI: Record<string, string> = {
   kya: "क्या", kyu: "क्यों", kyun: "क्यों", kyon: "क्यों", kaise: "कैसे", kaisa: "कैसा", kaisi: "कैसी", kab: "कब", kahan: "कहाँ", kaun: "कौन", kitna: "कितना", kitne: "कितने", kitni: "कितनी", kaunsa: "कौनसा", kuch: "कुछ", koi: "कोई", kaha: "कहाँ", kahin: "कहीं",
   main: "मैं", mai: "मैं", mujhe: "मुझे", mera: "मेरा", meri: "मेरी", mere: "मेरे", hum: "हम", humein: "हमें", hume: "हमें", humara: "हमारा", hamara: "हमारा", hamari: "हमारी", tum: "तुम", tumhe: "तुम्हें", tumhein: "तुम्हें", tumhara: "तुम्हारा", tumhari: "तुम्हारी", tumhare: "तुम्हारे",
   tu: "तू", tera: "तेरा", teri: "तेरी", tujhe: "तुझे", aap: "आप", aapka: "आपका", aapki: "आपकी", aapke: "आपके", aapko: "आपको", woh: "वो", wo: "वो", vo: "वो", yeh: "यह", ye: "ये", yah: "यह", unka: "उनका", unki: "उनकी", unko: "उनको", usne: "उसने", usko: "उसको", isko: "इसको", inko: "इनको", apna: "अपना", apni: "अपनी", apne: "अपने", khud: "खुद",
-  ka: "का", ki: "की", ke: "के", ko: "को", se: "से", mein: "में", me: "में", par: "पर", pe: "पे", tak: "तक", liye: "लिए", lie: "लिए", sath: "साथ", saath: "साथ", bina: "बिना", baare: "बारे", bare: "बारे",
+  ka: "का", ki: "की", ke: "के", ko: "को", se: "से", mein: "में", me: "में", usme: "उसमें", par: "पर", pe: "पे", tak: "तक", liye: "लिए", lie: "लिए", sath: "साथ", saath: "साथ", bina: "बिना", baare: "बारे", bare: "बारे",
   aur: "और", ya: "या", lekin: "लेकिन", magar: "मगर", toh: "तो", tho: "तो", bhi: "भी", hi: "ही", sirf: "सिर्फ़", bas: "बस", agar: "अगर", jab: "जब", tab: "तब", jaise: "जैसे", isliye: "इसलिए", kyunki: "क्योंकि", phir: "फिर", fir: "फिर", ab: "अब", abhi: "अभी", pehle: "पहले", baad: "बाद", jaldi: "जल्दी", der: "देर", kabhi: "कभी", hamesha: "हमेशा", roz: "रोज़", aaj: "आज", kal: "कल", parso: "परसों", subah: "सुबह", shaam: "शाम", raat: "रात", din: "दिन", hafta: "हफ़्ता", mahina: "महीना", saal: "साल",
   kafi: "काफ़ी", bahut: "बहुत", bohot: "बहुत", zyada: "ज़्यादा", jyada: "ज़्यादा", thoda: "थोड़ा", thodi: "थोड़ी", thode: "थोड़े", kam: "कम", poora: "पूरा", pura: "पूरा", sab: "सब", sabhi: "सभी", saara: "सारा", sara: "सारा", bilkul: "बिल्कुल", zaroor: "ज़रूर", shayad: "शायद", pakka: "पक्का", sach: "सच", sahi: "सही", galat: "ग़लत", mushkil: "मुश्किल", aasan: "आसान", naya: "नया", nayi: "नई", purana: "पुराना", bada: "बड़ा", chhota: "छोटा", achhi: "अच्छी", acchi: "अच्छी", achhe: "अच्छे", acche: "अच्छे", badhiya: "बढ़िया", mast: "मस्त", behtar: "बेहतर",
   baat: "बात", baatein: "बातें", yaad: "याद", yaar: "यार", dost: "दोस्त", bhai: "भाई", behen: "बहन", ghar: "घर", kaam: "काम", paisa: "पैसा", paise: "पैसे", rupaye: "रुपये", number: "नंबर", naam: "नाम", jagah: "जगह", log: "लोग", baar: "बार", waqt: "वक़्त", samay: "समय", zindagi: "ज़िंदगी", sawaal: "सवाल", jawab: "जवाब", madad: "मदद", khabar: "ख़बर", khushi: "ख़ुशी",
@@ -87,7 +87,6 @@ const markers = (t: string) => (t.toLowerCase().match(/[a-z]+/g) ?? []).filter(i
  * when it has two Hindi words, or one Hindi word in a script whose other sentences are Hinglish. Pure English sentences stay as they are.
  */
 export function romanHinglishToDevanagari(text: string): string {
-  if (hasDevanagari(text)) return text;
   const scriptIsHinglish = markers(text) >= 2;
   return text.replace(/[^.!?\n]+[.!?\n]*/g, (sentence) => {
     const m = markers(sentence);

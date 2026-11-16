@@ -1,5 +1,5 @@
 "use client";
-import { Check, ChevronRight, Fingerprint, Loader2, Trash2, Upload } from "lucide-react";
+import { Check, ChevronRight, Download, Fingerprint, Loader2, Trash2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiError } from "@/lib/api-client";
@@ -196,6 +196,7 @@ export function CloneWizard({ staff, consents, cloningReady, builtInHindi = fals
               {samples.map((s, i) => (
                 <div key={s.url} className="flex items-center gap-3 rounded-lg bg-muted px-3 py-2">
                   <audio controls src={s.url} className="h-9 min-w-0 flex-1" />
+                  <a href={s.url} download={s.file.name} aria-label={`Download sample ${i + 1}`} className={buttonClass({ variant: "outline", size: "sm" })}><Download className="h-4 w-4" aria-hidden />Download</a>
                   <button type="button" aria-label={`Remove sample ${i + 1}`} onClick={() => removeSample(i)} className="text-muted-foreground hover:text-danger"><Trash2 className="h-4 w-4" /></button>
                 </div>
               ))}

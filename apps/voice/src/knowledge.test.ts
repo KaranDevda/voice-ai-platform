@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hindiToEnglishKeywords, relevantExcerpt } from "./knowledge";
+import { hindiToEnglishKeywords, normalizeBizfyPlanQuestion, relevantExcerpt, unknownPlanReply } from "./knowledge";
 
 const PRICING = `The Starter plan costs 1,999 rupees per month and includes up to 3 users and call recording for 30 days.
 
@@ -28,6 +28,31 @@ describe("relevantExcerpt", () => {
   it("keeps the original order of the chosen paragraphs", () => {
     const e = relevantExcerpt(PRICING, "starter and business plan price", 600);
     expect(e.indexOf("Starter")).toBeLessThan(e.indexOf("Business"));
+  });
+});
+
+describe("unknownPlanReply", () => {
+  it("does not substitute another plan's details for a missing named plan", () => {
+    expect(unknownPlanReply("Tell me about the personal plan", [PRICING], "en")).toBe(
+      "I don't have reliable details for the Personal plan. Would you like me to connect you with the team?",
+    );
+    expect(unknownPlanReply("Tell me about the business plan", [PRICING], "en")).toBeNull();
+    expect(unknownPlanReply("Tell me about your plan", [PRICING], "en")).toBeNull();
+    expect(unknownPlanReply("Tell me about the premium plan", [], "en")).toContain("reliable details");
+  });
+
+  it("uses the caller's selected language for the missing-plan response", () => {
+    const knownPlans = ["Business plan starts at 4,999 rupees per month."];
+    expect(unknownPlanReply("Personal plan की details बताइए", knownPlans, "en-hi")).toContain("team से connect");
+    expect(unknownPlanReply("personal plan के बारे में बताइए", knownPlans, "hi")).toContain("टीम से जोड़");
+  });
+});
+
+describe("normalizeBizfyPlanQuestion", () => {
+  it("repairs Whisper splitting 'what plans do you have' across adjacent utterances", () => {
+    expect(normalizeBizfyPlanQuestion("plants do you have?", "What are you?")).toBe("What plans do you have?");
+    expect(normalizeBizfyPlanQuestion("What are you? plants do you have?")).toBe("What plans do you have?");
+    expect(normalizeBizfyPlanQuestion("plants do you have?", "Do you have plants?")).toBe("plants do you have?");
   });
 });
 

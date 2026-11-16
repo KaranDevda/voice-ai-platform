@@ -5,7 +5,7 @@ import { createDb } from "./client";
 import { getAgentConfig } from "./queries";
 import { deleteAsset, deleteKnowledgeDoc, getAsset, getAssetAudio, ingestKnowledge, listAssets, listUsage, logUsage, saveAsset, searchKnowledge, usageToday } from "./studio";
 import { assertConsentUsable } from "./voice-profiles";
-import { consentRecords, organizations, users, voiceProfiles } from "./schema";
+import { EMBEDDING_DIMENSIONS, consentRecords, organizations, users, voiceProfiles } from "./schema";
 
 const ownerUrl = process.env.TEST_DATABASE_URL;
 const appUrl = process.env.TEST_APP_DATABASE_URL;
@@ -96,6 +96,16 @@ describe.skipIf(!ownerUrl || !appUrl)("studio data layer", () => {
     expect(await searchKnowledge(app.db, admin, "100%_wild")).toEqual([]);
     expect(await deleteKnowledgeDoc(app.db, admin, doc.id)).toBe(true);
     expect(await searchKnowledge(app.db, admin, "recordings")).toEqual([]);
+  });
+
+  it("retrieves multilingual knowledge by cosine similarity when embeddings exist", async () => {
+    const admin = as("org_admin", x.admin!);
+    const related = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => i === 0 ? 1 : 0);
+    const unrelated = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => i === 1 ? 1 : 0);
+    await ingestKnowledge(app.db, admin, { title: "Semantic FAQ", text: "Our callback service is available every day." }, [related]);
+    await ingestKnowledge(app.db, admin, { title: "Other FAQ", text: "The office is closed on Sundays." }, [unrelated]);
+    const hits = await searchKnowledge(app.db, admin, "मुझे सहायता चाहिए", 2, related);
+    expect(hits.map((hit) => hit.title)).toEqual(["Semantic FAQ"]);
   });
 
   it("refuses to clone without a valid, unused consent for that donor", async () => {

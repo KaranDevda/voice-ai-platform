@@ -8,12 +8,12 @@ import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims 
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
 import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getLeadPhone, getPhoneConfig, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, reportMachine, getCampaignAudio, sentTextRecently, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
 import {
-  createAskG1, createDeepgramLive, createPlivo, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
+  createAskG1, createDeepgramLive, createPlivo, embeddingsFromEnv, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
 import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
 import { MulawTo16k } from "./telephony-audio";
-import { hindiToEnglishKeywords, relevantExcerpt } from "./knowledge";
+import { hindiToEnglishKeywords, relevantExcerpt, unknownPlanReply } from "./knowledge";
 import { languageNote, sessionLanguageRule } from "./language";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -31,6 +31,7 @@ const APP_DIR = fileURLToPath(new URL("..", import.meta.url));
 const REPO_DIR = fileURLToPath(new URL("../../..", import.meta.url));
 try { process.loadEnvFile(join(APP_DIR, ".env.local")); } catch { /* keys can also come from the real environment */ }
 const env = (k: string) => process.env[k]?.trim() || undefined;
+const embeddingProvider = embeddingsFromEnv();
 
 const PORT = Number(env("PORT") ?? 4001);
 const TOKEN_KEY = env("VOICE_TOKEN_SECRET") ?? env("SESSION_SECRET");
@@ -95,7 +96,8 @@ function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line
   // STT_HINDI=deepgram sends Hindi and mixed-language calls to Deepgram (nova-3 hears Hindi well and answers in about 0.3 s); English stays on the local model.
   const viaDeepgram = env("STT_PROVIDER") === "deepgram" || (env("STT_HINDI") === "deepgram" && language !== "en");
   if (!viaDeepgram && whisper) {
-    const endSilenceMs = Number(env("ENDPOINTING_MS") ?? 400);
+    // English callers often pause briefly between clauses; keep the longer VAD window and hold visibly incomplete text below.
+    const endSilenceMs = Number(env("ENDPOINTING_MS") ?? (language === "en" ? 650 : 400));
     return createLocalWhisper({
       baseUrl: whisper,
       // A higher bar and a longer onset in "close" mode, so a nearby conversation does not start the AI talking or stop it.
@@ -320,7 +322,15 @@ async function buildSession(
       const query = hindiToEnglishKeywords(text); // English words in the question, plus glossary words for Hindi and Hinglish
       if (query && query !== text.toLowerCase().replace(/[^\p{L}\p{N} -]/gu, "").trim()) console.log(`[${tag}] searching the knowledge base for: ${query}`);
       if (!query) return [];
-      return (await searchKnowledge(getDb(), user, query, 2)).map((r) => `${r.title}: ${relevantExcerpt(r.content, query)}`);
+      let embedding: number[] | undefined;
+      if (embeddingProvider) {
+        try {
+          embedding = (await embeddingProvider.embed([query]))[0];
+        } catch (e) {
+          console.warn(`[${tag}] knowledge embeddings unavailable; using keyword search: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+      return (await searchKnowledge(getDb(), user, query, 2, embedding)).map((r) => `${r.title}: ${relevantExcerpt(r.content, query)}`);
     };
     // A follow-up such as "and the other ones?" (or a garbled one) finds nothing by itself: search again with what they asked before.
     ground = async (text, previous) => {
@@ -333,11 +343,12 @@ async function buildSession(
   const model = llm(io.send, aiChoice);
   warmUp(model, systemPrompt);
   const convo = new Conversation({
-    holdUnfinishedMs: Number(env("TURN_HOLD_MS") ?? 0), // e.g. TURN_HOLD_MS=600 with ENDPOINTING_MS=250: wait for the rest when a sentence stops on "and", "my name is", "और"
+    holdUnfinishedMs: Number(env("TURN_HOLD_MS") ?? 350), // give an unfinished English, Hindi, or Hinglish clause a short chance to continue
     stt: sttFor(p.listen, p.language, (l) => console.log(`[${tag}] ${l}`)),
     llm: model, tts, language: p.language, systemPrompt, ground, ack: env("ACK") === "off" ? undefined : (t) => ackFor(t, p.language, true), turnNote: (a, b) => languageNote(a, b, p.language), handoff,
     greeting: p.greeting ? (p.opening ? `${disclosure} ${p.opening}`.trim() : p.language === "hi" ? GREETING_HI : p.language === "en-hi" ? GREETING_HINGLISH : greeting) : undefined,
     resumeAfterHandoff: !o.phone,
+    bargeOnVoice: o.phone, // Browser calls confirm interruptions with recognized words to avoid reacting to speaker echo.
     fallback: p.language === "hi" ? FALLBACK_HI : FALLBACK, send: io.send, sendAudio: io.sendAudio, log: (l) => console.log(`[${tag}] ${l}`),
   });
   const record: SessionRecord | null = user?.permissions.includes("calls.place")

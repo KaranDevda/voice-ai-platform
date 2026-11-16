@@ -1,6 +1,6 @@
 /**
  * Load test for the voice service: runs scripted calls against it, several at once, and reports how long the caller waits for
- * the first word of the answer.
+ * the first audio and the real answer. An acknowledgement alone does not count as a completed response.
  *
  *   pnpm --filter @voiceai/voice load-test -- --calls 20 --concurrency 20          (20 calls at once)
  *   Options: --questions "one|two" (what the caller says), --sub/--org (a real user, so the call is saved to the call log),
@@ -14,6 +14,7 @@
  * Needs the voice service (pnpm dev:voice) and the local speech servers (pnpm dev:stack) running.
  */
 import { signVoiceToken } from "@voiceai/auth";
+import { hinglishToDevanagari } from "@voiceai/providers";
 import WebSocket from "ws";
 
 try { process.loadEnvFile(".env.local"); } catch { /* the secret can also come from the real environment */ }
@@ -31,7 +32,7 @@ const LANGUAGE = arg("language", "en");
 const SUB = arg("sub", "00000000-0000-4000-8000-000000000001"); // a user that does not exist: the call is served but not saved
 const ORG = arg("org", "00000000-0000-4000-8000-0000000000aa");
 const ORIGIN = arg("origin", "http://localhost:3000");
-const SPEAKER = arg("speaker", "am_michael");
+const SPEAKER = arg("speaker", LANGUAGE === "en" ? "am_michael" : "hm_omega");
 const KOKORO = arg("kokoro", process.env.KOKORO_URL ?? "http://127.0.0.1:8768");
 const REPLY_TIMEOUT_MS = Number(arg("reply-timeout", "30000"));
 const KEY = process.env.VOICE_TOKEN_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
@@ -57,7 +58,7 @@ const cache = new Map<string, Int16Array>();
 async function speech(text: string): Promise<Int16Array> {
   const hit = cache.get(text);
   if (hit) return hit;
-  const r = await fetch(`${KOKORO}/tts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: SPEAKER }) });
+  const r = await fetch(`${KOKORO}/tts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: SPEAKER, lang: LANGUAGE === "en" ? "en-us" : "hi" }) });
   if (!r.ok) throw new Error(`Kokoro answered ${r.status}`);
   const wav = Buffer.from(await r.arrayBuffer());
   const rate = wav.readUInt32LE(24);
@@ -72,20 +73,23 @@ async function speech(text: string): Promise<Int16Array> {
 }
 
 interface Stages { answerMs?: number; ackMs?: number; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number; groundMs?: number }
-interface TurnResult { firstWordMs: number | null; serverMs: number | null; stages?: Stages }
+interface TurnResult { question: string; spokenText: string; transcript: string; answer: string; firstWordMs: number | null; serverMs: number | null; stages?: Stages }
 interface CallResult { ok: boolean; why?: string; turns: TurnResult[] }
 
 async function oneCall(n: number): Promise<CallResult> {
   const token = signVoiceToken({ sub: SUB, org: ORG }, KEY!, 120);
   const ws = new WebSocket(`${URL_}?token=${encodeURIComponent(token)}`, { headers: { origin: ORIGIN } });
   const turns: TurnResult[] = [];
-  let lastStages: Stages | null = null, handedOff = false, ready = false, failed: string | null = null, audioAt = 0, timing: number | null = null, state = "";
+  let lastStages: Stages | null = null, handedOff = false, ready = false, failed: string | null = null, audioAt = 0, timing: number | null = null, state = "", assistantCount = 0;
+  let heard: string[] = [], answer: string[] = [];
   ws.on("message", (data, isBinary) => {
     if (isBinary) { if (!audioAt) audioAt = performance.now(); return; }
-    const e = JSON.parse(data.toString()) as { type: string; state?: string; message?: string; totalMs?: number };
+    const e = JSON.parse(data.toString()) as { type: string; state?: string; message?: string; text?: string; totalMs?: number };
     if (e.type === "ready") ready = true;
     else if (e.type === "state") state = e.state ?? "";
     else if (e.type === "timing") { timing = e.totalMs ?? null; lastStages = e as unknown as Stages; }
+    else if (e.type === "assistant") { assistantCount++; if (e.text) answer.push(e.text); }
+    else if (e.type === "user" && e.text) heard.push(e.text);
     else if (e.type === "error") failed = e.message ?? "error";
     else if (e.type === "blocked") failed = `blocked: ${e.message}`;
     else if (e.type === "handoff") handedOff = true;
@@ -100,8 +104,13 @@ async function oneCall(n: number): Promise<CallResult> {
     for (let t = 0; !ready; t += 50) { if (failed || closed || t > 20000) throw new Error(failed ?? closed ?? "no ready message in 20 s"); await sleep(50); }
     for (let i = 0; i < TURNS; i++) {
       if (i > 0 && THINK_MS) await sleep(THINK_MS * (0.5 + Math.random()));
-      const pcm = await speech(QUESTIONS[(n + i) % QUESTIONS.length]!);
+      const question = QUESTIONS[(n + i) % QUESTIONS.length]!;
+      // Kokoro's Hindi voice does not read Latin-script Hindi reliably. Match the product TTS path for mixed-language caller fixtures.
+      const spokenText = LANGUAGE === "en" ? question : hinglishToDevanagari(question);
+      const pcm = await speech(spokenText);
       audioAt = 0; timing = null; lastStages = null;
+      heard = []; answer = [];
+      const assistantBefore = assistantCount;
       const CH = 1600; // 100 ms
       for (let o = 0; o < pcm.length; o += CH) { // in real time, as a microphone would
         ws.send(Buffer.from(pcm.slice(o, o + CH).buffer));
@@ -113,10 +122,20 @@ async function oneCall(n: number): Promise<CallResult> {
         if (failed || closed) throw new Error(failed ?? closed ?? "");
         ws.send(silence); await sleep(100);
       }
-      if (!audioAt) { turns.push({ firstWordMs: null, serverMs: null }); throw new Error(`no answer within ${REPLY_TIMEOUT_MS / 1000} s`); }
-      turns.push({ firstWordMs: audioAt - spokeEnd, serverMs: null });
-      // let the answer finish and the AI go back to listening before the next question
-      for (let t = 0; t < REPLY_TIMEOUT_MS; t += 100) { if (state === "listening" && timing !== null) break; ws.send(silence); await sleep(100); }
+      if (!audioAt) { turns.push({ question, spokenText, transcript: heard.join(" "), answer: answer.join(" "), firstWordMs: null, serverMs: null }); throw new Error(`no answer within ${REPLY_TIMEOUT_MS / 1000} s`); }
+      turns.push({ question, spokenText, transcript: heard.join(" "), answer: answer.join(" "), firstWordMs: audioAt - spokeEnd, serverMs: null });
+      // An acknowledgement is not a completed answer: wait for a real assistant turn (and timings when model-generated).
+      for (let t = 0; t < REPLY_TIMEOUT_MS; t += 100) {
+        if (failed || closed) throw new Error(failed ?? closed ?? "");
+        if (state === "listening" && (timing !== null || assistantCount > assistantBefore)) break;
+        ws.send(silence); await sleep(100);
+      }
+      if (state !== "listening" || (timing === null && assistantCount === assistantBefore)) {
+        throw new Error(`no completed answer within ${REPLY_TIMEOUT_MS / 1000} s after first audio`);
+      }
+      // Snapshot after the response finishes, not at first audio: the assistant text arrives after TTS has completed a sentence.
+      turns[turns.length - 1]!.transcript = heard.join(" ");
+      turns[turns.length - 1]!.answer = answer.join(" ");
       turns[turns.length - 1]!.serverMs = timing;
       turns[turns.length - 1]!.stages = lastStages ?? undefined;
     }
@@ -150,8 +169,9 @@ async function main() {
   }));
   clearInterval(poll);
   console.log(`\nDone in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
-  const first = results.flatMap((r) => r.turns.map((t) => t.firstWordMs).filter((x): x is number => x !== null));
+  const completedCalls = results.filter((r) => r.ok);
   const failedCalls = results.filter((r) => !r.ok);
+  const first = completedCalls.flatMap((r) => r.turns.map((t) => t.firstWordMs).filter((x): x is number => x !== null));
   const why = new Map<string, number>();
   for (const r of failedCalls) why.set(r.why ?? "?", (why.get(r.why ?? "?") ?? 0) + 1);
   console.log(`Calls: ${results.length - failedCalls.length} of ${results.length} finished all their questions; most sessions open at once: ${peak}`);
@@ -159,16 +179,33 @@ async function main() {
   if (first.length) {
     const s = (x: number) => `${(x / 1000).toFixed(2)} s`;
     console.log(`Time from the end of the question to the first word (${first.length} answers): median ${s(pct(first, 50))}, p95 ${s(pct(first, 95))}, slowest ${s(Math.max(...first))}`);
-    const st = results.flatMap((r) => r.turns).filter((t) => t.stages && t.firstWordMs !== null);
+    const st = completedCalls.flatMap((r) => r.turns).filter((t) => t.stages && t.firstWordMs !== null);
     if (st.length) {
       const m = (f: (t: TurnResult) => number) => pct(st.map(f), 50);
       console.log(`Where the time goes (median of ${st.length}): listening and writing down the words ${s(m((t) => t.firstWordMs! - t.stages!.totalMs))}, AI first word ${s(m((t) => t.stages!.llmFirstTokenMs))} (of which company-knowledge search ${s(m((t) => t.stages!.groundMs ?? 0))}), AI first sentence ${s(m((t) => t.stages!.firstSentenceMs))}, voice first sound ${s(m((t) => t.stages!.ttsFirstAudioMs))}, from transcript to first sound ${s(m((t) => t.stages!.totalMs))}`);
       const ans = st.filter((t) => t.stages!.answerMs);
-      if (ans.length) console.log(`Real answer heard (the acknowledgement is not counted, ${ans.length} answers): median ${s(pct(ans.map((t) => t.firstWordMs! - t.stages!.totalMs + t.stages!.answerMs!), 50))}, p95 ${s(pct(ans.map((t) => t.firstWordMs! - t.stages!.totalMs + t.stages!.answerMs!), 95))}; acknowledgement played on ${st.filter((t) => t.stages!.ackMs !== undefined).length} of ${st.length} turns`);
-      if (arg("json", "")) (await import("node:fs")).writeFileSync(arg("json", ""), JSON.stringify(st.map((t) => ({ firstWordMs: Math.round(t.firstWordMs!), ...t.stages })), null, 1));
+      if (ans.length) {
+        const answerLatency = ans.map((t) => t.firstWordMs! - t.stages!.totalMs + t.stages!.answerMs!);
+        console.log(`Real answer heard (the acknowledgement is not counted, ${ans.length} answers): median ${s(pct(answerLatency, 50))}, p95 ${s(pct(answerLatency, 95))}; acknowledgement played on ${st.filter((t) => t.stages!.ackMs !== undefined).length} of ${st.length} turns`);
+        console.log(`Real-answer target (median under 1.0 s): ${pct(answerLatency, 50) < 1000 ? "MET" : "NOT MET"}`);
+      } else {
+        console.log("Real-answer target (median under 1.0 s): NOT MET (no completed answer timings)");
+      }
+      if (arg("json", "")) (await import("node:fs")).writeFileSync(arg("json", ""), JSON.stringify(st.map((t) => ({
+        question: t.question,
+        spokenText: t.spokenText,
+        transcript: t.transcript,
+        answer: t.answer,
+        firstWordMs: Math.round(t.firstWordMs!),
+        ...t.stages,
+      })), null, 1));
     }
-    console.log(`Latency gate (median under 1.0 s): ${pct(first, 50) < 1000 ? "MET" : "NOT MET"}`);
-  } else console.log("No answers were received, so there is no latency to report.");
+    const firstP50 = pct(first, 50), firstP95 = pct(first, 95);
+    console.log(`SOP first-audio gate (p50 <= 1.0 s, p95 <= 1.5 s): ${firstP50 <= 1000 && firstP95 <= 1500 ? "MET" : "NOT MET"}`);
+  } else {
+    console.log("No completed answers were received, so there is no latency to report.");
+    console.log("Real-answer target (median under 1.0 s): NOT MET");
+  }
   process.exit(failedCalls.length ? 1 : 0);
 }
 void main();

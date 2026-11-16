@@ -17,6 +17,7 @@ const TONE: Record<string, "success" | "danger" | "neutral" | "warning"> = { run
 interface HourStat { hourIst: number; attempts: number; answered: number; rate: number }
 interface Timing { totalAttempts: number; days: number; minAttempts: number; best: HourStat[]; hours: HourStat[] }
 const hourText = (h: number) => `${String(h).padStart(2, "0")}:00`;
+interface CampaignTemplate { id: string; name: string; language: "en" | "hi" | "en-hi"; tags: string[]; maxConcurrent: number; maxAttempts: number; retryDelayMin: number; detectMachines: boolean; mode: "ai" | "audio"; openingVariants: string[] }
 /** The next time it is `hourIst`:00 in India, as the local "YYYY-MM-DDTHH:mm" a datetime-local field wants. */
 function nextAtIst(hourIst: number): string {
   const now = new Date(), istNow = new Date(now.getTime() + 330 * 60_000);
@@ -26,7 +27,7 @@ function nextAtIst(hourIst: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export function CampaignsAdmin({ campaigns, timing }: { campaigns: Campaign[]; timing: Timing | null }) {
+export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Campaign[]; timing: Timing | null; templates: CampaignTemplate[] }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [tags, setTags] = useState("");
@@ -39,9 +40,41 @@ export function CampaignsAdmin({ campaigns, timing }: { campaigns: Campaign[]; t
   const [mode, setMode] = useState<"ai" | "audio">("ai");
   const [file, setFile] = useState<File | null>(null);
   const [variants, setVariants] = useState(["", "", ""]);
+  const [templateName, setTemplateName] = useState("");
+  const [templateMessage, setTemplateMessage] = useState("");
+  const [templateBusy, setTemplateBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const live = campaigns.some((c) => c.status === "running");
+
+  function applyTemplate(id: string) {
+    const t = templates.find((item) => item.id === id);
+    if (!t) return;
+    setTags(t.tags.join(", ")); setLanguage(t.language); setConcurrent(t.maxConcurrent); setAttempts(t.maxAttempts); setRetry(t.retryDelayMin);
+    setMachines(t.detectMachines); setMode(t.mode); setVariants([...t.openingVariants, ...Array(3 - t.openingVariants.length).fill("")]);
+    setFile(null); setStartAt(""); setTemplateMessage(`Loaded “${t.name}”. Choose a new campaign name and start time.`);
+  }
+
+  async function saveTemplate() {
+    setError(""); setTemplateMessage(""); setTemplateBusy(true);
+    try {
+      const res = await fetch("/api/campaigns/templates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        name: templateName, language, tags: tags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean), maxConcurrent: concurrent, maxAttempts: attempts,
+        retryDelayMin: retry, detectMachines: machines, mode, openingVariants: mode === "audio" ? [] : variants.map((v) => v.trim()).filter(Boolean),
+      }) });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(result.message ?? result.issues?.[0]?.message ?? result.error ?? "Could not save the template"); return; }
+      setTemplateName(""); setTemplateMessage("Campaign template saved."); router.refresh();
+    } catch { setError("Could not reach the server. Try again."); }
+    finally { setTemplateBusy(false); }
+  }
+
+  async function deleteTemplate(id: string) {
+    if (!confirm("Delete this campaign template? Existing campaigns will not change.")) return;
+    const res = await fetch(`/api/campaigns/templates/${id}`, { method: "DELETE" });
+    if (!res.ok) { const result = await res.json().catch(() => ({})); setError(result.message ?? result.error ?? "Could not delete the template"); }
+    else router.refresh();
+  }
 
   useEffect(() => { if (!live) return; const t = setInterval(() => router.refresh(), 5000); return () => clearInterval(t); }, [live, router]);
 
@@ -77,6 +110,7 @@ export function CampaignsAdmin({ campaigns, timing }: { campaigns: Campaign[]; t
         <CardHeader title="New campaign" description="Calls everyone who has one of these tags (add tags when you import contacts on the Leads page). Nobody is called until you press Start, or the start time arrives." />
         <CardBody>
           <form onSubmit={create} className="grid gap-3 md:grid-cols-3">
+            {templates.length > 0 && <Field label="Use a saved template"><Select defaultValue="" onChange={(e) => applyTemplate(e.target.value)}><option value="">Start from scratch…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>}
             <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required /></Field>
             <Field label="Tags" hint="Comma separated, e.g. diwali, vip"><Input value={tags} onChange={(e) => setTags(e.target.value)} required /></Field>
             <Field label="What it does" hint={mode === "audio" ? "Plays your recording, then hangs up" : "An AI conversation"}><Select value={mode} onChange={(e) => setMode(e.target.value as "ai" | "audio")}><option value="ai">AI conversation</option><option value="audio">Play a recording</option></Select></Field>
@@ -95,10 +129,20 @@ export function CampaignsAdmin({ campaigns, timing }: { campaigns: Campaign[]; t
               {variants.map((v, i) => <Input key={i} value={v} maxLength={300} placeholder={`Opening line ${"ABC"[i]}`} onChange={(e) => setVariants((all) => all.map((x, j) => (j === i ? e.target.value : x)))} />)}
             </div>}
             <div className="flex items-end"><Button type="submit" disabled={busy || !name.trim() || !tags.trim() || (mode === "audio" && !file)}>{busy ? "Creating…" : "Create campaign"}</Button></div>
+            <div className="flex flex-wrap items-end gap-2 md:col-span-3">
+              <div className="min-w-56 flex-1"><Field label="Template name" hint="Saving the same name updates that template"><Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} maxLength={120} /></Field></div>
+              <Button type="button" variant="outline" disabled={templateBusy || !templateName.trim() || !tags.trim()} onClick={() => void saveTemplate()}>{templateBusy ? "Saving…" : "Save settings as template"}</Button>
+            </div>
           </form>
           {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+          {templateMessage && <p role="status" className="mt-3 text-sm text-success">{templateMessage}</p>}
         </CardBody>
       </Card>
+
+      {templates.length > 0 && <Card>
+        <CardHeader title="Saved campaign templates" description="Templates reuse tags and call settings; each campaign gets a fresh audience snapshot and schedule." />
+        <CardBody className="grid gap-2 text-sm">{templates.map((t) => <div key={t.id} className="flex flex-wrap items-center justify-between gap-2"><span><span className="font-medium">{t.name}</span> <span className="text-muted-foreground">{t.tags.join(", ")} · {t.mode === "audio" ? "audio" : t.language} · {t.maxConcurrent} at once</span></span><Button size="sm" variant="outline" onClick={() => void deleteTemplate(t.id)}>Delete</Button></div>)}</CardBody>
+      </Card>}
 
       {timing && (
         <Card>

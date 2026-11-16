@@ -26,7 +26,10 @@ export function toResponse(err: unknown): Response {
     // 401/402/403 from a provider mean our account is the problem, not the caller's request.
     return Response.json({ error: "provider_error", provider: err.provider, status: err.status, message: err.message }, { status: 502 });
   }
-  if (err instanceof Error && (err.name === "TimeoutError" || /fetch failed|ECONN|ENOTFOUND|EHOSTUNREACH/.test(err.message))) {
+  if (err instanceof Error && err.name === "TimeoutError") {
+    return Response.json({ error: "provider_timeout", message: "Speech generation took too long. Turn off Direct voice clone or try a shorter script." }, { status: 504 });
+  }
+  if (err instanceof Error && /fetch failed|ECONN|ENOTFOUND|EHOSTUNREACH/.test(err.message)) {
     return Response.json({ error: "provider_unreachable", message: err.message }, { status: 502 });
   }
   throw err;

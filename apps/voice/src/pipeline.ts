@@ -1,6 +1,7 @@
 import type { ChatMessage, LlmAdapter, SttAdapter, SttEvent, SttSession } from "@voiceai/providers";
 import { SentenceChunker } from "./sentences";
 import { knowledgeBlock } from "./prompt";
+import { normalizeBizfyPlanQuestion, unknownPlanReply } from "./knowledge";
 import { forVoice } from "./speech-text";
 import { looksUnfinished } from "./turn-end";
 import { isSmallTalk } from "./ack";
@@ -8,6 +9,7 @@ import { dropFiller } from "./filler";
 import { askAgainSlow, greetingFix, sorryAgain, stillWorking, strictNote, wrongLanguage } from "./language";
 import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
+import { replyToGreeting, replyToIdentityQuestion } from "./small-talk";
 import type { TranscriptSegment } from "@voiceai/shared";
 
 /** Speaks text as audio chunks in the engine's native format. Abort the signal to stop mid-sentence. */
@@ -62,7 +64,7 @@ export interface ConversationOptions {
   send(event: ServerEvent): void;
   sendAudio(chunk: Uint8Array): void;
   now?: () => number;
-  /** Stop the AI the moment the recogniser hears the caller start, not only when words arrive. */
+  /** Stop on raw VAD start; disable for browser playback, where the assistant's speaker audio can trigger VAD. */
   bargeOnVoice?: boolean;
   /** When a transcript stops mid-sentence ("my name is"), wait this long for the rest before answering. 0 = off. Lets the silence rule be short. */
   holdUnfinishedMs?: number;
@@ -72,6 +74,13 @@ export interface ConversationOptions {
   /** How long a chunk of audio plays. Defaults to deriving it from the byte count and the engine's format. */
   chunkDurationMs?: (chunk: Uint8Array) => number;
   log?: (line: string) => void;
+}
+
+interface ActiveTurn {
+  ac: AbortController;
+  turn: number;
+  answerStarted: boolean;
+  interruptedAt: number | null;
 }
 
 /** Acknowledgements already spoken in a voice, kept as audio so the next one plays at once (staff voices take up to 3 s to make a sentence). */
@@ -98,13 +107,12 @@ export class Conversation {
   private state: State = "listening";
   private history: ChatMessage[] = [];
   private turn = 0;
-  private active: { ac: AbortController; turn: number; audio: boolean } | null = null;
+  private active: ActiveTurn | null = null;
   private closed = false;
   private readonly now: () => number;
   /** When the audio sent so far finishes playing at the other end. We send far faster than real time. */
   private playbackEndsAt = 0;
   private playbackTimer: ReturnType<typeof setTimeout> | null = null;
-  private bargedAt: number | null = null;
   /** The opening greeting carries the AI and recording notice, so it is played in full: the speaker's own sound reaching the microphone must not cut it off. */
   private greetingPlaying = false;
   /** The assistant message in `history` and when each of its sentences began to play, so an interruption trims it. */
@@ -112,6 +120,8 @@ export class Conversation {
   private readonly t0: number;
   private readonly segments: TranscriptSegment[] = [];
   private speechStartedAt: number | null = null;
+  private speechStartedDuringSuppressedAudio = false;
+  private bargeInSuppressedUntil = 0;
   private handedOff: HandoffReason | null = null;
   private handoffSeen: HandoffReason | null = null; // kept for the call log when the call carries on after the hand-over line
   private errorStreak = 0;
@@ -223,19 +233,39 @@ export class Conversation {
   private onSttEvent(ev: SttEvent) {
     switch (ev.kind) {
       case "speech_started":
-        this.speechStartedAt ??= this.now();
-        if (this.o.bargeOnVoice !== false && this.state === "speaking") this.bargeIn();
+        {
+          // If the caller resumes during the unfinished-text grace period, wait for that utterance's final transcript too.
+          if (this.heldText && this.holdTimer) {
+            clearTimeout(this.holdTimer);
+            this.holdTimer = undefined;
+            this.o.log?.("caller continued before the unfinished-turn wait expired");
+          }
+          const startedAt = this.now();
+          this.speechStartedAt ??= startedAt;
+          this.speechStartedDuringSuppressedAudio = startedAt < this.bargeInSuppressedUntil;
+          if (this.o.bargeOnVoice !== false && this.state === "speaking" && startedAt >= this.bargeInSuppressedUntil) this.bargeIn();
+        }
         break;
       case "partial":
         if (ev.text) {
           this.o.send({ type: "partial", text: ev.text });
           // Only real words (three or more letters) while the AI is speaking count as an interruption. Interim words that arrive while it is still
           // thinking belong to the same question (the next final joins them), and a short sound ("जी") can be the speaker's own echo.
-          if (this.state === "speaking" && [...ev.text].filter((c) => /\p{L}/u.test(c)).length >= 3) this.bargeIn();
+          if (this.state === "speaking" && this.now() >= this.bargeInSuppressedUntil && [...ev.text].filter((c) => /\p{L}/u.test(c)).length >= 3) this.bargeIn();
         }
         break;
       case "final":
-        if (ev.text && !this.handedOff) { this.o.log?.(`heard: ${ev.text}`); this.onFinalText(ev.text); }
+        if (ev.text && !this.handedOff) {
+          const duringSuppressedAudio = this.speechStartedDuringSuppressedAudio || this.now() < this.bargeInSuppressedUntil;
+          this.speechStartedDuringSuppressedAudio = false;
+          if (this.o.bargeOnVoice === false && duringSuppressedAudio) {
+            this.speechStartedAt = null;
+            this.o.log?.("ignored transcript that started during acknowledgement audio");
+            break;
+          }
+          this.o.log?.(`heard: ${ev.text}`);
+          this.onFinalText(ev.text);
+        }
         break;
       default:
         break;
@@ -248,7 +278,7 @@ export class Conversation {
     const t = this.now();
     if (!this.active && !this.isPlaying()) return;
     const turn = this.active?.turn ?? this.turn;
-    this.bargedAt = t;
+    if (this.active) this.active.interruptedAt = t;
     this.active?.ac.abort();
     this.playbackEndsAt = t;
     if (this.playbackTimer) clearTimeout(this.playbackTimer);
@@ -289,19 +319,29 @@ export class Conversation {
   }
 
   private begin(userText: string | null, scripted?: string) {
+    if (userText) {
+      const previousUser = this.history.filter((m) => m.role === "user").at(-1)?.content;
+      userText = normalizeBizfyPlanQuestion(userText, previousUser);
+    }
+    if (userText) {
+      this.bargeInSuppressedUntil = 0;
+      // Some recognisers do not send partial text. A confirmed final transcript must still clear queued audio.
+      if (this.state === "speaking" && this.isPlaying()) this.bargeIn();
+    }
     // The caller paused mid-sentence and kept going before the AI said a word: treat both pieces as one question.
     let replace = false;
-    if (userText && this.active && !this.active.audio && this.history.at(-1)?.role === "user") {
+    if (userText && this.active && !this.active.answerStarted && this.history.at(-1)?.role === "user") {
       userText = `${this.history.pop()!.content} ${userText}`;
       replace = true;
+      userText = normalizeBizfyPlanQuestion(userText);
     }
     this.active?.ac.abort();
     if (this.playbackTimer) clearTimeout(this.playbackTimer);
     this.lastSpoken = null;
-    this.bargedAt = null;
     const turn = ++this.turn;
     const ac = new AbortController();
-    this.active = { ac, turn, audio: false };
+    const active: ActiveTurn = { ac, turn, answerStarted: false, interruptedAt: null };
+    this.active = active;
     const tFinal = this.now();
     if (userText) {
       this.history.push({ role: "user", content: userText });
@@ -314,11 +354,17 @@ export class Conversation {
       // The AI just offered to connect a person and the caller said yes: do it, instead of asking the model again.
       if (!reason && this.o.handoff?.enabled.person && isAgreement(userText) && offeredHandoff(this.history.slice(0, -1).reverse().find((m) => m.role === "assistant")?.content)) reason = "person";
       if (reason) scripted = this.markHandoff(reason, userText);
+      else if (userText) {
+        scripted = replyToGreeting(userText, this.o.language, this.history.filter((m) => m.role === "user").at(-2)?.content)
+          ?? replyToIdentityQuestion(userText, this.o.language)
+          ?? scripted;
+      }
     }
-    void this.run(turn, ac, tFinal, scripted);
+    void this.run(active, tFinal, scripted);
   }
 
-  private async run(turn: number, ac: AbortController, tFinal: number, scripted?: string) {
+  private async run(active: ActiveTurn, tFinal: number, scripted?: string) {
+    const { turn, ac } = active;
     const { signal } = ac;
     const spoken: { text: string; playStart: number }[] = [];
     let tFirstToken = 0, tFirstSentence = 0, tSpeakStart = 0, tFirstAudio = 0, failed = false, groundMs = 0, tAck = 0, tAnswerPlay = 0;
@@ -327,15 +373,16 @@ export class Conversation {
     this.setState("thinking");
 
     // The acknowledgement is synthesised alongside the AI request; the answer waits only for its audio to finish being produced.
-    const sayAck = async (text: string): Promise<void> => {
+    const sayAck = async (text: string, suppressBargeIn = false): Promise<void> => {
       const key = ackKey(this.o.tts, text);
       const cached = key ? ackCache.get(key) : undefined;
       const fresh: Uint8Array[] = [];
       for await (const chunk of cached ?? this.o.tts.speak(text, signal)) {
         if (signal.aborted) return;
         const t = this.now();
-        if (!tAck) { tAck = t; this.setState("speaking"); if (this.active?.turn === turn) this.active.audio = true; }
+        if (!tAck) { tAck = t; this.setState("speaking"); }
         this.playbackEndsAt = Math.max(this.playbackEndsAt, t) + this.chunkMs(chunk);
+        if (suppressBargeIn) this.bargeInSuppressedUntil = this.playbackEndsAt;
         this.o.sendAudio(chunk);
         if (!cached) fresh.push(new Uint8Array(chunk));
       }
@@ -355,7 +402,7 @@ export class Conversation {
         if (signal.aborted) return;
         if (!scached) sfresh.push(new Uint8Array(chunk));
         const t = this.now();
-        if (!tFirstAudio) { tFirstAudio = t; this.setState("speaking"); if (this.active?.turn === turn) this.active.audio = true; }
+        if (!tFirstAudio) { tFirstAudio = t; this.setState("speaking"); if (this.active?.turn === turn) this.active.answerStarted = true; }
         if (playStart < 0) { playStart = Math.max(this.playbackEndsAt, t); if (!tAnswerPlay) tAnswerPlay = playStart; }
         this.playbackEndsAt = Math.max(this.playbackEndsAt, t) + this.chunkMs(chunk);
         this.o.sendAudio(chunk);
@@ -374,11 +421,11 @@ export class Conversation {
         await say(scripted);
       } else {
         const ackText = this.o.ack?.(this.history.at(-1)?.role === "user" ? this.history.at(-1)!.content : "") ?? null;
-        if (ackText) ackDone = sayAck(ackText).catch(() => {});
+        if (ackText) ackDone = sayAck(ackText, true).catch(() => {});
         // AskG1 sometimes takes 10 to 40 s to start: after 6 s without a word the caller hears that we are still on it, instead of silence.
         // Not for small talk ("Hi, how are you?"): "one moment, I am checking that" makes no sense there.
         const askedSomething = !isSmallTalk(this.history.at(-1)?.role === "user" ? this.history.at(-1)!.content : "");
-        waitTimer = setTimeout(() => { if (askedSomething && !tFirstToken && !signal.aborted) void ackDone.then(() => sayAck(stillWorking(this.o.language))).catch(() => {}); }, 6000);
+        waitTimer = setTimeout(() => { if (askedSomething && !tFirstToken && !signal.aborted) void ackDone.then(() => sayAck(stillWorking(this.o.language), true)).catch(() => {}); }, 6000);
         const lastUser = [...this.history].reverse().find((m) => m.role === "user")?.content ?? "";
         // Knowledge lookup must never stop a reply: if it fails the model answers without it and is told nothing matched.
         const tGround = this.now();
@@ -386,6 +433,12 @@ export class Conversation {
         const passages = this.o.ground ? await this.o.ground(lastUser, earlierUser).catch(() => []) : [];
         groundMs = this.now() - tGround;
         if (signal.aborted) return;
+        const missingPlan = this.o.ground ? unknownPlanReply(lastUser, passages, this.o.language, earlierUser) : null;
+        if (missingPlan) {
+          scripted = missingPlan;
+          await say(missingPlan);
+          return;
+        }
         const userLines = this.history.filter((m) => m.role === "user");
         const note = this.o.turnNote?.(lastUser, userLines.length > 1 ? userLines[userLines.length - 2]!.content : undefined) ?? "";
         // The knowledge and the language note change every turn, so they ride on the newest user message instead of the
@@ -441,7 +494,7 @@ export class Conversation {
           break;
         }
         if (violated && !spoken.length && !signal.aborted) await say(sorryAgain(lang));
-        if (cacheKey && !cachedAnswer && complete && !violated && !signal.aborted && this.bargedAt === null && spoken.length) remember(answerCache, cacheKey, spoken.map((x) => x.text), 300);
+        if (cacheKey && !cachedAnswer && complete && !violated && !signal.aborted && active.interruptedAt === null && spoken.length) remember(answerCache, cacheKey, spoken.map((x) => x.text), 300);
       }
     } catch (e) {
       if (!signal.aborted) {
@@ -459,7 +512,7 @@ export class Conversation {
     } finally {
       clearTimeout(waitTimer);
       // Whatever the caller actually heard goes into the history, so an interrupted reply is remembered as interrupted.
-      const heard = this.bargedAt === null ? spoken : spoken.filter((x) => x.playStart <= this.bargedAt!);
+      const heard = active.interruptedAt === null ? spoken : spoken.filter((x) => x.playStart <= active.interruptedAt!);
       if (heard.length) {
         const said = heard.map((x) => x.text).join(" ");
         this.history.push({ role: "assistant", content: said });
@@ -469,7 +522,7 @@ export class Conversation {
           this.o.send({ type: "handoff", reason: "person", message: said });
           this.o.log?.("handoff: person (the AI said it was connecting the caller)");
         }
-        if (this.bargedAt === null) this.lastSpoken = { index: this.history.length - 1, sentences: spoken };
+        if (active.interruptedAt === null) this.lastSpoken = { index: this.history.length - 1, sentences: spoken };
       }
       if (!failed && !signal.aborted && !scripted && tFirstToken) this.errorStreak = 0;
       if (tFirstAudio && !scripted && !failed) {

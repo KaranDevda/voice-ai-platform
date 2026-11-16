@@ -36,7 +36,7 @@ export const phoneNumbers = pgTable(
     e164: text("e164").notNull(),
     label: text("label"),
     capabilities: text("capabilities").array().notNull().default(["voice", "sms"]),
-    status: text("status", { enum: ["available", "assigned", "released"] }).notNull().default("available"),
+    status: text("status", { enum: ["available", "pending", "assigned", "released"] }).notNull().default("available"),
     createdAt: createdAt(),
     assignedAt: tstz("assigned_at"),
   },

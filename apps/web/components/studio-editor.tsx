@@ -48,7 +48,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
   const [lang, setLang] = useState<Lang>("en");
   const [voice, setVoice] = useState(fallback);
   const [save, setSave] = useState(true);
-  const [highQuality, setHighQuality] = useState(false);
+  const [highQuality, setHighQuality] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   // Voice settings (cloned voices). Untouched, the voice's own saved speed and pitch are used.
   const [speed, setSpeed] = useState(1);
@@ -62,6 +62,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
 
   const picked = voices.find((v) => v.ref === voice);
   const hindi = /[ऀ-ॿ]/.test(text) || lang !== "en";
+  const directClone = highQualityReady && picked?.group === "cloned" && picked.provider === "pocket_tts" && (highQuality ?? false);
   const over = text.length > MAX;
   const needsCloning = picked?.group === "cloned" && !cloningReady;
 
@@ -71,7 +72,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
     setError(null);
     const t0 = Date.now();
     try {
-      const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice, save, ...(highQuality && picked?.group === "cloned" ? { highQuality: true } : {}), ...(tuned && picked?.group === "cloned" ? { speed, pitch } : {}) }) });
+      const res = await fetch("/api/studio/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice, save, ...(directClone ? { highQuality: true } : {}), ...(tuned && picked?.group === "cloned" ? { speed, pitch } : {}) }) });
       if (!res.ok) return setError(await apiError(res));
       const blob = await res.blob();
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -114,8 +115,8 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
             ))}
           </div>
           {hindi && picked?.group === "stock" && <Notice tone="warning">Stock voices speak English only. For Hindi or Hinglish, choose a cloned voice marked &ldquo;Hindi&rdquo;.</Notice>}
-          {hindi && picked?.group === "cloned" && picked.hindi !== false && (picked.hindiOwn
-            ? <Notice tone="info">Hindi and Hinglish are changed into {picked.name}&apos;s own voice. This adds about a second per sentence.</Notice>
+          {hindi && picked?.group === "cloned" && picked.hindi !== false && (picked.hindiOwn || directClone
+            ? <Notice tone="info">Hindi and Hinglish are spoken in {picked.name}&apos;s own voice.</Notice>
             : <Notice tone="info">Hindi and Hinglish are spoken by a built-in {picked.gender} Hindi voice, not {picked.name}&apos;s own voice. To use their own voice, open Voice clone, Add Hindi to an existing voice. If {picked.name} is the wrong gender, fix it under Voices &amp; consent, Edit.</Notice>)}
           {hindi && picked?.group === "cloned" && picked.hindi === false && <Notice tone="warning">{picked.name} has no Hindi version yet, so Hindi will be spoken in a default Hindi voice. Add one under Voice clone, &ldquo;Add Hindi to an existing voice&rdquo;.</Notice>}
           <p className="text-xs text-muted-foreground">Emotion tags: put <code>[excited]</code>, <code>[calm]</code>, <code>[sad]</code>, <code>[serious]</code>, <code>[angry]</code>, <code>[slow]</code>, <code>[fast]</code> or <code>[pause]</code> before a sentence (Hindi: <code>[खुश]</code>, <code>[शांत]</code>, <code>[उदास]</code>). It applies until the next tag; <code>[neutral]</code> resets. Tags are never spoken. This changes speed, pitch and pauses a little; it is not acting.</p>
@@ -127,7 +128,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
           )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> Save to Projects</label>
-            {highQualityReady && picked?.group === "cloned" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> High quality voice (more natural, but about 30 seconds a sentence)</label>}
+            {highQualityReady && picked?.group === "cloned" && picked.provider === "pocket_tts" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={directClone} onChange={(e) => setHighQuality(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> Direct voice clone (closer match; can take minutes)</label>}
             <Button size="lg" disabled={!text.trim() || over || busy || needsCloning} onClick={() => void generate()}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Wand2 className="h-4 w-4" aria-hidden />}
               {busy ? "Generating…" : "Generate speech"}

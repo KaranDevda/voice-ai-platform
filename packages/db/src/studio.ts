@@ -1,10 +1,10 @@
-import { and, desc, eq, gt, gte, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, gte, ilike, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { assertAuthorized, ForbiddenError, resolveScope, type AuthUser } from "@voiceai/auth";
 import { chunkText, searchTerms } from "@voiceai/shared";
 import { writeAudit } from "./audit";
 import { withOrg, type Db } from "./client";
 import { scopeCondition } from "./scoped";
-import { kbChunks, kbDocuments, providerUsage, studioAssets, users } from "./schema";
+import { EMBEDDING_DIMENSIONS, kbChunks, kbDocuments, providerUsage, studioAssets, users } from "./schema";
 
 const assetCols = { orgId: studioAssets.orgId, teamId: studioAssets.teamId, ownerUserId: studioAssets.userId };
 const summaryColumns = {
@@ -165,17 +165,28 @@ export async function usageToday(db: Db, user: AuthUser) {
 
 // ------------------------------------------------------------ knowledge base
 
-export async function ingestKnowledge(db: Db, user: AuthUser, input: { title: string; text: string; sourceUrl?: string | null }) {
+export async function ingestKnowledge(
+  db: Db,
+  user: AuthUser,
+  input: { title: string; text: string; sourceUrl?: string | null },
+  embeddings?: number[][],
+) {
   assertAuthorized(user, "kb.write");
   const chunks = chunkText(input.text);
   if (!input.title.trim() || chunks.length === 0) throw new RangeError("title and non-empty text are required");
+  if (embeddings && (
+    embeddings.length !== chunks.length ||
+    embeddings.some((vector) => vector.length !== EMBEDDING_DIMENSIONS || vector.some((n) => !Number.isFinite(n)))
+  )) throw new RangeError(`each knowledge chunk must have a ${EMBEDDING_DIMENSIONS}-value embedding`);
 
   return withOrg(db, user.orgId, async (tx) => {
     const [doc] = await tx
       .insert(kbDocuments)
       .values({ orgId: user.orgId, title: input.title.trim().slice(0, 200), sourceUrl: input.sourceUrl ?? null, metadata: { chars: input.text.length } })
       .returning({ id: kbDocuments.id });
-    await tx.insert(kbChunks).values(chunks.map((content, i) => ({ orgId: user.orgId, documentId: doc!.id, chunkIndex: i, content })));
+    await tx.insert(kbChunks).values(chunks.map((content, i) => ({
+      orgId: user.orgId, documentId: doc!.id, chunkIndex: i, content, embedding: embeddings?.[i] ?? null,
+    })));
     await writeAudit(tx, { orgId: user.orgId, actorUserId: user.id, action: "kb.add", entity: "kb_documents", entityId: doc!.id, after: { title: input.title, chunks: chunks.length } });
     return { id: doc!.id, chunks: chunks.length };
   });
@@ -190,9 +201,27 @@ export async function deleteKnowledgeDoc(db: Db, user: AuthUser, id: string): Pr
   });
 }
 
-/** Keyword retrieval used until embeddings are connected: ranks chunks by how many query terms they contain. */
-export async function searchKnowledge(db: Db, user: AuthUser, query: string, limit = 4) {
+/** Semantic nearest-neighbour retrieval when available, with keyword search as a no-embedding fallback. */
+export async function searchKnowledge(db: Db, user: AuthUser, query: string, limit = 4, queryEmbedding?: number[]) {
   if (!user.permissions.some((p) => p === "kb.read" || p === "studio.use")) throw new ForbiddenError("kb.read");
+  if (queryEmbedding) {
+    if (queryEmbedding.length !== EMBEDDING_DIMENSIONS || queryEmbedding.some((n) => !Number.isFinite(n))) {
+      throw new RangeError(`query embedding must contain ${EMBEDDING_DIMENSIONS} finite values`);
+    }
+    const literal = `[${queryEmbedding.join(",")}]`;
+    const distance = sql<number>`${kbChunks.embedding} <=> ${literal}::vector`;
+    const semantic = await withOrg(db, user.orgId, (tx) =>
+      tx
+        .select({ content: kbChunks.content, title: kbDocuments.title, score: sql<number>`1 - (${distance})`.mapWith(Number) })
+        .from(kbChunks)
+        .innerJoin(kbDocuments, eq(kbDocuments.id, kbChunks.documentId))
+        .where(isNotNull(kbChunks.embedding))
+        .orderBy(distance, kbChunks.chunkIndex)
+        .limit(limit),
+    );
+    const relevant = semantic.filter((r) => r.score >= 0.25);
+    if (relevant.length) return relevant;
+  }
   const terms = searchTerms(query);
   if (!terms.length) return [];
   const esc = (t: string) => t.replace(/[\\%_]/g, "\\$&");

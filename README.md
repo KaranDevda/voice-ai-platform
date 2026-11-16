@@ -27,7 +27,7 @@ No telephony carrier is connected yet. Details of the live pipeline, its speed a
 - **Typical speed** (this MacBook Air M4, AskG1 warm): English real answer about 1.6 s, Hindi about 5 s.
 - **Slow AskG1:** after 6 s a "one moment" line plays, the request is retried once at 12 s, and after 30 s the caller is asked to repeat. A slow model never causes a hand-over to a person.
 - **Saved answers:** a repeated question with the same company knowledge is answered from memory, in the saved voice audio, without asking AskG1 again (cleared when the voice service restarts).
-- **Optional Chatterbox voice:** `scripts/chatterbox-server.py` (MIT licence) makes Hindi directly in the person's own voice and sounds much closer, but is slower than real time on a laptop. Set `CHATTERBOX_URL` only on a machine with a GPU.
+- **Optional Chatterbox voice:** `scripts/chatterbox-mlx-server.py` makes Studio Hindi directly from the speaker's saved recording on Apple silicon; it is slower than real time. Live Hindi in the person's own voice needs the GPU-backed `scripts/chatterbox-server.py`.
 - **Warm-up:** AskG1 reads the long prompt slowly the first time (6–13 s). After a restart or a prompt edit run `pnpm --filter @voiceai/voice warm -- --voices "profile:<id>,profile:<id>"`.
 
 ## Stack
@@ -84,9 +84,11 @@ Database integration tests are skipped unless `TEST_DATABASE_URL` and `TEST_APP_
 
 ## Known gaps
 
-- AskG1 sometimes stalls for 10–40 s and is only reachable over Tailscale, through a relay. It needs reserved capacity for live calls, a direct route and a longer prompt cache. This is the biggest cause of slow or missing answers.
-- Hindi takes about 5 s even when AskG1 is warm; the voice conversion and the accurate listening setting cost about 2.5 s.
-- Live Hindi in the person's own voice (Chatterbox) needs a GPU machine.
-- Real devices and a real phone line are untested.
-- Telephony depends on the company's KYC for an Indian number, plus DLT registration and DND scrubbing.
-- Still to build: embeddings, password reset and new-device alerts.
+- AskG1 sometimes stalls for 10–40 s and is only reachable over Tailscale, through a relay. Reserved capacity, a direct route and prompt-cache changes require the AskG1 operator.
+- Hindi live replies are slower than English. Kokoro + OpenVoice is the current local path; Chatterbox MLX does not stream and exceeded 60 s for a short Hindi synthesis in this environment. A fast cloned Hindi live voice needs a measured GPU-backed streaming service.
+- Plivo inbound/outbound, signed webhooks and transfer flows are implemented and pass `phone-sim`, but no carrier account/number is configured here and real-call behavior is untested.
+- Real Android/iOS handsets and carrier audio quality have not been tested.
+- AWS staging passed `terraform validate` only. Planning/applying needs an approved AWS account, state bucket, domain and TLS certificate.
+- Production India telephony still needs carrier KYC, DLT registration and DND scrubbing.
+- Semantic embedding ingestion/search is implemented but opt-in: configure `EMBEDDING_URL`, `EMBEDDING_MODEL`, and an endpoint that returns 1536-dimensional vectors; production PostgreSQL must have pgvector. Without configuration, search remains keyword-based.
+- Password reset is implemented with single-use links; new-phone alerts are implemented. Both require configured SMTP, which is not set in this workspace.

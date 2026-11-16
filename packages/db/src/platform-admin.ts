@@ -109,17 +109,19 @@ export async function requestNumber(db: Db, actor: AuthUser, input: { kind: "loc
 
 export async function platformNumbers(db: Db, actor: AuthUser) {
   return asPlatform(db, actor, async (tx) => ({
-    numbers: await tx.select({ id: phoneNumbers.id, e164: phoneNumbers.e164, label: phoneNumbers.label, status: phoneNumbers.status, orgId: phoneNumbers.orgId, orgName: organizations.name }).from(phoneNumbers).leftJoin(organizations, eq(organizations.id, phoneNumbers.orgId)).orderBy(phoneNumbers.e164).limit(500),
+    numbers: await tx.select({ id: phoneNumbers.id, e164: phoneNumbers.e164, label: phoneNumbers.label, capabilities: phoneNumbers.capabilities, status: phoneNumbers.status, orgId: phoneNumbers.orgId, orgName: organizations.name }).from(phoneNumbers).leftJoin(organizations, eq(organizations.id, phoneNumbers.orgId)).orderBy(phoneNumbers.e164).limit(500),
     requests: await tx.select({ id: numberRequests.id, orgName: organizations.name, kind: numberRequests.kind, country: numberRequests.country, purpose: numberRequests.purpose, createdAt: numberRequests.createdAt }).from(numberRequests).innerJoin(organizations, eq(organizations.id, numberRequests.orgId)).where(sql`${numberRequests.status} = 'pending'`).orderBy(numberRequests.createdAt).limit(100),
     orgs: await tx.select({ id: organizations.id, name: organizations.name }).from(organizations).orderBy(organizations.name).limit(500),
   }));
 }
 
-export async function platformAddNumber(db: Db, actor: AuthUser, input: { e164: string; label?: string }) {
+export async function platformAddNumber(db: Db, actor: AuthUser, input: { e164: string; label?: string; capabilities?: string[]; status?: "available" | "pending" }) {
   const e164 = input.e164.replace(/[\s-]/g, "");
   if (!E164.test(e164)) throw new AdminError("the number must be like +919876543210");
+  const capabilities = input.capabilities ?? ["voice", "sms"];
+  if (capabilities.some((c) => c !== "voice" && c !== "sms")) throw new AdminError("number capabilities must be voice or sms");
   return asPlatform(db, actor, async (tx) => {
-    const [row] = await tx.insert(phoneNumbers).values({ e164, label: input.label?.trim().slice(0, 80) || null }).onConflictDoNothing().returning({ id: phoneNumbers.id });
+    const [row] = await tx.insert(phoneNumbers).values({ e164, label: input.label?.trim().slice(0, 80) || null, capabilities, status: input.status ?? "available" }).onConflictDoNothing().returning({ id: phoneNumbers.id });
     if (!row) throw new AdminError("that number is already in the list");
     return row;
   });
@@ -129,7 +131,7 @@ export async function platformAssignNumber(db: Db, actor: AuthUser, numberId: st
   return asPlatform(db, actor, async (tx) => {
     const [n] = await tx.select().from(phoneNumbers).where(eq(phoneNumbers.id, numberId));
     if (!n) throw new AdminError("number not found");
-    if (n.status === "assigned") throw new AdminError("that number is already assigned; release it first");
+    if (n.status !== "available") throw new AdminError(n.status === "pending" ? "that number is still pending carrier verification" : "that number is not available; release it first");
     await tx.update(phoneNumbers).set({ orgId, status: "assigned", assignedAt: new Date() }).where(eq(phoneNumbers.id, numberId));
     await auditFor(tx, { orgId, actorUserId: actor.id, action: "number.assign", entity: "phone_numbers", entityId: numberId, after: { e164: n.e164 } });
     return { id: numberId };

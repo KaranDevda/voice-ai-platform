@@ -217,6 +217,7 @@ describe.skipIf(!ownerUrl || !appUrl)("integration", () => {
       expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
       const first = await registerDevice(app.db, { code, fingerprint: fp("once"), platform: "ios", name: "iPhone" });
       expect(first?.token).toMatch(/^vd_/);
+      expect(first?.isNew).toBe(true);
       expect(await registerDevice(app.db, { code, fingerprint: fp("twice"), platform: "ios" })).toBeNull();
       const [row] = await owner.db.select().from(devices).where(sql`${devices.id} = ${first!.deviceId}`);
       expect(row!.tokenHash).not.toContain(first!.token); // only a hash is stored
@@ -247,6 +248,7 @@ describe.skipIf(!ownerUrl || !appUrl)("integration", () => {
       expect(await authenticateDevice(app.db, d.token)).toBeNull();
       const again = (await pair("auth"))!; // pairing the same phone again with a fresh code brings it back, as the same device
       expect(again.deviceId).toBe(d.deviceId);
+      expect(again.isNew).toBe(false);
       expect(await authenticateDevice(app.db, again.token)).not.toBeNull();
       expect(await authenticateDevice(app.db, d.token)).toBeNull(); // the old token is gone
       await owner.db.update(users).set({ status: "suspended" }).where(sql`${users.id} = ${agent.id}`);

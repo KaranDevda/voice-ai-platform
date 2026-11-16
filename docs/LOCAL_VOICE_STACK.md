@@ -41,16 +41,20 @@ For a signed-in user the voice service builds each answer from three things:
 2. **Voice rules** that keep replies to one or two short sentences, answer exactly what was asked, ask a short question when unsure, and never use markdown or emoji ([apps/voice/src/prompt.ts](../apps/voice/src/prompt.ts)).
 3. **The knowledge base:** the paragraphs that match the caller's question. If nothing matches, the model is told not to guess about Bizfy's plans, prices or policies and to offer a person. In testing, a question about a plan that is not in the knowledge base got "I do not have information on a premium plan" instead of an invented price.
 
+Simple greetings and “how are you?” are answered locally without waiting for AskG1. If the requested named plan is absent from retrieved knowledge, the service gives a safe response and offers a team connection rather than substituting another plan's details. Plan walk-through answers are instructed to include the price and features present in the organisation's knowledge; add missing plan details there for a complete answer.
+
 Limits:
-- **The knowledge base is searched by words.** A Hindi question is mapped to English keywords with a fixed glossary of about 20 company terms ([knowledge.ts](../apps/voice/src/knowledge.ts)); anything outside the glossary is not found. Proper multilingual search (embeddings) is the real fix and is not built.
+- **Knowledge search has two modes.** With `EMBEDDING_URL` and `EMBEDDING_MODEL` configured in both web and voice environments, uploaded chunks and live questions use 1536-dimensional semantic vectors, including Hindi queries. With no embedding endpoint, search falls back to English keywords and the Hindi glossary in [knowledge.ts](../apps/voice/src/knowledge.ts).
 - **The Hindi voice skips digits.** Every number in a Hindi sentence is spelled out in Hindi words before it is spoken. Without this a price is silently missing.
 - A 3B model sometimes misattributes facts in Hindi (it once gave Enterprise features to the Business plan). AskG1 should do better.
 
 ## Hindi and Hinglish: why Kokoro
 
-The Pocket Hindi model could clone a voice but was unreliable: with a real recording it produced garbage ("लुट लुट लुट") and server errors, and even the default voice scored only 0.70 when read back. Kokoro scored 0.77 on the same test, never failed, and is about four times faster than real time. The trade-off is that **Kokoro cannot clone**: Hindi and Hinglish are spoken by a built-in Hindi voice (`hm_omega` for male, `hf_alpha` for female, matched to the person's gender), and plain English is still spoken in the person's cloned voice. A sentence that contains any Hindi is spoken wholly by Kokoro, so one sentence never changes voice halfway. A Hindi voice that is also the person's own would need voice conversion on top (for example OpenVoice, MIT); that is not built.
+The Pocket Hindi model could clone a voice but was unreliable: with a real recording it produced garbage ("लुट लुट लुट") and server errors, and even the default voice scored only 0.70 when read back. Kokoro scored 0.77 on the same test, never failed, and is about four times faster than real time. The trade-off is that **Kokoro cannot clone**: Hindi and Hinglish are spoken by a built-in Hindi voice (`hm_omega` for male, `hf_alpha` for female, matched to the person's gender), and plain English is still spoken in the person's cloned voice. A sentence that contains any Hindi is spoken wholly by Kokoro, so one sentence never changes voice halfway. For a closer Hindi voice match in Studio, use Chatterbox Multilingual below.
 
 Setup: `python3.13 -m venv .local/kokoro-venv && .local/kokoro-venv/bin/pip install kokoro-onnx soundfile`, then download `kokoro-v1.0.onnx` (310 MB) and `voices-v1.0.bin` from <https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0> into `.local/models/`. Set `KOKORO_URL=http://127.0.0.1:8768` in `apps/web/.env.local` and `apps/voice/.env.local`. `pnpm dev:stack` starts it automatically when both exist.
+
+To use the Pocket Hindi model for cloned Hindi instead of Kokoro, leave `KOKORO_URL` unset in both `apps/web/.env.local` and `apps/voice/.env.local`, and configure `POCKET_TTS_HI_URL` and `POCKET_TTS_HI_CONFIG` in each as described below. Hindi speech then uses each clone's Hindi voice file directly; the model is less reliable than Kokoro.
 
 ## Hindi and Hinglish in the person's own voice
 
@@ -62,6 +66,13 @@ Kokoro speaks Hindi well but only in fixed voices. A second model, the **OpenVoi
 - **Cost:** about a second more per Hindi sentence. Not streamed.
 - **Setup:** `python3.13 -m venv .local/ov-venv`, then `.local/ov-venv/bin/pip install torch numpy scipy librosa soundfile pydub inflect unidecode eng_to_ipa pypinyin cn2an jieba langid requests`; `git clone --depth 1 https://github.com/myshell-ai/OpenVoice .local/openvoice`; download `converter/checkpoint.pth` and `converter/config.json` from <https://huggingface.co/myshell-ai/OpenVoiceV2> into `.local/models/openvoice-v2/converter/`. Set `VOICE_CONVERT_URL=http://127.0.0.1:8769` in both env files. `pnpm dev:stack` starts it.
 - Its source is third-party code: it was read before use (no network calls, no command execution) and its model loads with PyTorch's safe loader. The server is bound to 127.0.0.1.
+
+## More natural Studio Hindi: Chatterbox Multilingual
+
+OpenVoice changes the timbre of Kokoro speech. For a closer match, Studio can instead generate Hindi and Hinglish directly from the cloned speaker's saved recording with Chatterbox Multilingual on Apple silicon. This mode is optional and off by default because longer scripts can take minutes. If a direct generation exceeds 45 seconds, Studio uses the faster Kokoro-plus-OpenVoice path instead. Live calls do not use this model by default: the MLX model does not stream and a short local Hindi synthesis exceeded 60 seconds in the current environment. A real-time cloned Hindi voice needs a separately provisioned GPU server and measured streaming support.
+
+- **Setup:** `python3.13 -m venv .local/mlx-venv && .local/mlx-venv/bin/pip install mlx-audio soundfile`. Set `CHATTERBOX_URL=http://127.0.0.1:8771` in `apps/web/.env.local`, then run `.local/mlx-venv/bin/python scripts/chatterbox-mlx-server.py`. The first run downloads `mlx-community/chatterbox-multilingual-v3`; `pnpm dev:stack` starts the server automatically once the environment exists.
+- Chatterbox uses the voice's existing consented reference recording from `.local/voices`; the local server binds to 127.0.0.1. Do not set `CHATTERBOX_URL` in `apps/voice/.env.local` unless accepting its extra latency in live conversations.
 
 ## One-time setup
 
@@ -85,7 +96,7 @@ Everything lives in `.local/` (gitignored). Download only from the official sour
 | Caller stops talking to first AI sound | 1.29 to 1.35 s | 1.38 to 1.44 s |
 | Whisper on one utterance | about 0.5 s | about 0.5 s |
 
-The speech-to-text is the slowest part: the caller must be silent for 400 ms (`ENDPOINTING_MS`) and the large Whisper model then takes 0.5 to 1.3 s. For English, the small model (`WHISPER_URL_EN`, see VOICE_PIPELINE.md "Speed") takes about 0.26 s.
+The speech-to-text is the slowest part: the caller must be silent for 400 ms by default (`ENDPOINTING_MS`), and the large Whisper model then takes 0.5 to 1.3 s. English uses 650 ms by default to avoid splitting short pauses between clauses; the small model (`WHISPER_URL_EN`, see VOICE_PIPELINE.md "Speed") takes about 0.26 s.
 
 ## Known limits
 

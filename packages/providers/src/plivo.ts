@@ -103,6 +103,12 @@ export const plivoClearAudio = (streamId: string) => JSON.stringify({ event: "cl
 
 export interface PlivoConfig { authId: string; authToken: string; fetch?: typeof fetch; baseUrl?: string }
 
+export interface PlivoAvailableNumber {
+  number: string; type: string; subType: string; city: string | null; region: string | null;
+  monthlyRentalRate: string | null; setupRate: string | null; voiceEnabled: boolean; smsEnabled: boolean;
+  restriction: string | null; restrictionText: string | null;
+}
+
 export function createPlivo(config: PlivoConfig) {
   const f = config.fetch ?? fetch;
   const base = `${config.baseUrl ?? "https://api.plivo.com"}/v1/Account/${encodeURIComponent(config.authId)}`;
@@ -117,6 +123,41 @@ export function createPlivo(config: PlivoConfig) {
   }
 
   return {
+    /** Search Plivo's live inventory. A search is read-only and never rents a number. */
+    async searchNumbers(i: { countryIso: string; type?: "local" | "tollfree" | "mobile" | "national" | "fixed"; pattern?: string; city?: string; region?: string; services?: "voice" | "sms" | "voice,sms"; limit?: number; offset?: number }): Promise<PlivoAvailableNumber[]> {
+      const query = new URLSearchParams({ country_iso: i.countryIso.toUpperCase(), limit: String(i.limit ?? 20), offset: String(i.offset ?? 0) });
+      if (i.type) query.set("type", i.type);
+      if (i.pattern) query.set("pattern", i.pattern);
+      if (i.city) query.set("city", i.city);
+      if (i.region) query.set("region", i.region);
+      if (i.services) query.set("services", i.services);
+      const r = await call("GET", `/PhoneNumber/?${query.toString()}`);
+      const objects = Array.isArray(r.objects) ? r.objects as Record<string, unknown>[] : [];
+      return objects.flatMap((x) => {
+        if (typeof x.number !== "string") return [];
+        return [{
+          number: x.number, type: String(x.type ?? ""), subType: String(x.sub_type ?? ""),
+          city: typeof x.city === "string" ? x.city : null, region: typeof x.region === "string" ? x.region : null,
+          monthlyRentalRate: typeof x.monthly_rental_rate === "string" ? x.monthly_rental_rate : null,
+          setupRate: typeof x.setup_rate === "string" ? x.setup_rate : null,
+          voiceEnabled: x.voice_enabled === true, smsEnabled: x.sms_enabled === true,
+          restriction: typeof x.restriction === "string" ? x.restriction : null,
+          restrictionText: typeof x.restriction_text === "string" ? x.restriction_text : null,
+        }];
+      });
+    },
+    /** Rents one number from Plivo. This can incur setup and recurring fees. */
+    async buyNumber(i: { number: string; appId?: string; complianceApplicationId?: string }): Promise<{ number: string; status: string }> {
+      const number = i.number.replace(/^\+/, "");
+      const payload = {
+        ...(i.appId ? { app_id: i.appId } : {}), ...(i.complianceApplicationId ? { compliance_application_id: i.complianceApplicationId } : {}),
+      };
+      const r = await call("POST", `/PhoneNumber/${encodeURIComponent(number)}/`, Object.keys(payload).length ? payload : undefined);
+      const bought = Array.isArray(r.numbers) ? r.numbers.find((n: Record<string, unknown>) => String(n.number ?? "") === number) : undefined;
+      const status = String(bought?.status ?? r.status ?? "");
+      if (!bought && !/fulfilled|success/i.test(status)) throw new ProviderError("Plivo did not confirm the number purchase", 502, "plivo");
+      return { number: `+${number}`, status: status || "Success" };
+    },
     /** Places an outbound call. When the person answers, Plivo fetches `answerUrl` for instructions. Returns Plivo's id for the call. */
     async makeCall(i: { from: string; to: string; answerUrl: string; hangupUrl?: string; machineUrl?: string }): Promise<{ callUuid: string }> {
       // machineUrl: Plivo listens for an answering machine and posts the result there (Machine=true or false) a few seconds after answer.
@@ -128,14 +169,10 @@ export function createPlivo(config: PlivoConfig) {
       const id = Array.isArray(r.request_uuid) ? r.request_uuid[0] : r.request_uuid;
       return { callUuid: String(id ?? "") };
     },
-    /**
-     * Sends one text. For India the text must match a template registered on the DLT platform: pass the registered entity and template IDs
-     * (the field names follow Plivo's India documentation as I know it: dlt_entity_id, dlt_template_id; confirm on the first real send).
-     */
-    async sendSms(i: { from: string; to: string; text: string; dltEntityId?: string; dltTemplateId?: string }): Promise<{ messageUuid: string }> {
+    /** Sends one text. Plivo currently routes India SMS over ILDO; its domestic DLT request fields are deprecated. */
+    async sendSms(i: { from: string; to: string; text: string }): Promise<{ messageUuid: string }> {
       const r = await call("POST", "/Message/", {
         src: i.from, dst: i.to, text: i.text, type: "sms",
-        ...(i.dltEntityId ? { dlt_entity_id: i.dltEntityId } : {}), ...(i.dltTemplateId ? { dlt_template_id: i.dltTemplateId } : {}),
       });
       const id = Array.isArray(r.message_uuid) ? r.message_uuid[0] : r.message_uuid;
       return { messageUuid: String(id ?? "") };
