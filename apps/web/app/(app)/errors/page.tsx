@@ -29,7 +29,7 @@ export default async function ErrorsPage({ searchParams }: { searchParams: Promi
             <EmptyState title="No errors" description="Errors from API routes and the client will appear here." />
           ) : (
             <Table>
-              <thead><tr><Th>When</Th><Th>Route</Th><Th>Method</Th><Th>Message</Th><Th className="text-right">Stack</Th></tr></thead>
+              <thead><tr><Th>When</Th><Th>Route</Th><Th>Method</Th><Th>Message</Th><Th className="text-end">Stack</Th></tr></thead>
               <tbody>
                 {data.rows.map((e) => (
                   <Tr key={e.id}>
@@ -37,7 +37,7 @@ export default async function ErrorsPage({ searchParams }: { searchParams: Promi
                     <Td className="font-mono text-sm">{e.route}</Td>
                     <Td className="text-xs uppercase">{e.method ?? "—"}</Td>
                     <Td className="max-w-[300px] truncate" title={e.errorMessage}>{e.errorMessage}</Td>
-                    <Td className="text-right">
+                    <Td className="text-end">
                       {e.errorStack && (
                         <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(e.errorStack!); alert("Stack trace copied"); }}>Copy stack</Button>
                       )}

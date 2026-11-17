@@ -93,7 +93,7 @@ function VoiceRow({ p }: { p: Profile }) {
           <label className="mt-2 grid gap-1">Pitch {pitch > 0 ? "+" : ""}{pitch.toFixed(1)} semitones<input type="range" min={-3} max={3} step={0.1} value={pitch} onChange={(e) => setPitch(Number(e.target.value))} aria-label="Pitch" /></label>
           <p className="mt-2">{error ? <span role="alert" className="text-danger">{error}</span> : "Small changes sound natural; large ones make words harder to understand. Gender picks the built-in Hindi voice, so set it to the speaker's."}</p>
         </Td>
-        <Td className="text-right whitespace-nowrap">
+        <Td className="text-end whitespace-nowrap">
           <Button size="sm" variant="outline" onClick={() => { setSpeed(1); setPitch(0); }} disabled={speed === 1 && pitch === 0}>Reset</Button>{" "}
           <Button size="sm" variant="outline" onClick={() => void preview()} disabled={previewing}>{previewing ? "Playing…" : "Preview"}</Button>{" "}
           <Button size="sm" onClick={() => void save()} disabled={busy || !label.trim()}>Save</Button>{" "}
@@ -104,10 +104,10 @@ function VoiceRow({ p }: { p: Profile }) {
   }
   return (
     <Tr>
-      <Td className="font-medium">{p.label}{p.hasSample ? "" : <span className="ml-2 text-xs font-normal text-muted-foreground" title="This voice was cloned before recordings were kept. Clone it again to use it with the realistic open-source engine.">no recording saved</span>}{p.speed !== 1 || p.pitch !== 0 ? <span className="ml-2 text-xs font-normal text-muted-foreground" title="Speed and pitch applied to this voice">{p.speed.toFixed(2)}× · {p.pitch > 0 ? "+" : ""}{p.pitch.toFixed(1)} st</span> : null}</Td><Td>{titleCase(p.gender)}</Td><Td>{donor}</Td>
+      <Td className="font-medium">{p.label}{p.hasSample ? "" : <span className="ms-2 text-xs font-normal text-muted-foreground" title="This voice was cloned before recordings were kept. Clone it again to use it with the realistic open-source engine.">no recording saved</span>}{p.speed !== 1 || p.pitch !== 0 ? <span className="ms-2 text-xs font-normal text-muted-foreground" title="Speed and pitch applied to this voice">{p.speed.toFixed(2)}× · {p.pitch > 0 ? "+" : ""}{p.pitch.toFixed(1)} st</span> : null}</Td><Td>{titleCase(p.gender)}</Td><Td>{donor}</Td>
       <Td className="text-muted-foreground">{formatDate(p.consentGrantedAt)}{p.consentWithdrawn ? " · withdrawn" : ""}</Td>
       <Td><Badge tone={p.status === "active" ? "success" : "danger"}>{titleCase(p.status)}</Badge></Td>
-      <Td className="text-right whitespace-nowrap">
+      <Td className="text-end whitespace-nowrap">
         {p.status === "active" && p.hasSample && <Button size="sm" variant="outline" onClick={() => void playOriginal()}>Original</Button>}{" "}
         {p.status === "active" && <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>}{" "}
         {p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}>Revoke</PostButton>}

@@ -39,7 +39,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen md:flex md:flex-wrap" style={brandStyle}>
       {impersonating && <div className="w-full"><ImpersonationBanner email={profile.email} /></div>}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-card md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-border bg-card md:flex">
         <div className="flex items-center gap-2.5 px-5 py-4">
           <BizfyMark className="h-9 w-9" />
           <div className="leading-tight">

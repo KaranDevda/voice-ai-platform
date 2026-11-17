@@ -57,7 +57,7 @@ export default async function Launchpad() {
   return (
     <>
       <section className="relative mb-8 overflow-hidden rounded-2xl border border-border bg-card px-6 py-8 md:px-10 md:py-10">
-        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 flex w-1/2 items-center justify-end gap-[3px] pr-6 opacity-40 md:opacity-70">
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 end-0 flex w-1/2 items-center justify-end gap-[3px] pe-6 opacity-40 md:opacity-70">
           {HERO_BARS.map((h, i) => <span key={i} className="w-[3px] rounded-full" style={{ height: h, background: i % 7 === 0 ? "var(--primary)" : "var(--wave)" }} />)}
         </div>
         <div className="relative max-w-xl">

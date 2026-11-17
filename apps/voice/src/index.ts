@@ -7,11 +7,12 @@ import { z } from "zod";
 import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims } from "@voiceai/auth";
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
 import { asc, eq } from "drizzle-orm";
-import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getCampaignAgentProfile, getLeadPhone, getPhoneConfig, getHandoffTimeoutSeconds, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, reportMachine, getCampaignAudio, saveAiCall, resolveCallVoice, searchKnowledge, isCampaignCallerId, type Db, withOrg, smsMessages } from "@voiceai/db";
+import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getCampaignAgentProfile, getLeadPhone, getPhoneConfig, getHandoffTimeoutSeconds, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, requestCallback, reportMachine, getCampaignAudio, saveAiCall, resolveCallVoice, searchKnowledge, isCampaignCallerId, type Db, withOrg, smsMessages } from "@voiceai/db";
 import {
   createAskG1, createDeepgramLive, createPlivo, embeddingsFromEnv, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoSpeakHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
+import { sendEmail, smtpFromEnv } from "@voiceai/providers";
 import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
 import { MulawTo16k } from "./telephony-audio";
 import { expandServiceOverviewQuery, hindiToEnglishKeywords, relevantExcerpt, unknownPlanReply } from "./knowledge";
@@ -416,6 +417,8 @@ function handle(ws: WebSocket, claims: VoiceTokenClaims) {
     let msg: unknown;
     try { msg = JSON.parse(data.toString()); } catch { return; }
     if ((msg as { type?: string })?.type === "stop") return void ws.close(1000);
+    // Keypad presses from the browser practice call are accepted and ignored for now: there is no menu to drive here, and the digit is deliberately not logged (it may be a PIN).
+    if ((msg as { type?: string })?.type === "dtmf") return;
     if (convo) return;
     const parsed = start.safeParse(msg);
     if (!parsed.success) { send({ type: "error", message: "invalid start message" }); return void ws.close(4002, "bad start"); }
@@ -624,11 +627,25 @@ app.post("/plivo/transfer", async (req, res) => {
   const own = org.success ? (await getPhoneConfig(getDb(), org.data).catch(() => null))?.handoffNumber : "";
   const to = own || env("PLIVO_HANDOFF_NUMBER");
   const lang = callLanguage.catch("en-hi").parse(req.query.lang);
+  const leadQ = z.string().uuid().safeParse(req.query.lead);
+  if (!to && org.success) void bookCallback(org.data, leadQ.success ? leadQ.data : undefined, "no handoff number is set");
   if (!to || !org.success) return void res.type("text/xml").send(plivoSpeakHangupXml(handoffUnavailable(lang)));
   const timeoutS = await getHandoffTimeoutSeconds(getDb(), org.data).catch(() => 30);
-  const actionUrl = `${PUBLIC_URL}/plivo/handoff-result?${new URLSearchParams({ org: org.data, lang })}`;
+  const actionUrl = `${PUBLIC_URL}/plivo/handoff-result?${new URLSearchParams({ org: org.data, lang, ...(leadQ.success ? { lead: leadQ.data } : {}) })}`;
   res.type("text/xml").send(plivoDialXml(to, { timeoutS, actionUrl }));
 });
+
+/** Nobody could take the call: book a callback for the lead and e-mail the managers (when the mail server is set up). Never throws. */
+async function bookCallback(orgId: string, leadId: string | undefined, why: string) {
+  if (!leadId) return;
+  try {
+    const cb = await requestCallback(getDb(), orgId, leadId, why);
+    const smtp = smtpFromEnv();
+    if (!cb || !smtp || !cb.emails.length) return;
+    const who = cb.leadName ? `${cb.leadName} (${cb.leadPhoneMasked})` : cb.leadPhoneMasked;
+    for (const to of cb.emails) await sendEmail(smtp, { to, subject: `Callback needed: ${cb.leadName ?? cb.leadPhoneMasked}`, text: `${who} asked to speak to a person, but nobody could take the call (${why}).\n\nThey have been marked "callback requested". Please call them back.` }).catch((e) => console.error("callback e-mail failed:", e instanceof Error ? e.message : e));
+  } catch (e) { console.error("callback could not be booked:", e instanceof Error ? e.message : e); }
+}
 
 function handoffUnavailable(language: "en" | "hi" | "en-hi") {
   if (language === "hi") return "माफ़ कीजिए, अभी मैं किसी सहयोगी से संपर्क नहीं कर पाया। कृपया कुछ देर बाद दोबारा कॉल करें।";
@@ -639,9 +656,10 @@ function handoffUnavailable(language: "en" | "hi" | "en-hi") {
 /** Plivo returns the call to this signed action URL when the colleague's phone stops ringing. */
 app.post("/plivo/handoff-result", async (req, res) => {
   if (!fromPlivo(req)) return void res.status(403).type("text/plain").send("bad signature");
-  const query = z.object({ org: z.string().uuid(), lang: callLanguage.default("en-hi") }).safeParse(req.query);
+  const query = z.object({ org: z.string().uuid(), lang: callLanguage.default("en-hi"), lead: z.string().uuid().optional() }).safeParse(req.query);
   const body = z.object({ DialStatus: z.enum(["completed", "busy", "failed", "cancel", "timeout", "no-answer"]) }).safeParse(req.body);
   if (!query.success || !body.success) return void res.status(400).type("text/plain").send("bad request");
+  if (body.data.DialStatus !== "completed") void bookCallback(query.data.org, query.data.lead, `the line was ${body.data.DialStatus}`);
   const text = body.data.DialStatus === "completed"
     ? query.data.lang === "hi" ? "हमारी टीम से बात करने के लिए धन्यवाद। नमस्ते।" : query.data.lang === "en-hi" ? "Team se baat karne ke liye thank you. Namaste." : "Thanks for speaking with our team. Goodbye."
     : handoffUnavailable(query.data.lang);
@@ -739,7 +757,7 @@ function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams
     if (transferring || !plivo || !callUuid || !PUBLIC_URL) return;
     transferring = true;
     const lang = callLanguage.catch("en-hi").parse(q.get("language"));
-    const transferQuery = new URLSearchParams({ org: claims.org, lang });
+    const transferQuery = new URLSearchParams({ org: claims.org, lang, ...(record?.leadId ? { lead: record.leadId } : {}) });
     plivo.transferCall({ callUuid, legUrl: `${PUBLIC_URL}/plivo/transfer?${transferQuery}` }).then(() => console.log(`[${tag}] call handed to a person`), (e) => console.error(`[${tag}] hand-over failed:`, e instanceof Error ? e.message : e));
   };
   const onEvent = (e: ServerEvent) => {

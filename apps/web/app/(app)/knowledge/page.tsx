@@ -33,7 +33,7 @@ export default async function KnowledgePage() {
                 {docs.map((d) => (
                   <Tr key={d.id}>
                     <Td className="font-medium">{d.title}</Td><Td className="max-w-48 truncate text-muted-foreground">{d.sourceUrl ?? "Added in app"}</Td><Td className="tabular-nums">{d.chunks}</Td><Td>{formatDate(d.createdAt)}</Td>
-                    {canWrite && <Td className="text-right"><PostButton url={`/api/knowledge/${d.id}`} method="DELETE" variant="ghost" size="sm" confirm={`Delete "${d.title}"? The AI will stop using it.`}>Delete</PostButton></Td>}
+                    {canWrite && <Td className="text-end"><PostButton url={`/api/knowledge/${d.id}`} method="DELETE" variant="ghost" size="sm" confirm={`Delete "${d.title}"? The AI will stop using it.`}>Delete</PostButton></Td>}
                   </Tr>
                 ))}
               </tbody>

@@ -6,7 +6,9 @@
  * code with `pnpm --filter @voiceai/db demo:code`.
  */
 import { randomUUID } from "node:crypto";
-import { eq, isNull } from "drizzle-orm";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { eq, inArray, isNull } from "drizzle-orm";
 import { ROLE_KEYS, ROLE_PERMISSIONS, encryptSecret, hashPassword, parseKey, type RoleKey } from "@voiceai/auth";
 import { chunkText, DEFAULT_DISCLOSURE, type LeadStatus, type TranscriptSegment } from "@voiceai/shared";
 import { createDb } from "./client";
@@ -19,6 +21,9 @@ const url = process.env.DATABASE_URL;
 const mfaKey = process.env.MFA_ENCRYPTION_KEY;
 if (!url || !mfaKey) throw new Error("DATABASE_URL and MFA_ENCRYPTION_KEY are required");
 if (process.env.NODE_ENV === "production") throw new Error("Refusing to seed demo data in production");
+
+// Cloned voice IDs for demo donors can be provided via env when needed.
+//   KARAN_VOICE_ID=... NAVEEN_VOICE_ID=... SUHANI_VOICE_ID=... pnpm db:seed-demo
 
 // Deterministic so the demo looks the same every time.
 let seed = 20261022;
@@ -127,10 +132,42 @@ const voices = await db.insert(t.voiceProfiles).values([
   { orgId, label: "Priya (female)", gender: "female", providerVoiceId: "demo-voice-priya", donorUserId: donorA.id, consentRecordId: consents[0]!.id },
   { orgId, label: "Arjun (male)", gender: "male", providerVoiceId: "demo-voice-arjun", donorUserId: donorB.id, consentRecordId: consents[1]!.id },
   { orgId, label: "Kabir (male, old)", gender: "male", providerVoiceId: "demo-voice-kabir", donorUserId: donorOld.id, consentRecordId: consents[2]!.id, status: "revoked", revokedAt: new Date(Date.now() - 6 * 86400_000) },
-  // Demo cloned voices (placeholder ElevenLabs voice IDs - replace with real ones from ElevenLabs)
-  { orgId, label: "Asha (cloned)", gender: "female", providerVoiceId: "elevenlabs-clone-asha-001", donorUserId: donorA.id, consentRecordId: consents[0]!.id },
-  { orgId, label: "Ravi (cloned)", gender: "male", providerVoiceId: "elevenlabs-clone-ravi-002", donorUserId: donorB.id, consentRecordId: consents[1]!.id },
 ]).returning();
+
+// ---- Karan, Naveen, Suhani: seed donors and consents only (no placeholder voice profiles)
+const donorEmails = ["donor-karan@voice-donor.invalid", "donor-naveen@voice-donor.invalid", "donor-suhani@voice-donor.invalid"];
+const existingDonors = await db.select().from(t.users).where(inArray(t.users.email, donorEmails));
+const donorByName = new Map(existingDonors.map((u) => [`${u.firstName} ${u.lastName}`, u.id]));
+const clonedDonors = await db.insert(t.users).values([
+  { orgId, teamId: null, email: donorEmails[0]!, firstName: "Karan", lastName: "Devda", passwordHash: "!", status: "disabled" },
+  { orgId, teamId: null, email: donorEmails[1]!, firstName: "Naveen", lastName: "Sharma", passwordHash: "!", status: "disabled" },
+  { orgId, teamId: null, email: donorEmails[2]!, firstName: "Suhani", lastName: "Verma", passwordHash: "!", status: "disabled" },
+]).onConflictDoNothing().returning();
+const donorIds = [
+  donorByName.get("Karan Devda") ?? clonedDonors.find((u) => u.email === donorEmails[0]!)!.id,
+  donorByName.get("Naveen Sharma") ?? clonedDonors.find((u) => u.email === donorEmails[1]!)!.id,
+  donorByName.get("Suhani Verma") ?? clonedDonors.find((u) => u.email === donorEmails[2]!)!.id,
+] as string[];
+const existingConsents = await db.select().from(t.consentRecords).where(inArray(t.consentRecords.subjectId, donorIds));
+const consentByName = new Map(existingConsents.map((c) => [c.subjectId, c.id]));
+await db.insert(t.consentRecords).values([
+  { orgId, subjectType: "staff", subjectId: donorIds[0]!, purpose: "AI voice for inbound and outbound calls", method: "written_signed", documentUrl: "s3://demo/consents/karan.pdf", grantedAt: new Date(Date.now() - 30 * 86400_000) },
+  { orgId, subjectType: "staff", subjectId: donorIds[1]!, purpose: "AI voice for inbound and outbound calls", method: "written_signed", documentUrl: "s3://demo/consents/naveen.pdf", grantedAt: new Date(Date.now() - 30 * 86400_000) },
+  { orgId, subjectType: "staff", subjectId: donorIds[2]!, purpose: "AI voice for inbound and outbound calls", method: "written_signed", documentUrl: "s3://demo/consents/suhani.pdf", grantedAt: new Date(Date.now() - 30 * 86400_000) },
+]).onConflictDoNothing();
+// ---- Cloned voices (Pocket TTS): re-register the profiles for the voice files that live in .local/voices.
+// The files (.local/voices/<providerVoiceId>.*) are the real clone and survive a database rebuild; only the DB rows are
+// lost, so every seed re-creates them from cloned-voices.json. Add a line there after cloning someone new.
+const voicesDir = process.env.VOICES_DIR ?? join(import.meta.dirname, "../../../.local/voices");
+const clonedManifest = JSON.parse(readFileSync(join(import.meta.dirname, "../cloned-voices.json"), "utf8")) as { slug: string; label: string; gender: "male" | "female"; providerVoiceId: string; donorEmail: string }[];
+for (const c of clonedManifest) {
+  if (!existsSync(join(voicesDir, `${c.providerVoiceId}.safetensors`))) { console.warn(`cloned voice ${c.slug}: voice files not found in ${voicesDir}, skipped`); continue; }
+  const donorId = (await db.select().from(t.users).where(eq(t.users.email, c.donorEmail)))[0]!.id;
+  const consentId = (await db.select().from(t.consentRecords).where(eq(t.consentRecords.subjectId, donorId)))[0]!.id;
+  const [profile] = await db.insert(t.voiceProfiles).values({ orgId, label: c.label, slug: c.slug, gender: c.gender, provider: "pocket_tts", providerVoiceId: c.providerVoiceId, donorUserId: donorId, consentRecordId: consentId, isCloned: true }).returning();
+  const ref = join(voicesDir, `${c.providerVoiceId}.ref.wav`);
+  if (existsSync(ref)) { const audio = readFileSync(ref); await db.insert(t.voiceSamples).values({ orgId, voiceProfileId: profile!.id, mime: "audio/wav", bytes: audio.length, audio }); }
+}
 const activeVoices = voices.filter((v) => v.status === "active");
 
 // ---- calls, transcripts, insights

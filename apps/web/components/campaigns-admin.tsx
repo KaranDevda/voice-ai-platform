@@ -278,7 +278,7 @@ export function CampaignsAdmin({ campaigns, timing, templates, callerIds, agentP
                     {c.variants.length > 0 && <ul className="mt-1 text-xs font-normal text-muted-foreground">{c.variants.map((v) => <li key={v.variant}>{"ABC"[v.variant - 1]}: {v.reached} of {v.people} reached ({v.people ? Math.round((100 * v.reached) / v.people) : 0}%) — “{v.text.slice(0, 50)}{v.text.length > 50 ? "…" : ""}”</li>)}</ul>}</Td>
                   <Td><Badge tone={TONE[c.status] ?? "neutral"}>{titleCase(c.status)}</Badge></Td>
                   <Td>{c.total}</Td><Td>{c.counts.pending}</Td><Td>{c.counts.calling}</Td><Td>{c.counts.done}</Td><Td>{c.connected}</Td><Td>{c.counts.failed}</Td><Td>{c.counts.skipped}</Td>
-                  <Td className="text-right whitespace-nowrap">
+                  <Td className="text-end whitespace-nowrap">
                     {(c.status === "draft" || c.status === "scheduled") && <Button size="sm" onClick={() => void act(c.id, "start")}>Start</Button>}
                     {c.status === "running" && <Button size="sm" variant="outline" onClick={() => void act(c.id, "pause")}>Pause</Button>}
                     {c.status === "paused" && <Button size="sm" onClick={() => void act(c.id, "resume")}>Resume</Button>}{" "}

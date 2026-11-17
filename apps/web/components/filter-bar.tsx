@@ -16,8 +16,8 @@ export function FilterBar({ action, q, selects, textFilters, extra }: {
   return (
     <form action={action} className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
       <div className="relative w-full sm:w-64">
-        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
-        <Input name="q" defaultValue={q} placeholder="Search name or number" className="pl-9" aria-label="Search" />
+        <Search className="pointer-events-none absolute start-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
+        <Input name="q" defaultValue={q} placeholder="Search name or number" className="ps-9" aria-label="Search" />
       </div>
       {textFilters?.map((filter) => (
         <Input key={filter.name} name={filter.name} defaultValue={filter.value} placeholder={filter.placeholder} aria-label={filter.label} className="w-full sm:w-40" />

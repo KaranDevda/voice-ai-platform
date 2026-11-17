@@ -99,8 +99,8 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
             </Select>
           </Field>
           <div className="relative">
-            <Input value={number} onChange={(e) => { setNumber(e.target.value.replace(/[^\d+*#\s]/g, "")); setLeadId(""); }} inputMode="tel" placeholder="+91 98765 43210" aria-label="Phone number" className="h-12 pr-11 text-lg tracking-wide" />
-            {number && <button type="button" aria-label="Delete last digit" onClick={() => setNumber((n) => n.slice(0, -1))} className="absolute right-3 top-3.5 text-muted-foreground hover:text-foreground"><Delete className="h-5 w-5" /></button>}
+            <Input value={number} onChange={(e) => { setNumber(e.target.value.replace(/[^\d+*#\s]/g, "")); setLeadId(""); }} inputMode="tel" placeholder="+91 98765 43210" aria-label="Phone number" className="h-12 pe-11 text-lg tracking-wide" />
+            {number && <button type="button" aria-label="Delete last digit" onClick={() => setNumber((n) => n.slice(0, -1))} className="absolute end-3 top-3.5 text-muted-foreground hover:text-foreground"><Delete className="h-5 w-5" /></button>}
           </div>
           <div className="mx-auto grid w-full max-w-xs grid-cols-3 gap-2">
             {KEYS.map((k) => <Button key={k} type="button" variant="outline" size="lg" className="text-lg" onClick={() => { setNumber((n) => n + k); setLeadId(""); }}>{k}</Button>)}
@@ -115,7 +115,7 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
             <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Caller">
               {([["human", "Me", "You speak to the lead", UserRound], ["ai", "AI assistant", "The AI calls in a staff voice", Bot]] as const).map(([v, t, d, Icon]) => (
                 <button key={v} type="button" role="radio" aria-checked={mode === v} onClick={() => setMode(v)}
-                  className={cn("rounded-xl border p-4 text-left transition-colors", mode === v ? "border-primary bg-primary-soft" : "border-border hover:bg-muted")}>
+                  className={cn("rounded-xl border p-4 text-start transition-colors", mode === v ? "border-primary bg-primary-soft" : "border-border hover:bg-muted")}>
                   <Icon className="mb-2 h-5 w-5 text-primary" aria-hidden /><div className="text-sm font-semibold">{t}</div><div className="text-xs text-muted-foreground">{d}</div>
                 </button>
               ))}

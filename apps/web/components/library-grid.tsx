@@ -60,7 +60,7 @@ export function LibraryGrid({ voices }: { voices: VoiceChoice[] }) {
         <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Source" className="w-auto"><option value="">All sources</option><option value="cloned">Cloned staff voices</option><option value="stock">Stock voices</option></Select>
         <Select value={gender} onChange={(e) => setGender(e.target.value)} aria-label="Gender" className="w-auto"><option value="">Any gender</option><option value="female">Female</option><option value="male">Male</option></Select>
         <Select value={accent} onChange={(e) => setAccent(e.target.value)} aria-label="Accent" className="w-auto"><option value="">Any accent</option>{accents.map((a) => <option key={a}>{a}</option>)}</Select>
-        <span className="ml-auto text-sm text-muted-foreground">{shown.length} of {voices.length} voices</span>
+        <span className="ms-auto text-sm text-muted-foreground">{shown.length} of {voices.length} voices</span>
       </div>
       {shown.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">No voices match these filters.</p> : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -71,7 +71,7 @@ export function LibraryGrid({ voices }: { voices: VoiceChoice[] }) {
                 <div className="flex items-start gap-3">
                   <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-full text-base font-semibold", v.gender === "female" ? "bg-primary-soft text-primary" : "bg-info-soft text-info")}>{v.name[0]}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5"><span className="font-medium">{v.name}</span>{v.group === "cloned" && <Badge tone="primary"><ShieldCheck className="mr-1 h-3 w-3" aria-hidden />Consent on file</Badge>}</div>
+                    <div className="flex flex-wrap items-center gap-1.5"><span className="font-medium">{v.name}</span>{v.group === "cloned" && <Badge tone="primary"><ShieldCheck className="me-1 h-3 w-3" aria-hidden />Consent on file</Badge>}</div>
                     <div className="mt-0.5 text-xs text-muted-foreground"><span className="capitalize">{v.gender}</span> · {v.group === "cloned" ? "Cloned staff voice" : v.detail}</div>
                   </div>
                 </div>

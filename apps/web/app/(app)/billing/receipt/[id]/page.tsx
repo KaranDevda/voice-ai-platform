@@ -21,7 +21,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     <div className="mx-auto max-w-xl rounded-xl border border-border bg-card p-8 print:border-0 print:p-0">
       <div className="flex items-start justify-between">
         <div><h1 className="text-xl font-semibold">Payment receipt</h1><p className="text-sm text-muted-foreground">Bizfy Voice AI</p></div>
-        <div className="text-right text-sm"><div className="font-medium">{r.number}</div><div className="text-muted-foreground">{r.paidAt.toISOString().slice(0, 10)}</div></div>
+        <div className="text-end text-sm"><div className="font-medium">{r.number}</div><div className="text-muted-foreground">{r.paidAt.toISOString().slice(0, 10)}</div></div>
       </div>
       <dl className="mt-6 grid grid-cols-[10rem_1fr] gap-y-2 text-sm">
         <dt className="text-muted-foreground">Organisation</dt><dd>{r.orgName}</dd>

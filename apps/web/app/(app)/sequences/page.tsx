@@ -12,7 +12,7 @@ export default async function SequencesPage() {
   return (
     <>
       <PageHeader title="Follow-up sequences" description="A series of texts sent automatically, each some time after the one before. A person who replies STOP, or is on Do Not Disturb, is taken out." />
-      <SequencesAdmin sequences={rows.map((s) => ({ id: s.id, name: s.name, status: s.status, steps: s.steps, counts: s.counts, stepProgress: s.stepProgress, stepTrackingEnabled: s.stepTrackingEnabled, messageCounts: s.messageCounts }))} />
+      <SequencesAdmin sequences={rows.map((s) => ({ id: s.id, name: s.name, status: s.status, steps: s.steps, counts: s.counts, stepProgress: s.stepProgress, stepTrackingEnabled: s.stepTrackingEnabled, outcomes: s.outcomes, messageCounts: s.messageCounts }))} />
     </>
   );
 }

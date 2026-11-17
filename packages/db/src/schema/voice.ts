@@ -1,4 +1,5 @@
-import { customType, index, integer, pgTable, real, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, customType, index, integer, pgTable, real, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { consentSubjectType, createdAt, id, orgIsolationPolicy, tstz, voiceGender, voiceProfileStatus } from "./_common";
 import { organizations, teams, users } from "./org";
 
@@ -29,6 +30,8 @@ export const voiceProfiles = pgTable(
     orgId: uuid("org_id").notNull().references(() => organizations.id),
     teamId: uuid("team_id").references(() => teams.id),
     label: text("label").notNull(),
+    /** Optional stable identifier for resolution (e.g. name/slug); never a provider placeholder. */
+    slug: text("slug"),
     gender: voiceGender("gender").notNull(),
     provider: text("provider").notNull().default("elevenlabs"),
     providerVoiceId: text("provider_voice_id").notNull(),
@@ -39,12 +42,15 @@ export const voiceProfiles = pgTable(
     /** Every voice must be backed by a consent record (Phase 1 done-when). */
     consentRecordId: uuid("consent_record_id").notNull().references(() => consentRecords.id),
     status: voiceProfileStatus("status").notNull().default("active"),
+    /** True for staff/custom cloned voices that must be preserved across syncs and reseeds. */
+    isCloned: boolean("is_cloned").notNull().default(false),
     /** Set on revocation; SOP requires revoked within 24 h of withdrawal/exit. */
     revokedAt: tstz("revoked_at"),
     createdAt: createdAt(),
   },
   (t) => [
     uniqueIndex("voice_profiles_provider_voice_uq").on(t.provider, t.providerVoiceId),
+    uniqueIndex("voice_profiles_org_slug_uq").on(t.orgId, t.slug).where(sql`"slug" is not null`),
     index("voice_profiles_org_status_idx").on(t.orgId, t.status),
     orgIsolationPolicy(),
   ],

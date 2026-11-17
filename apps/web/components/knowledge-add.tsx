@@ -52,7 +52,7 @@ export function KnowledgeAdd() {
           ) : (
             <>
               <Field label="Title (optional)" hint="Defaults to the file name."><Input name="title" maxLength={200} /></Field>
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-8 text-sm hover:bg-muted/50"><Upload className="h-4 w-4" aria-hidden />Choose a .txt, .md, .csv or .html file<input name="file" type="file" required accept=".txt,.md,.markdown,.csv,.html,.htm,text/plain,text/html" className="ml-2 max-w-52 text-xs" /></label>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-8 text-sm hover:bg-muted/50"><Upload className="h-4 w-4" aria-hidden />Choose a .txt, .md, .csv or .html file<input name="file" type="file" required accept=".txt,.md,.markdown,.csv,.html,.htm,text/plain,text/html" className="ms-2 max-w-52 text-xs" /></label>
             </>
           )}
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}

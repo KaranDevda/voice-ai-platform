@@ -17,7 +17,7 @@ const UUID = /^[0-9a-f-]{36}$/i;
 const SPEAKER = {
   ai: { label: "AI assistant", icon: Bot, bubble: "bg-primary-soft", align: "" },
   agent: { label: "Agent", icon: UserRound, bubble: "bg-info-soft", align: "" },
-  caller: { label: "Caller", icon: User, bubble: "bg-muted", align: "md:ml-16" },
+  caller: { label: "Caller", icon: User, bubble: "bg-muted", align: "md:ms-16" },
 } as const;
 const mmss = (ms: number) => formatDuration(ms / 1000);
 

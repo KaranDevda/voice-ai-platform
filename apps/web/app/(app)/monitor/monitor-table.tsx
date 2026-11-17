@@ -75,7 +75,7 @@ function MonitorRow({ c, open, setOpen }: { c: CallRow; open: Set<string>; setOp
       <Td className="tabular-nums">{c.durationS ? formatDuration(c.durationS) : "—"}</Td>
       <Td>{c.agentEmail ?? <span className="text-muted-foreground">AI</span>}</Td>
       <Td><SentimentBadge label={c.sentimentLabel} /></Td>
-      <Td className="text-right">
+      <Td className="text-end">
         <Button size="sm" variant="outline" onClick={(e) => {
           e.stopPropagation();
           toggle();
@@ -134,7 +134,7 @@ export function MonitorTable({ rows, aggregateOnly }: { rows: CallRow[]; aggrega
             <Th>Duration</Th>
             <Th>Agent</Th>
             <Th>Sentiment</Th>
-            <Th className="text-right">Transcript</Th>
+            <Th className="text-end">Transcript</Th>
           </tr>
         </thead>
         <tbody>

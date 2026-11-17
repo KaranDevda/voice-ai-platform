@@ -67,13 +67,13 @@ export function CallsChart({ data, height = 220 }: { data: DayRow[]; height?: nu
       {view === "table" ? (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2 pr-4 font-medium">Day</th>{SERIES.map((s) => <th key={s.key} className="py-2 pr-4 text-right font-medium">{s.label}</th>)}<th className="py-2 text-right font-medium">Total</th></tr></thead>
+            <thead><tr className="border-b border-border text-start text-xs text-muted-foreground"><th className="py-2 pe-4 font-medium">Day</th>{SERIES.map((s) => <th key={s.key} className="py-2 pe-4 text-end font-medium">{s.label}</th>)}<th className="py-2 text-end font-medium">Total</th></tr></thead>
             <tbody>
               {data.map((d) => (
                 <tr key={d.day} className="border-b border-border/60 last:border-0 hover:bg-muted/50">
-                  <td className="py-1.5 pr-4"><button type="button" onClick={() => open(d.day)} className="text-primary hover:underline">{d.label}</button></td>
-                  {SERIES.map((s) => <td key={s.key} className="py-1.5 pr-4 text-right tabular-nums">{d[s.key]}</td>)}
-                  <td className="py-1.5 text-right font-medium tabular-nums">{d.ai + d.web + d.mobile}</td>
+                  <td className="py-1.5 pe-4"><button type="button" onClick={() => open(d.day)} className="text-primary hover:underline">{d.label}</button></td>
+                  {SERIES.map((s) => <td key={s.key} className="py-1.5 pe-4 text-end tabular-nums">{d[s.key]}</td>)}
+                  <td className="py-1.5 text-end font-medium tabular-nums">{d.ai + d.web + d.mobile}</td>
                 </tr>
               ))}
             </tbody>
@@ -83,7 +83,7 @@ export function CallsChart({ data, height = 220 }: { data: DayRow[]; height?: nu
         <>
           <div className="relative flex" style={{ height }}>
             <div className="relative w-8 shrink-0 text-[10px] tabular-nums text-muted-foreground" aria-hidden>
-              {[1, 0.5, 0].map((f) => <span key={f} className="absolute right-1 -translate-y-1/2" style={{ top: `${(1 - f) * 100}%` }}>{Math.round(max * f)}</span>)}
+              {[1, 0.5, 0].map((f) => <span key={f} className="absolute end-1 -translate-y-1/2" style={{ top: `${(1 - f) * 100}%` }}>{Math.round(max * f)}</span>)}
             </div>
             <div className="relative min-w-0 flex-1">
               {[0, 0.5, 1].map((f) => <div key={f} className="absolute inset-x-0 border-t border-border/70" style={{ top: `${f * 100}%`, borderStyle: f === 1 ? "solid" : "dashed" }} aria-hidden />)}
@@ -107,9 +107,9 @@ export function CallsChart({ data, height = 220 }: { data: DayRow[]; height?: nu
                         )}
                       </button>
                       {active === i && (
-                        <div role="status" className={cn("pointer-events-none absolute z-10 w-44 rounded-lg border border-border bg-card p-3 text-xs shadow-lg", tipRight ? "right-0" : "left-0")} style={{ bottom: `calc(${Math.min(95, (total / max) * 100)}% + 8px)` }}>
+                        <div role="status" className={cn("pointer-events-none absolute z-10 w-44 rounded-lg border border-border bg-card p-3 text-xs shadow-lg", tipRight ? "end-0" : "start-0")} style={{ bottom: `calc(${Math.min(95, (total / max) * 100)}% + 8px)` }}>
                           <div className="text-muted-foreground">{d.label}</div>
-                          <div className="mb-1.5 text-lg font-semibold leading-tight tabular-nums">{total}<span className="ml-1 text-xs font-normal text-muted-foreground">calls</span></div>
+                          <div className="mb-1.5 text-lg font-semibold leading-tight tabular-nums">{total}<span className="ms-1 text-xs font-normal text-muted-foreground">calls</span></div>
                           {SERIES.map((s) => (
                             <div key={s.key} className={cn("flex items-center justify-between gap-2 py-0.5", hidden.has(s.key) && "opacity-40")}>
                               <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="h-[3px] w-3 rounded-full" style={{ background: s.color }} aria-hidden />{s.label}</span>
@@ -125,7 +125,7 @@ export function CallsChart({ data, height = 220 }: { data: DayRow[]; height?: nu
               </div>
             </div>
           </div>
-          <div className="flex pl-8" aria-hidden>
+          <div className="flex ps-8" aria-hidden>
             <div className="grid min-w-0 flex-1 gap-1 text-[10px] text-muted-foreground sm:gap-1.5" style={{ gridTemplateColumns: `repeat(${data.length}, minmax(0, 1fr))` }}>
               {data.map((d, i) => <div key={d.day} className={cn("mt-2 flex justify-center whitespace-nowrap", active === i && "font-medium text-foreground")}>{(data.length - 1 - i) % step === 0 ? d.label : null}</div>)}
             </div>

@@ -97,7 +97,7 @@ export function ContactsImport({ canExport, exportFilters = {} }: { canExport: b
           {result && (
             <div className="text-sm" role="status">
               <p>Added {result.created}, updated {result.updated}{result.skippedExisting ? `, left ${result.skippedExisting} existing as they were` : ""}{result.duplicatesInFile ? `, ${result.duplicatesInFile} repeated in the file` : ""}.</p>
-              {result.problems.length > 0 && <ul className="mt-1 list-disc pl-5 text-muted-foreground">{result.problems.slice(0, 10).map((p) => <li key={p.row}>Row {p.row}: {p.reason}</li>)}</ul>}
+              {result.problems.length > 0 && <ul className="mt-1 list-disc ps-5 text-muted-foreground">{result.problems.slice(0, 10).map((p) => <li key={p.row}>Row {p.row}: {p.reason}</li>)}</ul>}
             </div>
           )}
           <div><Button type="submit" disabled={busy || !text.trim()}>{busy ? "Importing…" : "Import"}</Button></div>

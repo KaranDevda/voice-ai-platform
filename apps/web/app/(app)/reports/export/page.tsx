@@ -34,7 +34,7 @@ export default async function ReportsExportPage() {
                   <Tr key={r.key}>
                     <Td className="font-medium">{r.name}</Td>
                     <Td className="text-sm text-muted-foreground">{r.description}</Td>
-                    <Td className="text-right">
+                    <Td className="text-end">
                       {ok ? (
                         <Link href={r.href}><Button size="sm">Download CSV</Button></Link>
                       ) : (

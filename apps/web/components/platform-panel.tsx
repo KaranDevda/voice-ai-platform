@@ -192,7 +192,7 @@ export function PlatformPanel({ kyc, numbers, orgs, requests, jobs }: { kyc: Kyc
               <tbody>{numbers.map((n) => (
                 <Tr key={n.id}>
                   <Td className="font-medium">{n.e164}</Td><Td>{n.label ?? ""}<div className="text-xs text-muted-foreground">{n.capabilities.join(", ")}</div></Td><Td><Badge tone={n.status === "assigned" ? "success" : n.status === "pending" ? "warning" : "neutral"}>{titleCase(n.status)}</Badge></Td><Td>{n.orgName ?? (n.status === "pending" ? "Carrier verification required" : "")}</Td>
-                  <Td className="text-right whitespace-nowrap">
+                  <Td className="text-end whitespace-nowrap">
                     {n.status === "assigned" ? <Button size="sm" variant="outline" onClick={() => { if (confirm(`Take ${n.e164} back from ${n.orgName}?`)) void post("/api/platform/numbers", { action: "release", numberId: n.id }); }}>Release</Button> : (
                       n.status === "available" ? <span className="inline-flex gap-2"><Select value={pick[n.id] ?? ""} onChange={(e) => setPick((p) => ({ ...p, [n.id]: e.target.value }))}><option value="">Give to…</option>{orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</Select><Button size="sm" disabled={!pick[n.id]} onClick={() => void post("/api/platform/numbers", { action: "assign", numberId: n.id, orgId: pick[n.id] })}>Assign</Button></span> : <span className="text-xs text-muted-foreground">Awaiting carrier approval</span>
                     )}

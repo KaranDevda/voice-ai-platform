@@ -24,7 +24,7 @@ export default async function SmsThreadPage({ params }: { params: Promise<{ lead
   return (
     <>
       <p className="mb-2 text-sm"><Link href="/leads" className="text-muted-foreground hover:text-foreground">← Leads</Link></p>
-      <PageHeader title="Text conversation" description={lead.phoneE164} actions={<span className="text-xs text-muted-foreground">{lead.tags.length ? lead.tags.map((t) => <span key={t} className="inline-block mr-1"><Badge>{t}</Badge></span>) : "No tags"}</span>} />
+      <PageHeader title="Text conversation" description={lead.phoneE164} actions={<span className="text-xs text-muted-foreground">{lead.tags.length ? lead.tags.map((t) => <span key={t} className="inline-block me-1"><Badge>{t}</Badge></span>) : "No tags"}</span>} />
       <Card>
         <CardHeader title={lead.name ?? "Unknown caller"} description={`Messages with ${lead.phoneE164} · oldest first · created ${formatDate(lead.createdAt)}`} />
         {texts && <LeadSms leadId={lead.id} history={texts.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() }))} />}

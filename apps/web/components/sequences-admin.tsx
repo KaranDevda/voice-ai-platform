@@ -15,6 +15,7 @@ interface Sequence {
   counts: Record<string, number>;
   stepProgress: { step: number; queued: number; sent: number; failed: number; waiting: number; replies: number; responseRate: number }[];
   stepTrackingEnabled: boolean;
+  outcomes: { repliedLeads: number; calledAfterReply: number; advancedAfterReply: number; converted: number };
   messageCounts: Record<string, number>;
 }
 interface Step { delayMin: number; body: string }
@@ -84,7 +85,10 @@ export function SequencesAdmin({ sequences }: { sequences: Sequence[] }) {
             <div className="text-xs text-muted-foreground" aria-label="Sequence message outcomes">
               Messages: {q.messageCounts.sent ?? 0} sent · {q.messageCounts.failed ?? 0} failed · {q.messageCounts.queued ?? 0} queued · {q.messageCounts.sending ?? 0} sending
             </div>
-            <ol className="list-decimal pl-5 text-sm">{q.steps.map((s, i) => {
+            <div className="text-xs text-muted-foreground" aria-label="Sequence conversion">
+              Outcomes: {q.outcomes.repliedLeads} contacts replied · {q.outcomes.calledAfterReply} called afterwards · {q.outcomes.advancedAfterReply} moved to interested, callback or won · {q.outcomes.converted} converted
+            </div>
+            <ol className="list-decimal ps-5 text-sm">{q.steps.map((s, i) => {
               const progress = q.stepProgress[i];
               return <li key={i}><span className="text-muted-foreground">{wait(s.delayMin)} · queued {progress?.queued ?? 0} · sent {progress?.sent ?? 0} · failed {progress?.failed ?? 0} · waiting {progress?.waiting ?? 0} · replies {progress?.replies ?? 0} · response rate {progress?.responseRate ?? 0}%:</span> {s.body}</li>;
             })}</ol>

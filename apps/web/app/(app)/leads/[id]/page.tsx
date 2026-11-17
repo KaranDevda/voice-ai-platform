@@ -111,7 +111,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           <CardHeader title="Details" />
           <dl className="grid divide-y divide-border text-sm">
             {rows.map(([k, v]) => (
-              <div key={k} className="flex items-center justify-between gap-4 px-5 py-3"><dt className="text-muted-foreground">{k}</dt><dd className="text-right font-medium">{v}</dd></div>
+              <div key={k} className="flex items-center justify-between gap-4 px-5 py-3"><dt className="text-muted-foreground">{k}</dt><dd className="text-end font-medium">{v}</dd></div>
             ))}
             <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
               <dt className="text-muted-foreground">Tags</dt>

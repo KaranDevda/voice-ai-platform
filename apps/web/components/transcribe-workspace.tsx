@@ -130,8 +130,8 @@ export function TranscribeWorkspace() {
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative min-w-48 flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the transcript" aria-label="Search the transcript" className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm" />
+                  <Search className="pointer-events-none absolute start-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the transcript" aria-label="Search the transcript" className="h-9 w-full rounded-lg border border-border bg-card ps-9 pe-3 text-sm" />
                 </div>
                 {q && <span className="text-xs text-muted-foreground">{matches} match{matches === 1 ? "" : "es"}</span>}
                 <Button variant="outline" size="sm" onClick={async () => { await navigator.clipboard.writeText(toPlainText(lines)); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
@@ -142,16 +142,16 @@ export function TranscribeWorkspace() {
                 <Button variant="outline" size="sm" onClick={() => download("transcript.json", "application/json", JSON.stringify(result, null, 2))}><Download className="h-4 w-4" aria-hidden />JSON</Button>
               </div>
               {lines.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No speech was detected in this audio.</p> : (
-                <ol className="grid max-h-[28rem] gap-1 overflow-y-auto pr-1">
+                <ol className="grid max-h-[28rem] gap-1 overflow-y-auto pe-1">
                   {lines.map((l, i) => {
                     const hit = q && l.text.toLowerCase().includes(q);
                     return (
                       <li key={i} ref={i === active ? activeRef : undefined}>
                         <button type="button" onClick={() => player.current?.seek(l.startMs)}
-                          className={cn("flex w-full gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted", i === active && "bg-primary-soft", hit && "ring-1 ring-warning")}>
+                          className={cn("flex w-full gap-3 rounded-lg px-3 py-2 text-start text-sm transition-colors hover:bg-muted", i === active && "bg-primary-soft", hit && "ring-1 ring-warning")}>
                           <span className="w-11 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">{clockMs(l.startMs)}</span>
                           <span className="min-w-0 flex-1">
-                            {new Set(lines.map((x) => x.speaker)).size > 1 && <span className={cn("mr-2 text-xs font-semibold", SPEAKER_COLORS[l.speaker % SPEAKER_COLORS.length])}>{speakerName(l.speaker)}</span>}
+                            {new Set(lines.map((x) => x.speaker)).size > 1 && <span className={cn("me-2 text-xs font-semibold", SPEAKER_COLORS[l.speaker % SPEAKER_COLORS.length])}>{speakerName(l.speaker)}</span>}
                             {l.text}
                           </span>
                         </button>

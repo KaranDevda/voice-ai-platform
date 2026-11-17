@@ -68,7 +68,7 @@ export function ContentPanel({ landing, languages, lang, rows }: Props) {
                 <Td className="font-medium">{r.key}</Td>
                 <Td className="text-muted-foreground">{r.builtIn || "—"}</Td>
                 <Td><Input value={vals[r.key] ?? ""} maxLength={300} placeholder={r.builtIn || r.key} onChange={(e) => setVals((v) => ({ ...v, [r.key]: e.target.value }))} aria-label={`Your wording for ${r.key}`} /></Td>
-                <Td className="text-right"><Button type="button" size="sm" variant="outline" disabled={(vals[r.key] ?? "") === r.override} onClick={() => void saveRow(r.key)}>Save</Button></Td>
+                <Td className="text-end"><Button type="button" size="sm" variant="outline" disabled={(vals[r.key] ?? "") === r.override} onClick={() => void saveRow(r.key)}>Save</Button></Td>
               </Tr>
             ))}</tbody>
           </Table>

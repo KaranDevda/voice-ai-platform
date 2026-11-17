@@ -37,7 +37,7 @@ export function LeadSms({ leadId, history }: { leadId: string; history: SmsHisto
         <CardBody>
           {!history.length ? <p className="text-sm text-muted-foreground">No texts with this lead yet.</p> : (
             <ol className="grid gap-3">{history.map((m) => (
-              <li key={m.id} className={`rounded-lg border border-border p-3 ${m.direction === "outbound" ? "ml-4 bg-muted/40" : "mr-4"}`}>
+              <li key={m.id} className={`rounded-lg border border-border p-3 ${m.direction === "outbound" ? "ms-4 bg-muted/40" : "me-4"}`}>
                 <div className="mb-1 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground"><span>{m.direction === "inbound" ? "Received" : "Sent"} · {titleCase(m.status)}</span><time dateTime={m.createdAt}>{formatDateTime(m.createdAt)}</time></div>
                 <p className="whitespace-pre-wrap text-sm">{m.body}</p>
                 {m.error && <p className="mt-1 text-xs text-danger">{m.error}</p>}

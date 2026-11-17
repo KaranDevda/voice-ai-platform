@@ -104,7 +104,7 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
             <CardBody className="grid gap-2 text-sm">
               <div className="text-muted-foreground">Last 7 days: {e.counts.delivered ?? 0} delivered · {(e.counts.pending ?? 0) + (e.counts.sending ?? 0)} waiting · {e.counts.failed ?? 0} failed{e.lastDeliveredAt ? ` · last delivered ${formatDateTime(e.lastDeliveredAt)}` : ""}</div>
               {e.test ? <p role="status" className="text-muted-foreground">Last test {formatDateTime(e.test.createdAt)}: {titleCase(e.test.status)}{e.test.lastStatus ? ` · HTTP ${e.test.lastStatus}` : ""}{e.test.lastError ? ` · ${e.test.lastError}` : ""}</p> : <p className="text-muted-foreground">No connection test has run yet.</p>}
-              <div>Events: {e.events.map((ev) => <code key={ev} className="mr-2">{ev}</code>)}</div>
+              <div>Events: {e.events.map((ev) => <code key={ev} className="me-2">{ev}</code>)}</div>
               {canEdit && (
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" disabled={!e.active || testing === e.id || testPending} onClick={() => void act(e.id, "test")}>{testing === e.id ? "Queuing…" : testPending ? "Test pending…" : "Send a test"}</Button>
@@ -126,7 +126,7 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
                 <Td className="whitespace-nowrap">{formatDateTime(d.createdAt)}</Td><Td>{nameOf(d.endpointId)}</Td><Td><code>{d.event}</code></Td>
                 <Td><Badge tone={TONE[d.status] ?? "neutral"}>{titleCase(d.status)}</Badge></Td><Td>{d.attempts}</Td>
                 <Td className="max-w-xs text-xs text-muted-foreground">{d.lastError ?? (d.lastStatus ? `answered ${d.lastStatus}` : "")}{d.status === "pending" && d.attempts > 0 ? ` · next try ${formatDateTime(d.nextAttemptAt)}` : ""}</Td>
-                <Td className="text-right">{canEdit && d.status === "failed" && <Button size="sm" variant="outline" onClick={() => void retry(d.id)}>Retry</Button>}</Td>
+                <Td className="text-end">{canEdit && d.status === "failed" && <Button size="sm" variant="outline" onClick={() => void retry(d.id)}>Retry</Button>}</Td>
               </Tr>
             ))}</tbody></Table>
         )}

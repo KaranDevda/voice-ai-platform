@@ -120,7 +120,7 @@ export function WaveformPlayer({ src, lazy = false, controllerRef, onTime, downl
           aria-label={playing ? "Pause" : "Play"}
           className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
         >
-          {playing ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="ml-0.5 h-4 w-4" aria-hidden />}
+          {playing ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="ms-0.5 h-4 w-4" aria-hidden />}
         </button>
         <div
           role="slider"
@@ -137,7 +137,7 @@ export function WaveformPlayer({ src, lazy = false, controllerRef, onTime, downl
             <span key={i} className="min-w-0 flex-1 rounded-full" style={{ height: `${(p * 100).toFixed(2)}%`, /* rounded: Math.sin differs in the last digits between the server and the browser, which React reports as a mismatch */ background: i / BARS <= ratio && ready ? "var(--wave)" : "var(--wave-dim)" }} />
           ))}
         </div>
-        <div className="w-[5.25rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground">
+        <div className="w-[5.25rem] shrink-0 whitespace-nowrap text-end text-xs tabular-nums text-muted-foreground">
           {loading ? "Loading…" : `${clockMs(now)} / ${total ? clockMs(total) : "--:--"}`}
         </div>
         {downloadName && ready && objectUrl.current && (

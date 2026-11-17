@@ -22,7 +22,7 @@ interface LeadsBulkTableProps {
   exportFilters: Record<string, string | undefined>;
   rows: LeadRow[];
   total: number; page: number; hasMore: boolean;
-  q?: string; status?: string; heat?: string; sort?: string; tag?: string; consent?: string; dnd?: string;
+  q?: string; status?: string; heat?: string; sort?: string; tag?: string; consent?: string; dnd?: string; field?: string; history?: string;
 }
 
 function heatOf(score: number | null) {
@@ -32,7 +32,7 @@ function heatOf(score: number | null) {
   return "cold";
 }
 
-export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, hasMore, q, status, heat, sort, tag, consent, dnd }: LeadsBulkTableProps) {
+export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, hasMore, q, status, heat, sort, tag, consent, dnd, field, history }: LeadsBulkTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkNote, setBulkNote] = useState("");
@@ -105,11 +105,12 @@ export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, ha
         )}
       </div>
       <Card>
-        <FilterBar action="/leads" q={q} textFilters={[{ name: "tag", value: tag, label: "Filter by exact tag", placeholder: "Tag (exact)" }]} selects={[
+        <FilterBar action="/leads" q={q} textFilters={[{ name: "tag", value: tag, label: "Filter by exact tag", placeholder: "Tag (exact)" }, { name: "field", value: field, label: "Filter by custom field", placeholder: "Field or field=value" }]} selects={[
           { name: "status", value: status, label: "All statuses", options: LEAD_STATUSES.map((s) => [s, titleCase(s)]) },
           { name: "heat", value: heat, label: "Any score", options: [["hot", "Hot leads"], ["warm", "Warm leads"], ["cold", "Cold leads"]] },
           { name: "consent", value: consent, label: "Any consent", options: LEAD_CONSENT_STATUSES.map((s) => [s, titleCase(s)]) },
           { name: "dnd", value: dnd, label: "Any DND setting", options: [["true", "DND on"], ["false", "DND off"]] },
+          { name: "history", value: history, label: "Any history", options: [["called", "Has been called"], ["texted", "Has been texted"], ["never", "Never contacted"]] },
           { name: "sort", value: sort, label: "Newest first", options: [["score", "Highest score first"]] },
         ]} />
         <p className="px-5 py-3 text-sm text-muted-foreground" role="status">
@@ -122,7 +123,7 @@ export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, ha
             <thead>
               <tr>
                 <Th className="w-8"><input type="checkbox" checked={selected.size === rows.length && rows.length > 0} onChange={(e) => toggleAll(e.target.checked)} aria-label="Select all" /></Th>
-                <Th>Lead</Th><Th>Status</Th><Th>Score</Th><Th>Source</Th><Th>Owner</Th><Th>Calls</Th><Th>Last call</Th><Th className="text-right"> </Th>
+                <Th>Lead</Th><Th>Status</Th><Th>Score</Th><Th>Source</Th><Th>Owner</Th><Th>Calls</Th><Th>Last call</Th><Th className="text-end"> </Th>
               </tr>
             </thead>
             <tbody>
@@ -139,13 +140,13 @@ export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, ha
                   <Td>{l.ownerEmail ?? <span className="text-muted-foreground">Unassigned</span>}</Td>
                   <Td className="tabular-nums">{l.callCount}</Td>
                   <Td>{l.lastCallAt ? formatDateTime(l.lastCallAt) : "—"}</Td>
-                  <Td className="text-right text-muted-foreground" />
+                  <Td className="text-end text-muted-foreground" />
                 </Tr>
               ))}
             </tbody>
           </Table>
         )}
-        <Pager basePath="/leads" params={{ q, status, heat, sort, tag, consent, dnd }} page={page} hasMore={hasMore} />
+        <Pager basePath="/leads" params={{ q, status, heat, sort, tag, consent, dnd, field, history }} page={page} hasMore={hasMore} />
       </Card>
     </>
   );

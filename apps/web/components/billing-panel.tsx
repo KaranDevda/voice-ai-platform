@@ -158,7 +158,7 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
         <CardBody className="grid gap-4">
           {rates.length > 0 && (
             <Table><thead><tr><Th>Country</Th><Th>Call, per minute</Th><Th>Text, each</Th><Th> </Th></tr></thead>
-              <tbody>{rates.map((r) => <Tr key={r.country}><Td className="font-medium">{r.country}</Td><Td>{rupees(r.callPerMinPaise)}</Td><Td>{rupees(r.smsPaise)}</Td><Td className="text-right">{canEdit && <Button size="sm" variant="outline" onClick={() => void removeRate(r.country)}>Remove</Button>}</Td></Tr>)}</tbody></Table>
+              <tbody>{rates.map((r) => <Tr key={r.country}><Td className="font-medium">{r.country}</Td><Td>{rupees(r.callPerMinPaise)}</Td><Td>{rupees(r.smsPaise)}</Td><Td className="text-end">{canEdit && <Button size="sm" variant="outline" onClick={() => void removeRate(r.country)}>Remove</Button>}</Td></Tr>)}</tbody></Table>
           )}
           {canEdit && (
             <>
@@ -172,7 +172,7 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
                 <Field label="Import many at once" hint="A CSV with a first row of column names: country, call_per_min_paise, sms_paise. Existing countries are updated."><Textarea rows={4} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={"country,call_per_min_paise,sms_paise\nIN,150,25\nUS,400,90"} /></Field>
                 <input type="file" accept=".csv,.txt" aria-label="Price list file" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setCsv(await f.text()); }} />
                 <div><Button type="button" variant="outline" disabled={!csv.trim()} onClick={() => void importRates()}>Import prices</Button></div>
-                {imported && <div role="status" className="text-sm"><p>Saved {imported.saved} {imported.saved === 1 ? "country" : "countries"}.</p>{imported.problems.length > 0 && <ul className="mt-1 list-disc pl-5 text-muted-foreground">{imported.problems.slice(0, 10).map((p) => <li key={p.row}>Row {p.row}: {p.reason}</li>)}</ul>}</div>}
+                {imported && <div role="status" className="text-sm"><p>Saved {imported.saved} {imported.saved === 1 ? "country" : "countries"}.</p>{imported.problems.length > 0 && <ul className="mt-1 list-disc ps-5 text-muted-foreground">{imported.problems.slice(0, 10).map((p) => <li key={p.row}>Row {p.row}: {p.reason}</li>)}</ul>}</div>}
               </div>
             </>
           )}
@@ -237,7 +237,7 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
         <CardHeader title="Recent payments" action={<a href="/api/billing/export?kind=payments" className="text-sm text-primary underline">Download CSV</a>} />
         {payments.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No payments yet.</p></CardBody> : (
           <Table><thead><tr><Th>When</Th><Th>Gateway</Th><Th>Paid</Th><Th>Credited</Th><Th>Status</Th><Th> </Th></tr></thead>
-            <tbody>{payments.map((p) => <Tr key={p.id}><Td>{formatDateTime(p.createdAt)}</Td><Td>{titleCase(p.gateway)}</Td><Td>{p.currency === "INR" ? rupees(p.amountPaise) : `${((p.amountMinor ?? 0) / 100).toFixed(2)} ${p.currency}`}</Td><Td>{rupees(p.amountPaise)}</Td><Td><Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : "warning"}>{titleCase(p.status)}</Badge></Td><Td className="text-right">{p.status === "paid" && <a href={`/billing/receipt/${p.id}`} className="text-sm text-primary underline">Receipt</a>}</Td></Tr>)}</tbody></Table>
+            <tbody>{payments.map((p) => <Tr key={p.id}><Td>{formatDateTime(p.createdAt)}</Td><Td>{titleCase(p.gateway)}</Td><Td>{p.currency === "INR" ? rupees(p.amountPaise) : `${((p.amountMinor ?? 0) / 100).toFixed(2)} ${p.currency}`}</Td><Td>{rupees(p.amountPaise)}</Td><Td><Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : "warning"}>{titleCase(p.status)}</Badge></Td><Td className="text-end">{p.status === "paid" && <a href={`/billing/receipt/${p.id}`} className="text-sm text-primary underline">Receipt</a>}</Td></Tr>)}</tbody></Table>
         )}
       </Card>
 

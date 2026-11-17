@@ -201,7 +201,28 @@ export async function listSequences(db: Db, actor: AuthUser) {
            GROUP BY e.sequence_id, o.sequence_step_position
         `)).rows
       : [];
+    /** Conversion beyond the reply: of the enrolled leads who replied after enrolling, how many were then called
+     *  or moved to interested / callback requested / won. A lead counts once, from their first reply onward. */
+    const idList = sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `);
+    const outcomeRows = (await tx.execute<{ sequence_id: string; replied: number; called: number; advanced: number; converted: number }>(sql`
+      WITH first_reply AS (
+        SELECT e.sequence_id, e.lead_id, min(m.created_at) AS at
+          FROM sequence_enrollments e
+          JOIN sms_messages m ON m.lead_id = e.lead_id AND m.direction = 'inbound' AND m.status = 'received' AND m.created_at >= e.created_at
+         WHERE e.sequence_id IN (${idList})
+         GROUP BY e.sequence_id, e.lead_id
+      ), flagged AS (
+        SELECT f.sequence_id,
+          EXISTS (SELECT 1 FROM call_logs c WHERE c.lead_id = f.lead_id AND c.started_at > f.at) AS called,
+          EXISTS (SELECT 1 FROM lead_status_history h WHERE h.lead_id = f.lead_id AND h.created_at > f.at AND h.to_status IN ('interested', 'callback_requested', 'won')) AS advanced
+          FROM first_reply f
+      )
+      SELECT sequence_id, count(*)::int AS replied, count(*) FILTER (WHERE called)::int AS called,
+             count(*) FILTER (WHERE advanced)::int AS advanced, count(*) FILTER (WHERE called OR advanced)::int AS converted
+        FROM flagged GROUP BY sequence_id
+    `)).rows;
     return rows.map((r) => {
+      const outcome = outcomeRows.find((o) => o.sequence_id === r.id);
       const sequenceStepsForRow = steps.filter((s) => s.sequenceId === r.id);
       const repliesByStep: Record<number, number> = {};
       for (const row of stepRepliesRows.filter((row) => row.sequence_id === r.id)) {
@@ -218,6 +239,7 @@ export async function listSequences(db: Db, actor: AuthUser) {
           repliesByStep,
         ),
         stepTrackingEnabled,
+        outcomes: { repliedLeads: Number(outcome?.replied ?? 0), calledAfterReply: Number(outcome?.called ?? 0), advancedAfterReply: Number(outcome?.advanced ?? 0), converted: Number(outcome?.converted ?? 0) },
         messageCounts: Object.fromEntries(messageCounts.filter((c) => c.sequenceId === r.id).map((c) => [c.status, c.count])) as Record<string, number>,
       };
     });

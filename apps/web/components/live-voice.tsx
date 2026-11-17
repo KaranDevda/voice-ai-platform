@@ -1,5 +1,5 @@
 "use client";
-import { AudioLines, Loader2, Mic, MicOff, Square } from "lucide-react";
+import { AudioLines, Loader2, Mic, MicOff, Pause, Play, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -28,6 +28,8 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
   const [listen, setListen] = useState<"close" | "anyone" | "push">("close");
   const [talking, setTalking] = useState(false); // hold-to-talk button or Space is down
   const [muted, setMuted] = useState(false);
+  const [onHold, setOnHold] = useState(false);
+  const [dialed, setDialed] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [partial, setPartial] = useState("");
   const [timings, setTimings] = useState<Timing[]>([]);
@@ -44,6 +46,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
   const listenRef = useRef(listen);
   const heldRef = useRef(false);
   const mutedRef = useRef(false);
+  const holdRef = useRef(false);
   useEffect(() => { listenRef.current = listen; }, [listen]);
 
   const stopAudio = useCallback(() => {
@@ -148,9 +151,31 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
     }
   }
 
+  /** Hold: the caller's microphone is silenced and the AI's speech is paused until the call is resumed. */
+  function toggleHold() {
+    holdRef.current = !holdRef.current;
+    setOnHold(holdRef.current);
+    const ctx = play.current?.ctx;
+    if (ctx) void (holdRef.current ? ctx.suspend() : ctx.resume());
+  }
+
+  const TONES: Record<string, [number, number]> = { "1": [697, 1209], "2": [697, 1336], "3": [697, 1477], "4": [770, 1209], "5": [770, 1336], "6": [770, 1477], "7": [852, 1209], "8": [852, 1336], "9": [852, 1477], "*": [941, 1209], "0": [941, 1336], "#": [941, 1477] };
+  /** Keypad: plays the touch-tone locally, shows the digit, and tells the voice service which key was pressed. */
+  function pressKey(digit: string) {
+    setDialed((d) => (d + digit).slice(-24));
+    try { ws.current?.send(JSON.stringify({ type: "dtmf", digit })); } catch { /* socket closed */ }
+    const tone = TONES[digit];
+    const ctx = mic.current?.ctx;
+    if (!tone || !ctx) return;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.12;
+    gain.connect(ctx.destination);
+    for (const f of tone) { const o = ctx.createOscillator(); o.frequency.value = f; o.connect(gain); o.start(); o.stop(ctx.currentTime + 0.12); }
+  }
+
   async function start() {
     setError(""); setNotice(""); setLines([]); setTimings([]); setPartial("");
-    mutedRef.current = false; setMuted(false);
+    mutedRef.current = false; setMuted(false); holdRef.current = false; setOnHold(false); setDialed("");
     setPhase("connecting");
     try {
       const output = new AudioContext();
@@ -182,12 +207,12 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
       node.port.onmessage = (m: MessageEvent<ArrayBuffer>) => {
         const s = new Int16Array(m.data);
         // Hold-to-talk: when the button is not held the microphone is replaced by silence, so nothing in the room is heard.
-        if (socket.readyState === 1) socket.send(mutedRef.current || (listenRef.current === "push" && !heldRef.current) ? new ArrayBuffer(m.data.byteLength) : m.data);
+        if (socket.readyState === 1) socket.send(mutedRef.current || holdRef.current || (listenRef.current === "push" && !heldRef.current) ? new ArrayBuffer(m.data.byteLength) : m.data);
         let sum = 0;
         for (let i = 0; i < s.length; i += 4) sum += (s[i]! / 32768) ** 2;
         const rms = Math.sqrt(sum / (s.length / 4));
         if (rms > LOUD) lastLoud.current = performance.now();
-        setLevel(mutedRef.current ? 0 : Math.min(1, rms * 6));
+        setLevel(mutedRef.current || holdRef.current ? 0 : Math.min(1, rms * 6));
       };
     } catch (e) {
       stop();
@@ -230,11 +255,23 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
               </Button>
             )}
             {live && <Button type="button" variant="outline" onClick={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }} aria-pressed={muted} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? <MicOff className="h-4 w-4" aria-hidden /> : <Mic className="h-4 w-4" aria-hidden />}{muted ? "Unmute mic" : "Mute mic"}</Button>}
+            {live && <Button type="button" variant="outline" onClick={toggleHold} aria-pressed={onHold}>{onHold ? <Play className="h-4 w-4" aria-hidden /> : <Pause className="h-4 w-4" aria-hidden />}{onHold ? "Resume call" : "Hold call"}</Button>}
+            {live && onHold && <Badge tone="warning">On hold</Badge>}
             {live && listen === "push" && (
               <button type="button" onPointerDown={() => hold(true)} onPointerUp={() => hold(false)} onPointerLeave={() => talking && hold(false)}
                 disabled={muted}
                 className={`select-none rounded-lg px-4 py-1.5 text-sm font-medium ${talking ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`}
                 aria-pressed={talking}>{muted ? "Mic muted" : talking ? "Listening…" : "Hold to talk (Space)"}</button>
+            )}
+            {live && (
+              <div className="w-full" role="group" aria-label="Keypad">
+                <div className="mb-1 h-5 text-sm tabular-nums text-muted-foreground" aria-live="polite">{dialed || "Keypad"}</div>
+                <div className="grid w-44 grid-cols-3 gap-1">
+                  {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map((k) => (
+                    <button key={k} type="button" onClick={() => pressKey(k)} className="rounded-lg border border-border py-1.5 text-sm font-medium hover:bg-muted" aria-label={`Key ${k}`}>{k}</button>
+                  ))}
+                </div>
+              </div>
             )}
             <div className="flex h-8 flex-1 items-center gap-2" aria-hidden>
               <AudioLines className={`h-4 w-4 ${live ? "text-primary" : "text-muted-foreground"}`} />
@@ -281,10 +318,10 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
                   <span className="text-lg font-semibold">{t.heardToSound !== null ? `${(t.heardToSound / 1000).toFixed(2)} s` : `${(t.totalMs / 1000).toFixed(2)} s`}</span>
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <dt>AI starts writing</dt><dd className="text-right">{t.llmFirstTokenMs} ms</dd>
-                  <dt>First sentence ready</dt><dd className="text-right">{t.firstSentenceMs} ms</dd>
-                  <dt>Voice starts</dt><dd className="text-right">{t.ttsFirstAudioMs} ms</dd>
-                  <dt>After transcript</dt><dd className="text-right">{t.totalMs} ms</dd>
+                  <dt>AI starts writing</dt><dd className="text-end">{t.llmFirstTokenMs} ms</dd>
+                  <dt>First sentence ready</dt><dd className="text-end">{t.firstSentenceMs} ms</dd>
+                  <dt>Voice starts</dt><dd className="text-end">{t.ttsFirstAudioMs} ms</dd>
+                  <dt>After transcript</dt><dd className="text-end">{t.totalMs} ms</dd>
                 </dl>
               </div>
             ))}

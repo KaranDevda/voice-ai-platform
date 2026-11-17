@@ -90,7 +90,7 @@ function ExtraLanguagesForm({ extras }: { extras: Array<{ code: string; name: st
               <Td>{l.nativeName}</Td>
               <Td className="text-center">{l.rtl ? <Badge tone="success">RTL</Badge> : <Badge tone="neutral">LTR</Badge>}</Td>
               <Td className="text-center"><Button size="sm" variant="outline" onClick={() => toggle(l.code, l.enabled)} disabled={busy.has(l.code)}>{l.enabled ? "Disable" : "Enable"}</Button></Td>
-              <Td className="text-right"><Button size="sm" variant="outline" disabled>Delete</Button></Td>
+              <Td className="text-end"><Button size="sm" variant="outline" disabled>Delete</Button></Td>
             </Tr>
           ))}
         </tbody>
@@ -148,7 +148,7 @@ function OverridesTable({ overrides }: { overrides: Array<{ key: string; languag
               <Td className="font-mono text-sm">{o.key}</Td>
               <Td><Badge>{o.language}</Badge></Td>
               <Td className="max-w-[300px] truncate" title={o.value}>{o.value}</Td>
-              <Td className="text-right"><Button size="sm" variant="outline" onClick={() => remove(o.key, o.language)} disabled={busy.has(`${o.key}|${o.language}`)}>Delete</Button></Td>
+              <Td className="text-end"><Button size="sm" variant="outline" onClick={() => remove(o.key, o.language)} disabled={busy.has(`${o.key}|${o.language}`)}>Delete</Button></Td>
             </Tr>
           ))}
         </tbody>

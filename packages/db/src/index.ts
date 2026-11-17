@@ -15,6 +15,7 @@ export * from "./contacts";
 export * from "./campaigns";
 export * from "./phone-config";
 export * from "./messaging";
+export * from "./callbacks";
 export * from "./billing";
 export * from "./platform-admin";
 export * from "./profit";

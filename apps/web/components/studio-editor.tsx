@@ -132,7 +132,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
             <Button size="lg" disabled={!text.trim() || over || busy || needsCloning} onClick={() => void generate()}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Wand2 className="h-4 w-4" aria-hidden />}
               {busy ? "Generating…" : "Generate speech"}
-              {!busy && <kbd className="ml-1 hidden rounded bg-black/15 px-1.5 text-[10px] sm:inline">⌘↵</kbd>}
+              {!busy && <kbd className="ms-1 hidden rounded bg-black/15 px-1.5 text-[10px] sm:inline">⌘↵</kbd>}
             </Button>
           </div>
         </CardBody>

@@ -99,7 +99,7 @@ export function CloneWizard({ staff, consents, cloningReady, builtInHindi = fals
       <Card><CardBody className="grid justify-items-center gap-4 py-12 text-center">
         <span className="grid h-14 w-14 place-items-center rounded-full bg-success-soft text-success"><Check className="h-7 w-7" aria-hidden /></span>
         <div><h2 className="text-xl font-semibold">{done.label}&apos;s voice is ready</h2><p className="mt-1 text-sm text-muted-foreground">The consent is linked, and the recording is kept securely with the voice (only people who manage voices can hear it). You can revoke this voice at any time.</p>
-          <div className="mx-auto mt-3 max-w-md rounded-xl border border-border p-4 text-left">
+          <div className="mx-auto mt-3 max-w-md rounded-xl border border-border p-4 text-start">
             <div className="text-sm font-semibold">Save your recordings now</div>
             <p className="mb-2 mt-1 text-xs text-muted-foreground">The app keeps one copy with the voice. Keep your own copy somewhere private too: a voice recording is personal data. With them, a better voice model can be tried later without recording again.</p>
             <div className="grid gap-1.5">
@@ -115,7 +115,7 @@ export function CloneWizard({ staff, consents, cloningReady, builtInHindi = fals
               ))}
             </div>
           )}
-          {done.missingLanguages?.length ? <div className="mx-auto mt-3 max-w-md text-left"><Notice tone="warning">The {done.missingLanguages.map((l) => (l === "hi" ? "Hindi" : l)).join(", ")} version could not be created. You can add it later with &ldquo;Add Hindi to an existing voice&rdquo; below.</Notice></div> : null}
+          {done.missingLanguages?.length ? <div className="mx-auto mt-3 max-w-md text-start"><Notice tone="warning">The {done.missingLanguages.map((l) => (l === "hi" ? "Hindi" : l)).join(", ")} version could not be created. You can add it later with &ldquo;Add Hindi to an existing voice&rdquo; below.</Notice></div> : null}
         </div>
         <div className="flex gap-2"><Link href={`/studio?voice=${encodeURIComponent(`profile:${done.id}`)}`} className={buttonClass()}>Try it in Studio</Link><Link href="/library" className={buttonClass({ variant: "outline" })}>Voice library</Link></div>
       </CardBody></Card>
@@ -183,7 +183,7 @@ export function CloneWizard({ staff, consents, cloningReady, builtInHindi = fals
             <CardHeader title="Read this aloud" description={`Takes about ${SCRIPT_SECONDS.en} seconds. Read all of it, in a quiet room, at your normal speaking pace.`} />
             <CardBody className="grid gap-4">
               <p className="rounded-xl bg-muted px-4 py-3 text-[15px] leading-relaxed">{ENGLISH_SCRIPT}</p>
-              <ul className="list-disc pl-5 text-xs text-muted-foreground"><li>Use the microphone you will always use, a few centimetres away.</li><li>No music, fans or other voices in the background.</li><li>Speak naturally, as you would on a call.</li></ul>
+              <ul className="list-disc ps-5 text-xs text-muted-foreground"><li>Use the microphone you will always use, a few centimetres away.</li><li>No music, fans or other voices in the background.</li><li>Speak naturally, as you would on a call.</li></ul>
             </CardBody>
           </Card>
           <Card>

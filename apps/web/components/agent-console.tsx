@@ -139,8 +139,8 @@ export function AgentConsole({ greeting, disclosure, voices, askg1Reachable, has
           {msgs.map((m, i) => (
             <div key={i} className={cn("flex gap-3", m.role === "user" && "flex-row-reverse")}>
               <span className={cn("mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full", m.role === "user" ? "bg-info-soft text-info" : "bg-primary-soft text-primary")}>{m.role === "user" ? <User className="h-4 w-4" aria-label="You" /> : <Bot className="h-4 w-4" aria-label="AI agent" />}</span>
-              <div className={cn("max-w-[85%]", m.role === "user" && "text-right")}>
-                <div className={cn("inline-block whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-left text-sm leading-relaxed", m.error ? "bg-danger-soft text-danger" : m.role === "user" ? "bg-info-soft" : "bg-muted")}>
+              <div className={cn("max-w-[85%]", m.role === "user" && "text-end")}>
+                <div className={cn("inline-block whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-start text-sm leading-relaxed", m.error ? "bg-danger-soft text-danger" : m.role === "user" ? "bg-info-soft" : "bg-muted")}>
                   {m.pending && !m.content ? <span className="inline-flex gap-1" aria-label="AI is typing"><span className="rec-dot h-1.5 w-1.5 rounded-full bg-muted-foreground" /><span className="rec-dot h-1.5 w-1.5 rounded-full bg-muted-foreground" /><span className="rec-dot h-1.5 w-1.5 rounded-full bg-muted-foreground" /></span> : m.content}
                 </div>
                 {m.sources && m.sources.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1.5">{m.sources.map((s, j) => <span key={j} title={s.snippet} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"><span className="font-semibold text-primary">{j + 1}</span>{s.title}</span>)}</div>}

@@ -52,7 +52,7 @@ export default async function TeamPage() {
                     <Td className="font-medium">{d.email}</Td><Td>{d.name ?? "Phone"}</Td><Td>{d.platform === "ios" ? "iPhone" : "Android"}</Td><Td>{d.platform === "ios" ? "n/a" : `SIM ${(d.workSimSlot ?? 0) + 1}`}</Td>
                     <Td>{d.lastSyncAt ? formatDateTime(d.lastSyncAt) : "Never"}</Td>
                     <Td>{d.revokedAt ? <Badge tone="danger">Revoked</Badge> : <Badge tone="success">Active</Badge>}</Td>
-                    <Td className="text-right">
+                    <Td className="text-end">
                       {data.canRevoke && !d.revokedAt && <PostButton url={`/api/devices/${d.id}/revoke`} variant="outline" size="sm" confirm={`Revoke ${d.email}'s phone? It will stop syncing.`}>Revoke</PostButton>}
                     </Td>
                   </Tr>

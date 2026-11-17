@@ -16,6 +16,8 @@ export async function GET(req: Request) {
       tag: params.get("tag") ?? undefined,
       consent: params.get("consent") ?? undefined,
       dnd: params.get("dnd") ?? undefined,
+      field: params.get("field") ?? undefined,
+      history: params.get("history") ?? undefined,
     };
     return new Response(streamContactsCsv(getDb(), user, filters), { headers: {
       "content-type": "text/csv; charset=utf-8",

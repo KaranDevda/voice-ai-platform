@@ -41,7 +41,7 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
               {asset.kind === "transcript" && segments.length > 0 ? (
                 <ol className="grid gap-3">
                   {segments.map((s, i) => (
-                    <li key={i} className="flex gap-3 text-sm"><span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">{clockMs(s.startMs)}</span><div><span className="mr-2 text-xs font-medium text-primary">Speaker {s.speaker + 1}</span>{s.text}</div></li>
+                    <li key={i} className="flex gap-3 text-sm"><span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">{clockMs(s.startMs)}</span><div><span className="me-2 text-xs font-medium text-primary">Speaker {s.speaker + 1}</span>{s.text}</div></li>
                   ))}
                 </ol>
               ) : <p className="whitespace-pre-wrap text-sm leading-relaxed">{asset.text}</p>}

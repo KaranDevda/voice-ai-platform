@@ -129,7 +129,7 @@ function ScheduledExportsTable() {
               <Td className="font-mono text-sm">{r.cron}</Td>
               <Td>{r.nextRun ? formatDateTime(r.nextRun) : "—"}</Td>
               <Td><Badge tone={r.active ? "success" : "neutral"}>{r.active ? "Active" : "Paused"}</Badge></Td>
-              <Td className="text-right">
+              <Td className="text-end">
                 <Button size="sm" variant="outline" onClick={() => toggleActive(r.id, r.active)} disabled={busy.has(r.id)}>{r.active ? "Pause" : "Resume"}</Button>{" "}
                 <Button size="sm" variant="outline" onClick={() => remove(r.id)} disabled={busy.has(r.id)}>Delete</Button>
               </Td>

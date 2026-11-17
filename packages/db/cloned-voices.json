@@ -1,0 +1,5 @@
+[
+  { "slug": "karan",  "label": "Karan (cloned)",  "gender": "male",   "providerVoiceId": "65c8355e-b42e-4ab0-9974-9a233da0e168", "donorEmail": "donor-karan@voice-donor.invalid" },
+  { "slug": "naveen", "label": "Naveen (cloned)", "gender": "male",   "providerVoiceId": "a84b0156-7232-42c3-acec-97a34c53cd04", "donorEmail": "donor-naveen@voice-donor.invalid" },
+  { "slug": "suhani", "label": "Suhani (cloned)", "gender": "female", "providerVoiceId": "6197b90c-ffa9-4f53-ac02-187a9fe5ecb0", "donorEmail": "donor-suhani@voice-donor.invalid" }
+]

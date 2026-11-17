@@ -126,7 +126,7 @@ export default function AgentTemplatesPage() {
                   <Tr key={p.id}>
                     <Td className="font-medium">{p.name}</Td>
                     <Td className="text-xs text-muted-foreground">{new Date(p.createdAt).toLocaleDateString()}</Td>
-                    <Td className="text-right">
+                    <Td className="text-end">
                       <Link href="/agent-console" className="text-decoration-none"><Button size="sm" variant="outline">Open</Button></Link>{" "}
                       <Button size="sm" variant="outline" disabled={busy.has(p.id)} onClick={() => void removeProfile(p.id)}>{busy.has(p.id) ? "…" : "Delete"}</Button>
                     </Td>

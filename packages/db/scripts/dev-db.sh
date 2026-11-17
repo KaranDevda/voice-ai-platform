@@ -13,7 +13,13 @@ OWNER_URL="postgres://$(whoami)@localhost:5432/$DB"
 KEY=$(grep '^MFA_ENCRYPTION_KEY=' ../../apps/web/.env.local | cut -d= -f2-)
 [ -n "$KEY" ] || { echo "MFA_ENCRYPTION_KEY missing in apps/web/.env.local"; exit 1; }
 
-psql -d postgres -qc "drop database if exists $DB" -c "create database $DB"
+# Terminate any lingering connections, then drop the databases the app role owns objects in.
+psql -d postgres -qc "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('$DB', 'voiceai') AND pid <> pg_backend_pid();" 2>/dev/null || true
+psql -d postgres -qc "drop database if exists $DB"
+psql -d postgres -qc "drop database if exists voiceai"
+psql -d postgres -qc "drop role if exists $APP_ROLE" 2>/dev/null || true
+psql -d postgres -qc "create role $APP_ROLE login password 'app'"
+psql -d postgres -qc "create database $DB OWNER $APP_ROLE"
 
 if psql -d postgres -Atc "select 1 from pg_available_extensions where name = 'vector'" | grep -q 1; then
   echo "pgvector found: applying migrations as written"
@@ -24,8 +30,6 @@ else
 fi
 
 # The app connects as a non-owner role so Postgres row-level security applies, exactly as in production.
-psql -d postgres -qc "drop role if exists $APP_ROLE" 2>/dev/null || true
-psql -d postgres -qc "create role $APP_ROLE login password 'app'"
 psql -d "$DB" -qc "grant all on all tables in schema public to $APP_ROLE" -c "grant execute on function auth_find_user(text) to $APP_ROLE" -c "grant execute on function auth_claim_pairing_code(text) to $APP_ROLE" -c "grant execute on function auth_find_device(text) to $APP_ROLE" -c "grant execute on function auth_set_password(uuid, text, text, text) to $APP_ROLE" -c "grant execute on function worker_pending_analysis(integer), worker_expired_recordings(integer), worker_expired_transcripts(integer) to $APP_ROLE"
 
 DATABASE_URL="$OWNER_URL" MFA_ENCRYPTION_KEY="$KEY" pnpm exec tsx src/seed-demo.ts

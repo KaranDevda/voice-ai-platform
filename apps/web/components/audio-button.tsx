@@ -36,7 +36,7 @@ export function AudioButton({ src, label = "Play" }: { src: string; label?: stri
       title={state === "error" ? "Could not play" : label}
       className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary-soft text-primary hover:opacity-80"
     >
-      {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : state === "playing" ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="ml-0.5 h-4 w-4" aria-hidden />}
+      {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : state === "playing" ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="ms-0.5 h-4 w-4" aria-hidden />}
     </button>
   );
 }
