@@ -13,10 +13,15 @@ export async function listIntegrations(db: Db, actor: AuthUser) {
     const endpoints = await tx.select({ id: crmEndpoints.id, name: crmEndpoints.name, url: crmEndpoints.url, events: crmEndpoints.events, active: crmEndpoints.active, createdAt: crmEndpoints.createdAt }).from(crmEndpoints).orderBy(crmEndpoints.createdAt);
     const counts = await tx.select({ endpointId: crmDeliveries.endpointId, status: crmDeliveries.status, n: sql<number>`count(*)::int` }).from(crmDeliveries).where(sql`${crmDeliveries.createdAt} > now() - interval '7 days'`).groupBy(crmDeliveries.endpointId, crmDeliveries.status);
     const last = await tx.select({ endpointId: crmDeliveries.endpointId, at: sql<Date>`max(${crmDeliveries.deliveredAt})`, ok: sql<boolean>`bool_or(${crmDeliveries.status} = 'delivered')` }).from(crmDeliveries).groupBy(crmDeliveries.endpointId);
+    const testRows = await tx.execute<{ endpoint_id: string; status: string; last_status: number | null; last_error: string | null; created_at: Date }>(sql`
+      select distinct on (endpoint_id) endpoint_id, status, last_status, last_error, created_at
+        from crm_deliveries where event = 'ping' order by endpoint_id, created_at desc
+    `);
+    const tests = new Map(testRows.rows.map((r) => [r.endpoint_id, { status: r.status, lastStatus: r.last_status, lastError: r.last_error, createdAt: r.created_at }]));
     const deliveries = await tx.select({ id: crmDeliveries.id, endpointId: crmDeliveries.endpointId, event: crmDeliveries.event, status: crmDeliveries.status, attempts: crmDeliveries.attempts, lastStatus: crmDeliveries.lastStatus, lastError: crmDeliveries.lastError, nextAttemptAt: crmDeliveries.nextAttemptAt, createdAt: crmDeliveries.createdAt }).from(crmDeliveries).orderBy(desc(crmDeliveries.createdAt)).limit(40);
     return {
       events: [...CRM_EVENTS],
-      endpoints: endpoints.map((e) => ({ ...e, counts: Object.fromEntries(counts.filter((c) => c.endpointId === e.id).map((c) => [c.status, c.n])) as Record<string, number>, lastDeliveredAt: last.find((l) => l.endpointId === e.id)?.at ?? null })),
+      endpoints: endpoints.map((e) => ({ ...e, counts: Object.fromEntries(counts.filter((c) => c.endpointId === e.id).map((c) => [c.status, c.n])) as Record<string, number>, lastDeliveredAt: last.find((l) => l.endpointId === e.id)?.at ?? null, test: tests.get(e.id) ?? null })),
       deliveries,
     };
   });
@@ -45,7 +50,10 @@ export async function updateIntegration(db: Db, actor: AuthUser, id: string, act
     const [e] = await tx.select().from(crmEndpoints).where(eq(crmEndpoints.id, id));
     if (!e) throw new IntegrationError("address not found");
     if (action === "delete") await tx.delete(crmEndpoints).where(eq(crmEndpoints.id, id));
-    else if (action === "test") await tx.insert(crmDeliveries).values({ orgId: actor.orgId, endpointId: id, event: "ping", payload: { event: "ping", created_at: new Date().toISOString(), data: { message: "This is a test from Bizfy Voice AI." } } });
+    else if (action === "test") {
+      if (!e.active) throw new IntegrationError("turn this address on before sending a test");
+      await tx.insert(crmDeliveries).values({ orgId: actor.orgId, endpointId: id, event: "ping", payload: { event: "ping", created_at: new Date().toISOString(), data: { message: "This is a test from Bizfy Voice AI." } } });
+    }
     else await tx.update(crmEndpoints).set({ active: action === "enable" }).where(eq(crmEndpoints.id, id));
     await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: `integration.${action}`, entity: "crm_endpoints", entityId: id });
     return { id, action };

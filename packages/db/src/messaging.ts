@@ -1,5 +1,5 @@
 import { textArray } from "./sql-array";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { assertAuthorized, type AuthUser } from "@voiceai/auth";
 import { maskPhone } from "@voiceai/shared";
 import { writeAudit } from "./audit";
@@ -86,6 +86,48 @@ export async function listSmsForLead(db: Db, actor: AuthUser, leadId: string) {
 
 export interface SequenceInput { name: string; steps: { delayMin: number; body: string; dltTemplateId?: string | null }[] }
 
+export interface StepProgress {
+  step: number;
+  queued: number;
+  sent: number;
+  failed: number;
+  waiting: number;
+  /** Inbound replies attributed to this step's message. */
+  replies: number;
+  /** replies / sent for the step, as a percentage with one decimal. */
+  responseRate: number;
+}
+
+/**
+ * Deterministic reply attribution rule (applied by the SQL in listSequences):
+ * an inbound reply is credited to the step of the most recently sent sequenced
+ * outbound text to that lead (latest sent_at, then created_at, then message id),
+ * across all of the lead's active sequences. A lead enrolled in several sequences
+ * at once therefore gets exactly one attribution per reply. Replies with no prior
+ * sent sequenced outbound message are unattributed and counted nowhere per-step.
+ */
+export function sequenceStepProgress(
+  stepCount: number,
+  enrollmentCounts: { nextStep: number; count: number }[],
+  stepMessages: { stepPosition: number; status: string; count: number }[],
+  repliesByStep: Record<number, number> = {},
+): StepProgress[] {
+  return Array.from({ length: stepCount }, (_, index) => {
+    const step = index + 1;
+    const sent = stepMessages.filter((row) => row.stepPosition === index && row.status === "sent").reduce((total, row) => total + row.count, 0);
+    const replies = repliesByStep[step] ?? 0;
+    return {
+      step,
+      queued: enrollmentCounts.reduce((total, row) => total + (row.nextStep > index ? row.count : 0), 0),
+      sent,
+      failed: stepMessages.filter((row) => row.stepPosition === index && row.status === "failed").reduce((total, row) => total + row.count, 0),
+      waiting: stepMessages.filter((row) => row.stepPosition === index && (row.status === "queued" || row.status === "sending")).reduce((total, row) => total + row.count, 0),
+      replies,
+      responseRate: sent ? Math.round((replies / sent) * 1000) / 10 : 0,
+    };
+  });
+}
+
 /** A multi-step follow-up: each step is a text sent some minutes after the one before (the first, after enrolling). */
 export async function createSequence(db: Db, actor: AuthUser, input: SequenceInput) {
   assertAuthorized(actor, "calls.place");
@@ -113,7 +155,72 @@ export async function listSequences(db: Db, actor: AuthUser) {
     const ids = rows.map((r) => r.id);
     const steps = await tx.select().from(sequenceSteps).where(inArray(sequenceSteps.sequenceId, ids)).orderBy(sequenceSteps.position);
     const counts = await tx.select({ sequenceId: sequenceEnrollments.sequenceId, status: sequenceEnrollments.status, n: sql<number>`count(*)::int` }).from(sequenceEnrollments).where(inArray(sequenceEnrollments.sequenceId, ids)).groupBy(sequenceEnrollments.sequenceId, sequenceEnrollments.status);
-    return rows.map((r) => ({ ...r, steps: steps.filter((s) => s.sequenceId === r.id).map((s) => ({ delayMin: s.delayMin, body: s.body })), counts: Object.fromEntries(counts.filter((c) => c.sequenceId === r.id).map((c) => [c.status, c.n])) as Record<string, number> }));
+    const progress = await tx.select({ sequenceId: sequenceEnrollments.sequenceId, nextStep: sequenceEnrollments.nextStep, count: sql<number>`count(*)::int` })
+      .from(sequenceEnrollments).where(inArray(sequenceEnrollments.sequenceId, ids)).groupBy(sequenceEnrollments.sequenceId, sequenceEnrollments.nextStep);
+    const messageCounts = await tx.select({ sequenceId: sequenceEnrollments.sequenceId, status: smsMessages.status, count: sql<number>`count(*)::int` })
+      .from(smsMessages).innerJoin(sequenceEnrollments, eq(smsMessages.enrollmentId, sequenceEnrollments.id))
+      .where(inArray(sequenceEnrollments.sequenceId, ids)).groupBy(sequenceEnrollments.sequenceId, smsMessages.status);
+    const trackingColumn = await tx.execute<{ enabled: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sms_messages' AND column_name = 'sequence_step_position'
+      ) AS enabled
+    `);
+    const stepTrackingEnabled = trackingColumn.rows[0]?.enabled === true;
+    const stepMessages = stepTrackingEnabled
+      ? await tx.select({ sequenceId: sequenceEnrollments.sequenceId, stepPosition: smsMessages.sequenceStepPosition, status: smsMessages.status, count: sql<number>`count(*)::int` })
+        .from(smsMessages).innerJoin(sequenceEnrollments, eq(smsMessages.enrollmentId, sequenceEnrollments.id))
+        .where(and(inArray(sequenceEnrollments.sequenceId, ids), isNotNull(smsMessages.sequenceStepPosition)))
+        .groupBy(sequenceEnrollments.sequenceId, smsMessages.sequenceStepPosition, smsMessages.status)
+      : [];
+    /** Replies attributed per (sequence, step): an inbound reply is credited to the step of the most recent
+     *  sent sequenced outbound text to that lead, across all of that lead's sequences. Only available once
+     *  migration 0036 added sequence_step_position to sms_messages. */
+    const stepRepliesRows: { sequence_id: string; step_position: number; replies: number }[] = stepTrackingEnabled
+      ? (await tx.execute<{ sequence_id: string; step_position: number; replies: number }>(sql`
+          WITH attributed AS (
+            SELECT m.id AS inbound_id,
+              (SELECT o.id
+                 FROM sms_messages o
+                WHERE o.lead_id = m.lead_id
+                  AND o.direction = 'outbound'
+                  AND o.status = 'sent'
+                  AND o.enrollment_id IS NOT NULL
+                  AND o.sequence_step_position IS NOT NULL
+                  AND o.org_id = m.org_id
+                ORDER BY o.sent_at DESC NULLS LAST, o.created_at DESC, o.id DESC
+                LIMIT 1) AS attributed_message_id
+              FROM sms_messages m
+             WHERE m.direction = 'inbound' AND m.status = 'received'
+          )
+          SELECT e.sequence_id, o.sequence_step_position AS step_position, count(*)::int AS replies
+            FROM attributed a
+            JOIN sms_messages o ON o.id = a.attributed_message_id
+            JOIN sequence_enrollments e ON e.id = o.enrollment_id
+           WHERE a.attributed_message_id IS NOT NULL
+           GROUP BY e.sequence_id, o.sequence_step_position
+        `)).rows
+      : [];
+    return rows.map((r) => {
+      const sequenceStepsForRow = steps.filter((s) => s.sequenceId === r.id);
+      const repliesByStep: Record<number, number> = {};
+      for (const row of stepRepliesRows.filter((row) => row.sequence_id === r.id)) {
+        repliesByStep[row.step_position] = (repliesByStep[row.step_position] ?? 0) + Number(row.replies);
+      }
+      return {
+        ...r,
+        steps: sequenceStepsForRow.map((s) => ({ delayMin: s.delayMin, body: s.body })),
+        counts: Object.fromEntries(counts.filter((c) => c.sequenceId === r.id).map((c) => [c.status, c.n])) as Record<string, number>,
+        stepProgress: sequenceStepProgress(
+          sequenceStepsForRow.length,
+          progress.filter((p) => p.sequenceId === r.id),
+          stepMessages.filter((p) => p.sequenceId === r.id).map((p) => ({ stepPosition: p.stepPosition!, status: p.status, count: p.count })),
+          repliesByStep,
+        ),
+        stepTrackingEnabled,
+        messageCounts: Object.fromEntries(messageCounts.filter((c) => c.sequenceId === r.id).map((c) => [c.status, c.count])) as Record<string, number>,
+      };
+    });
   });
 }
 

@@ -27,10 +27,10 @@ export interface LocalWhisperConfig {
 }
 
 const LANG = { en: "en", hi: "hi", "en-hi": "auto" } as const;
-// Hindi and mixed calls get the product words spelled the way they should be written. Measured on 24 spoken Hindi sentences: with only the
-// brand name 19.0% of characters were wrong, with this list 5.1%; on sentences that share none of these words, 4.2% fell to 2.0%.
-const HINDI_VOCAB = "बिज़नेस प्लान, स्टार्टर प्लान, डेमो, इस हफ़्ते डेमो चाहिए, कल, आज, परसों, कॉल रिकॉर्डिंग, कॉल रिकॉर्ड करते हैं, कीमत, कौन सी भाषाएँ बोलते हैं, यूज़र, रिपोर्ट";
-const DEFAULT_PROMPTS = { en: "Bizfy", hi: `बिज़्फी। ${HINDI_VOCAB}।`, auto: `Bizfy, बिज़्फी। ${HINDI_VOCAB}।` };
+// Keep this to names and product terms. Full example phrases can bias short clips into repeating the suggested words.
+const HINDI_VOCAB = "बिज़्फ़ी, बिज़नेस प्लान, स्टार्टर प्लान, एंटरप्राइज़ प्लान, डेमो, कॉल रिकॉर्डिंग, यूज़र, रिपोर्ट";
+const ENGLISH_VOCAB = "Bizfy, Starter plan, Business plan, Enterprise plan";
+const DEFAULT_PROMPTS = { en: ENGLISH_VOCAB, hi: `बिज़्फी। ${HINDI_VOCAB}।`, auto: `Bizfy, बिज़्फी। ${HINDI_VOCAB}।` };
 
 /** Whisper invents words on silence and noise. These are the usual inventions on very short clips. */
 const NOT_LETTERS = String.raw`[^\p{L}\p{M}\p{N}]*`; // not \W: in JavaScript \W also matches every Hindi letter, which made whole Hindi sentences look like noise

@@ -4,12 +4,12 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
-import { Field, Input, Select } from "./ui/form";
+import { Field, Input, Select, Textarea } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
 import { formatDateTime, titleCase } from "@/lib/utils";
 
 interface Counts { pending: number; calling: number; done: number; failed: number; skipped: number }
-interface Campaign { id: string; name: string; status: string; language: string; startAt: string | null; maxConcurrent: number; maxAttempts: number; retryDelayMin: number; counts: Counts; total: number; mode: "ai" | "audio"; audioName: string | null; detectMachines: boolean; variants: { variant: number; text: string; people: number; reached: number }[] }
+interface Campaign { id: string; name: string; status: string; language: string; callerId: string | null; aiModel: "default" | "openrouter" | null; openrouterModel: string | null; agentProfileId: string | null; startAt: string | null; maxConcurrent: number; maxAttempts: number; retryDelayMin: number; counts: Counts; total: number; connected: number; mode: "ai" | "audio"; audioName: string | null; detectMachines: boolean; variants: { variant: number; text: string; people: number; reached: number }[] }
 type Action = "start" | "pause" | "resume" | "cancel";
 const TONE: Record<string, "success" | "danger" | "neutral" | "warning"> = { running: "success", completed: "neutral", cancelled: "danger", paused: "warning", scheduled: "neutral", draft: "neutral" };
 
@@ -17,7 +17,8 @@ const TONE: Record<string, "success" | "danger" | "neutral" | "warning"> = { run
 interface HourStat { hourIst: number; attempts: number; answered: number; rate: number }
 interface Timing { totalAttempts: number; days: number; minAttempts: number; best: HourStat[]; hours: HourStat[] }
 const hourText = (h: number) => `${String(h).padStart(2, "0")}:00`;
-interface CampaignTemplate { id: string; name: string; language: "en" | "hi" | "en-hi"; tags: string[]; maxConcurrent: number; maxAttempts: number; retryDelayMin: number; detectMachines: boolean; mode: "ai" | "audio"; openingVariants: string[] }
+interface CampaignTemplate { id: string; name: string; language: "en" | "hi" | "en-hi"; tags: string[]; callerId: string | null; aiModel: "default" | "openrouter" | null; openrouterModel: string | null; agentProfileId: string | null; autoSchedule: boolean; maxConcurrent: number; maxAttempts: number; retryDelayMin: number; detectMachines: boolean; mode: "ai" | "audio"; openingVariants: string[] }
+interface AgentProfile { id: string; name: string; instructions: string; knowledgeText: string }
 /** The next time it is `hourIst`:00 in India, as the local "YYYY-MM-DDTHH:mm" a datetime-local field wants. */
 function nextAtIst(hourIst: number): string {
   const now = new Date(), istNow = new Date(now.getTime() + 330 * 60_000);
@@ -27,11 +28,16 @@ function nextAtIst(hourIst: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Campaign[]; timing: Timing | null; templates: CampaignTemplate[] }) {
+export function CampaignsAdmin({ campaigns, timing, templates, callerIds, agentProfiles }: { campaigns: Campaign[]; timing: Timing | null; templates: CampaignTemplate[]; callerIds: string[]; agentProfiles: AgentProfile[] }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [tags, setTags] = useState("");
   const [language, setLanguage] = useState("en-hi");
+  const [callerId, setCallerId] = useState("");
+  const [aiModel, setAiModel] = useState<"inherit" | "default" | "openrouter">("inherit");
+  const [openrouterModel, setOpenrouterModel] = useState("openai/gpt-4o-mini");
+  const [agentProfileId, setAgentProfileId] = useState("");
+  const [autoSchedule, setAutoSchedule] = useState(false);
   const [startAt, setStartAt] = useState("");
   const [concurrent, setConcurrent] = useState(2);
   const [attempts, setAttempts] = useState(2);
@@ -43,6 +49,12 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
   const [templateName, setTemplateName] = useState("");
   const [templateMessage, setTemplateMessage] = useState("");
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileInstructions, setProfileInstructions] = useState("");
+  const [profileKnowledge, setProfileKnowledge] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<AgentProfile | null>(null);
+  const [profileUpdateBusy, setProfileUpdateBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const live = campaigns.some((c) => c.status === "running");
@@ -50,8 +62,10 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
   function applyTemplate(id: string) {
     const t = templates.find((item) => item.id === id);
     if (!t) return;
-    setTags(t.tags.join(", ")); setLanguage(t.language); setConcurrent(t.maxConcurrent); setAttempts(t.maxAttempts); setRetry(t.retryDelayMin);
+    setTags(t.tags.join(", ")); setLanguage(t.language); setCallerId(callerIds.includes(t.callerId ?? "") ? t.callerId! : ""); setAutoSchedule(t.autoSchedule && !!timing?.best[0]); setConcurrent(t.maxConcurrent); setAttempts(t.maxAttempts); setRetry(t.retryDelayMin);
+    setAiModel(t.aiModel ?? "inherit"); setOpenrouterModel(t.openrouterModel ?? "openai/gpt-4o-mini"); setAgentProfileId(agentProfiles.some((p) => p.id === t.agentProfileId) ? t.agentProfileId! : "");
     setMachines(t.detectMachines); setMode(t.mode); setVariants([...t.openingVariants, ...Array(3 - t.openingVariants.length).fill("")]);
+    setStartAt("");
     setFile(null); setStartAt(""); setTemplateMessage(`Loaded “${t.name}”. Choose a new campaign name and start time.`);
   }
 
@@ -59,7 +73,7 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
     setError(""); setTemplateMessage(""); setTemplateBusy(true);
     try {
       const res = await fetch("/api/campaigns/templates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-        name: templateName, language, tags: tags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean), maxConcurrent: concurrent, maxAttempts: attempts,
+        name: templateName, language, tags: tags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean), callerId: callerId || null, aiModel, openrouterModel: aiModel === "openrouter" ? openrouterModel : undefined, agentProfileId: mode === "ai" ? agentProfileId || null : null, autoSchedule, maxConcurrent: concurrent, maxAttempts: attempts,
         retryDelayMin: retry, detectMachines: machines, mode, openingVariants: mode === "audio" ? [] : variants.map((v) => v.trim()).filter(Boolean),
       }) });
       const result = await res.json().catch(() => ({}));
@@ -67,6 +81,48 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
       setTemplateName(""); setTemplateMessage("Campaign template saved."); router.refresh();
     } catch { setError("Could not reach the server. Try again."); }
     finally { setTemplateBusy(false); }
+  }
+
+  async function createProfile(e: FormEvent) {
+    e.preventDefault(); setError(""); setProfileBusy(true);
+    try {
+      const res = await fetch("/api/agent-profiles", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: profileName, instructions: profileInstructions, knowledgeText: profileKnowledge }) });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(result.message ?? result.issues?.[0]?.message ?? result.error ?? "Could not create the agent profile"); return; }
+      setProfileName(""); setProfileInstructions(""); setProfileKnowledge("");
+      setAgentProfileId(result.id); router.refresh();
+    } catch { setError("Could not reach the server. Try again."); }
+    finally { setProfileBusy(false); }
+  }
+
+  async function updateProfile(e: FormEvent) {
+    e.preventDefault();
+    if (!editingProfile) return;
+    setError(""); setProfileUpdateBusy(true);
+    try {
+      const res = await fetch(`/api/agent-profiles/${editingProfile.id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: editingProfile.name, instructions: editingProfile.instructions, knowledgeText: editingProfile.knowledgeText }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(result.message ?? result.issues?.[0]?.message ?? result.error ?? "Could not update the agent profile"); return; }
+      setEditingProfile(null); router.refresh();
+    } catch { setError("Could not reach the server. Try again."); }
+    finally { setProfileUpdateBusy(false); }
+  }
+
+  function editProfile(profile: AgentProfile) {
+    setError(""); setEditingProfile({ ...profile });
+  }
+
+  async function deleteProfile(id: string) {
+    if (!confirm("Delete this agent profile? Profiles used by campaigns or templates cannot be deleted.")) return;
+    const res = await fetch(`/api/agent-profiles/${id}`, { method: "DELETE" });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) { setError(result.message ?? result.error ?? "Could not delete the agent profile"); return; }
+    if (agentProfileId === id) setAgentProfileId("");
+    if (editingProfile?.id === id) setEditingProfile(null);
+    router.refresh();
   }
 
   async function deleteTemplate(id: string) {
@@ -82,7 +138,7 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
     e.preventDefault();
     setBusy(true); setError("");
     const res = await fetch("/api/campaigns", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-      name, language, tags: tags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean), startAt: startAt ? new Date(startAt).toISOString() : undefined,
+      name, language, callerId: callerId || null, aiModel, openrouterModel: aiModel === "openrouter" ? openrouterModel : undefined, agentProfileId: mode === "ai" ? agentProfileId || null : null, autoSchedule, tags: tags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean), startAt: !autoSchedule && startAt ? new Date(startAt).toISOString() : undefined,
       maxConcurrent: concurrent, maxAttempts: attempts, retryDelayMin: retry, detectMachines: machines, mode, openingVariants: mode === "audio" ? [] : variants.map((v) => v.trim()).filter(Boolean),
     }) });
     setBusy(false);
@@ -92,7 +148,7 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
       const up = await fetch(`/api/campaigns/${body.id}/audio`, { method: "POST", headers: { "x-file-name": encodeURIComponent(file.name) }, body: file });
       if (!up.ok) setError(`The campaign was created, but the recording was not saved: ${((await up.json().catch(() => ({}))) as { message?: string }).message ?? "try again from the list below"}`);
     }
-    setName(""); setTags(""); setStartAt(""); setVariants(["", "", ""]); setFile(null);
+    setName(""); setTags(""); setStartAt(""); setAutoSchedule(false); setVariants(["", "", ""]); setFile(null); setAgentProfileId("");
     router.refresh();
   }
 
@@ -116,10 +172,19 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
             <Field label="What it does" hint={mode === "audio" ? "Plays your recording, then hangs up" : "An AI conversation"}><Select value={mode} onChange={(e) => setMode(e.target.value as "ai" | "audio")}><option value="ai">AI conversation</option><option value="audio">Play a recording</option></Select></Field>
             {mode === "audio" && <Field label="Recording (MP3 or WAV, up to 5 MB)"><input type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="Recording file" /></Field>}
             <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="en-hi">Hindi + English</option><option value="hi">Hindi</option><option value="en">English</option></Select></Field>
-            <Field label="Start at (optional)" hint={timing?.best[0] ? undefined : "Empty: press Start yourself"}>
-              <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
-              {timing?.best[0] && <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setStartAt(nextAtIst(timing.best[0]!.hourIst))}>Use the best time: {hourText(timing.best[0].hourIst)} India time</button>}
-            </Field>
+            {mode === "ai" && <Field label="AI model" hint={aiModel === "inherit" ? "Uses the model selected in AI settings." : aiModel === "default" ? "Uses the configured AskG1 service." : "Requires OPENROUTER_API_KEY on the voice server."}><Select value={aiModel} onChange={(e) => setAiModel(e.target.value as typeof aiModel)}><option value="inherit">Use AI settings</option><option value="default">AskG1</option><option value="openrouter">OpenRouter</option></Select></Field>}
+            {mode === "ai" && aiModel === "openrouter" && <Field label="OpenRouter model ID" hint="Example: openai/gpt-4o-mini"><Input value={openrouterModel} onChange={(e) => setOpenrouterModel(e.target.value)} maxLength={100} required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*/[a-zA-Z0-9][a-zA-Z0-9._:-]*" /></Field>}
+            {mode === "ai" && <Field label="AI agent profile" hint="Choose this agent’s own instructions and knowledge, or inherit organisation settings."><Select value={agentProfileId} onChange={(e) => setAgentProfileId(e.target.value)}><option value="">Use organisation settings</option>{agentProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>}
+            <Field label="Caller ID" hint={callerIds.length ? "Choose an assigned voice number, or use the server default." : "No voice numbers are assigned yet; using the server default."}><Select value={callerId} onChange={(e) => setCallerId(e.target.value)}><option value="">Default caller ID</option>{callerIds.map((number) => <option key={number} value={number}>{number}</option>)}</Select></Field>
+            <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={autoSchedule} disabled={!timing?.best[0]} onChange={(e) => { setAutoSchedule(e.target.checked); if (e.target.checked) setStartAt(""); }} /> Schedule automatically at the best historical answer hour{timing?.best[0] ? ` (${hourText(timing.best[0].hourIst)} India time)` : ""}</label>
+            {!timing?.best[0] && <p className="text-xs text-muted-foreground md:col-span-3">Automatic scheduling unlocks after at least {timing?.minAttempts ?? 8} outbound calls have been made in one calling hour.</p>}
+            {autoSchedule && timing?.best[0] ? (
+              <Field label="Automatic start" hint="The campaign will be scheduled for the next occurrence of this hour, at least five minutes from now."><p className="rounded-md bg-muted px-3 py-2 text-sm">{hourText(timing.best[0].hourIst)} India time · {Math.round(timing.best[0].rate * 100)}% answered from {timing.best[0].attempts} past calls</p></Field>
+            ) : (
+              <Field label="Start at (optional)" hint="Leave empty to start it yourself"><Input type="datetime-local" value={startAt} onChange={(e) => { setStartAt(e.target.value); setAutoSchedule(false); }} />
+                {timing?.best[0] && <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setStartAt(nextAtIst(timing.best[0]!.hourIst))}>Use the best time: {hourText(timing.best[0].hourIst)} India time</button>}
+              </Field>
+            )}
             <Field label="Calls at once" hint="1 to 20"><Input type="number" min={1} max={20} value={concurrent} onChange={(e) => setConcurrent(Number(e.target.value))} /></Field>
             <Field label="Tries per person" hint="1 to 5"><Input type="number" min={1} max={5} value={attempts} onChange={(e) => setAttempts(Number(e.target.value))} /></Field>
             <Field label="Minutes between tries" hint="5 to 1440"><Input type="number" min={5} max={1440} value={retry} onChange={(e) => setRetry(Number(e.target.value))} /></Field>
@@ -139,9 +204,43 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
         </CardBody>
       </Card>
 
+      <Card>
+        <CardHeader title="AI agent profiles" description="Create reusable campaign agents with their own instructions and knowledge. Editing a profile changes future calls that use it." />
+        <CardBody className="grid gap-4">
+          <form onSubmit={createProfile} className="grid gap-3 md:grid-cols-2">
+            <Field label="Profile name"><Input value={profileName} onChange={(e) => setProfileName(e.target.value)} maxLength={80} required /></Field>
+            <div className="md:col-span-2"><Field label="Instructions" hint="How this agent should behave (up to 6000 characters)"><Textarea value={profileInstructions} onChange={(e) => setProfileInstructions(e.target.value)} maxLength={6000} rows={4} required /></Field></div>
+            <div className="md:col-span-2"><Field label="Knowledge" hint="Facts this agent may use (up to 12000 characters)"><Textarea value={profileKnowledge} onChange={(e) => setProfileKnowledge(e.target.value)} maxLength={12000} rows={5} required /></Field></div>
+            <div><Button type="submit" disabled={profileBusy || !profileName.trim() || !profileInstructions.trim() || !profileKnowledge.trim()}>{profileBusy ? "Saving…" : "Create agent profile"}</Button></div>
+          </form>
+          {agentProfiles.length > 0 && <div className="grid gap-3 text-sm">{agentProfiles.map((p) => (
+            <div key={p.id} className="grid gap-2 border-t border-border pt-2">
+              <div className="flex items-center justify-between gap-3">
+                <span>{p.name}</span>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={() => editProfile(p)}>Edit</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void deleteProfile(p.id)}>Delete</Button>
+                </div>
+              </div>
+              {editingProfile?.id === p.id && (
+                <form onSubmit={updateProfile} className="grid gap-3 md:grid-cols-2">
+                  <Field label="Profile name"><Input value={editingProfile.name} onChange={(e) => setEditingProfile({ ...editingProfile, name: e.target.value })} maxLength={80} required /></Field>
+                  <div className="md:col-span-2"><Field label="Instructions"><Textarea value={editingProfile.instructions} onChange={(e) => setEditingProfile({ ...editingProfile, instructions: e.target.value })} maxLength={6000} rows={4} required /></Field></div>
+                  <div className="md:col-span-2"><Field label="Knowledge"><Textarea value={editingProfile.knowledgeText} onChange={(e) => setEditingProfile({ ...editingProfile, knowledgeText: e.target.value })} maxLength={12000} rows={5} required /></Field></div>
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={profileUpdateBusy || !editingProfile.name.trim() || !editingProfile.instructions.trim() || !editingProfile.knowledgeText.trim()}>{profileUpdateBusy ? "Saving…" : "Save changes"}</Button>
+                    <Button type="button" variant="outline" disabled={profileUpdateBusy} onClick={() => setEditingProfile(null)}>Cancel</Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          ))}</div>}
+        </CardBody>
+      </Card>
+
       {templates.length > 0 && <Card>
         <CardHeader title="Saved campaign templates" description="Templates reuse tags and call settings; each campaign gets a fresh audience snapshot and schedule." />
-        <CardBody className="grid gap-2 text-sm">{templates.map((t) => <div key={t.id} className="flex flex-wrap items-center justify-between gap-2"><span><span className="font-medium">{t.name}</span> <span className="text-muted-foreground">{t.tags.join(", ")} · {t.mode === "audio" ? "audio" : t.language} · {t.maxConcurrent} at once</span></span><Button size="sm" variant="outline" onClick={() => void deleteTemplate(t.id)}>Delete</Button></div>)}</CardBody>
+        <CardBody className="grid gap-2 text-sm">{templates.map((t) => <div key={t.id} className="flex flex-wrap items-center justify-between gap-2"><span><span className="font-medium">{t.name}</span> <span className="text-muted-foreground">{t.tags.join(", ")} · {t.mode === "audio" ? "audio" : t.language} · {t.aiModel === "openrouter" ? `OpenRouter ${t.openrouterModel}` : t.aiModel === "default" ? "AskG1" : "AI settings model"} · {t.callerId ?? "default caller ID"} · {t.autoSchedule ? "auto best time" : "manual start"} · {t.maxConcurrent} at once</span></span><Button size="sm" variant="outline" onClick={() => void deleteTemplate(t.id)}>Delete</Button></div>)}</CardBody>
       </Card>}
 
       {timing && (
@@ -170,15 +269,15 @@ export function CampaignsAdmin({ campaigns, timing, templates }: { campaigns: Ca
         <CardHeader title="Your campaigns" description={live ? "Updating every few seconds" : undefined} />
         {campaigns.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No campaigns yet.</p></CardBody> : (
           <Table>
-            <thead><tr><Th>Campaign</Th><Th>Status</Th><Th>People</Th><Th>Waiting</Th><Th>Ringing</Th><Th>Done</Th><Th>Failed</Th><Th>Skipped</Th><Th> </Th></tr></thead>
+            <thead><tr><Th>Campaign</Th><Th>Status</Th><Th>People</Th><Th>Waiting</Th><Th>Ringing</Th><Th>Done</Th><Th>Connected</Th><Th>Failed</Th><Th>Skipped</Th><Th> </Th></tr></thead>
             <tbody>
               {campaigns.map((c) => (
                 <Tr key={c.id}>
-                  <Td className="font-medium">{c.name}<div className="text-xs font-normal text-muted-foreground">{titleCase(c.language)} · {c.maxConcurrent} at once · {c.maxAttempts} tries{c.startAt ? ` · starts ${formatDateTime(c.startAt)}` : ""}{c.mode === "audio" ? " · plays a recording" : ""}{c.detectMachines ? " · hangs up on answering machines" : ""}</div>
+                  <Td className="font-medium">{c.name}<div className="text-xs font-normal text-muted-foreground">{titleCase(c.language)} · {c.mode === "audio" ? "recorded audio" : c.aiModel === "openrouter" ? `OpenRouter ${c.openrouterModel}` : c.aiModel === "default" ? "AskG1" : "AI settings model"}{c.agentProfileId ? ` · agent: ${agentProfiles.find((p) => p.id === c.agentProfileId)?.name ?? "saved profile"}` : ""} · {c.callerId ?? "default caller ID"} · {c.maxConcurrent} at once · {c.maxAttempts} tries{c.startAt ? ` · starts ${formatDateTime(c.startAt)}` : ""}{c.mode === "audio" ? " · plays a recording" : ""}{c.detectMachines ? " · hangs up on answering machines" : ""}</div>
                     {c.mode === "audio" && <div className="mt-1 text-xs font-normal text-muted-foreground">{c.audioName ? `Recording: ${c.audioName}` : "No recording yet: upload one before starting."}{["draft", "scheduled", "paused"].includes(c.status) && <> <label className="cursor-pointer text-primary underline">{c.audioName ? "Replace" : "Upload"}<input type="file" className="sr-only" accept=".mp3,.wav,audio/mpeg,audio/wav" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; setError(""); const up = await fetch(`/api/campaigns/${c.id}/audio`, { method: "POST", headers: { "x-file-name": encodeURIComponent(f.name) }, body: f }); if (!up.ok) setError(((await up.json().catch(() => ({}))) as { message?: string }).message ?? "Could not save the recording"); router.refresh(); }} /></label></>}</div>}
                     {c.variants.length > 0 && <ul className="mt-1 text-xs font-normal text-muted-foreground">{c.variants.map((v) => <li key={v.variant}>{"ABC"[v.variant - 1]}: {v.reached} of {v.people} reached ({v.people ? Math.round((100 * v.reached) / v.people) : 0}%) — “{v.text.slice(0, 50)}{v.text.length > 50 ? "…" : ""}”</li>)}</ul>}</Td>
                   <Td><Badge tone={TONE[c.status] ?? "neutral"}>{titleCase(c.status)}</Badge></Td>
-                  <Td>{c.total}</Td><Td>{c.counts.pending}</Td><Td>{c.counts.calling}</Td><Td>{c.counts.done}</Td><Td>{c.counts.failed}</Td><Td>{c.counts.skipped}</Td>
+                  <Td>{c.total}</Td><Td>{c.counts.pending}</Td><Td>{c.counts.calling}</Td><Td>{c.counts.done}</Td><Td>{c.connected}</Td><Td>{c.counts.failed}</Td><Td>{c.counts.skipped}</Td>
                   <Td className="text-right whitespace-nowrap">
                     {(c.status === "draft" || c.status === "scheduled") && <Button size="sm" onClick={() => void act(c.id, "start")}>Start</Button>}
                     {c.status === "running" && <Button size="sm" variant="outline" onClick={() => void act(c.id, "pause")}>Pause</Button>}

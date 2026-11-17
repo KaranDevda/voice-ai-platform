@@ -16,7 +16,7 @@ export default async function IntegrationsPage() {
       <PageHeader title="CRM integrations" description="Send calls, call summaries and lead changes to your CRM or any tool, as signed web requests. Failures are retried automatically." />
       <IntegrationsPanel
         canEdit={user.permissions.includes("org_settings.write")} events={data.events}
-        endpoints={data.endpoints.map((e) => ({ ...e, createdAt: e.createdAt.toISOString(), lastDeliveredAt: e.lastDeliveredAt ? new Date(e.lastDeliveredAt).toISOString() : null }))}
+        endpoints={data.endpoints.map((e) => ({ ...e, createdAt: e.createdAt.toISOString(), lastDeliveredAt: e.lastDeliveredAt ? new Date(e.lastDeliveredAt).toISOString() : null, test: e.test ? { ...e.test, createdAt: e.test.createdAt.toISOString() } : null }))}
         deliveries={data.deliveries.map((d) => ({ ...d, nextAttemptAt: d.nextAttemptAt.toISOString(), createdAt: d.createdAt.toISOString() }))}
       />
       <h2 className="mb-3 mt-10 text-lg font-semibold tracking-tight">Website voice widget</h2>

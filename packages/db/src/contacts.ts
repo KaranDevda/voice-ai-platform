@@ -3,7 +3,7 @@ import { assertAuthorized, resolveScope, type AuthUser } from "@voiceai/auth";
 import { maskPhone, parseContacts, type RowProblem } from "@voiceai/shared";
 import { writeAudit } from "./audit";
 import { withOrg, type Db } from "./client";
-import { scopeCondition } from "./scoped";
+import { leadFilterConditions, type LeadFilters } from "./lead-filters";
 import { leads, users } from "./schema";
 
 export interface ImportResult { created: number; updated: number; skippedExisting: number; duplicatesInFile: number; problems: RowProblem[] }
@@ -56,11 +56,11 @@ const csvCell = (value: unknown) => {
 };
 
 /** Stream every contact the actor may export in bounded keyset batches and audit the completed export. */
-export function streamContactsCsv(db: Db, actor: AuthUser): ReadableStream<Uint8Array> {
+export function streamContactsCsv(db: Db, actor: AuthUser, filters: LeadFilters = {}): ReadableStream<Uint8Array> {
   assertAuthorized(actor, "leads.export");
   const encoder = new TextEncoder();
   const showPhone = actor.permissions.includes("leads.pii.read");
-  const visible = scopeCondition(actor, "leads.export", { orgId: leads.orgId, teamId: leads.teamId, ownerUserId: leads.ownerUserId });
+  const conditions = leadFilterConditions(actor, "leads.export", filters);
   let cancelled = false;
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -68,7 +68,7 @@ export function streamContactsCsv(db: Db, actor: AuthUser): ReadableStream<Uint8
         controller.enqueue(encoder.encode("name,phone,email,tags,status,source,consent_status,dnd,custom_fields\r\n"));
         let lastId: string | undefined, count = 0;
         while (!cancelled) {
-          const where = lastId ? and(visible, gt(leads.id, lastId)) : visible;
+          const where = lastId ? and(...conditions, gt(leads.id, lastId))! : and(...conditions)!;
           const rows = await tx.select({ id: leads.id, name: leads.name, phone: leads.phoneE164, email: leads.email, tags: leads.tags, status: leads.status, source: leads.source, consent: leads.consentStatus, dnd: leads.dndFlag, customFields: leads.customFields })
             .from(leads).where(where).orderBy(asc(leads.id)).limit(1000);
           if (!rows.length) break;

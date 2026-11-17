@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
-import { createDb, loadAuthUser, type Db } from "@voiceai/db";
+import { authenticateApiToken, createDb, loadAuthUser, type Db } from "@voiceai/db";
 import { parseKey, type AuthUser } from "@voiceai/auth";
 import { SESSION_COOKIE, verifyToken, type SessionClaims } from "./session";
 
@@ -28,6 +28,7 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
 /** CSRF defence for mutations, on top of SameSite=Lax: the Origin header must match the Host. */
 export async function assertSameOrigin(): Promise<boolean> {
   const h = await headers();
+  if (/^Bearer va_[A-Za-z0-9_-]{40,}$/.test(h.get("authorization") ?? "")) return true;
   const origin = h.get("origin");
   return !!origin && new URL(origin).host === h.get("host");
 }
@@ -39,6 +40,12 @@ export async function clientMeta() {
 
 /** Authenticated user or a 401 response; route handlers do `if (auth instanceof Response) return auth`. */
 export async function requireUser(): Promise<AuthUser | Response> {
+  const authorization = (await headers()).get("authorization");
+  if (authorization?.startsWith("Bearer ")) {
+    const token = /^Bearer (va_[A-Za-z0-9_-]{40,})$/.exec(authorization)?.[1];
+    const user = token ? await authenticateApiToken(getDb(), token) : null;
+    return user ?? Response.json({ error: "unauthenticated" }, { status: 401 });
+  }
   const user = await getAuthUser();
   return user ?? Response.json({ error: "unauthenticated" }, { status: 401 });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hindiToEnglishKeywords, normalizeBizfyPlanQuestion, relevantExcerpt, unknownPlanReply } from "./knowledge";
+import { expandServiceOverviewQuery, hindiToEnglishKeywords, normalizeBizfyPlanQuestion, relevantExcerpt, unknownPlanReply } from "./knowledge";
 
 const PRICING = `The Starter plan costs 1,999 rupees per month and includes up to 3 users and call recording for 30 days.
 
@@ -54,6 +54,11 @@ describe("normalizeBizfyPlanQuestion", () => {
     expect(normalizeBizfyPlanQuestion("What are you? plants do you have?")).toBe("What plans do you have?");
     expect(normalizeBizfyPlanQuestion("plants do you have?", "Do you have plants?")).toBe("plants do you have?");
   });
+  it("repairs common English mishearings of Bizfy plans without changing unrelated plant questions", () => {
+    expect(normalizeBizfyPlanQuestion("I'd like to learn about Biswai plants.")).toBe("I'd like to learn about Bizfy plans.");
+    expect(normalizeBizfyPlanQuestion("Bizfy plants" )).toBe("Bizfy plans");
+    expect(normalizeBizfyPlanQuestion("Do you sell plants?")).toBe("Do you sell plants?");
+  });
 });
 
 describe("hindiToEnglishKeywords", () => {
@@ -92,6 +97,16 @@ describe("hindiToEnglishKeywords", () => {
   it("finds the Business paragraph end to end", () => {
     const q = hindiToEnglishKeywords("बिज़नेस प्लान की कीमत क्या है?");
     expect(relevantExcerpt(PRICING, q, 300)).toContain("Business plan starts at 4,999");
+  });
+});
+
+describe("expandServiceOverviewQuery", () => {
+  it("adds product feature terms to a broad service overview search", () => {
+    expect(expandServiceOverviewQuery("what services do you offer")).toContain("AI phone assistant call tracking transcripts");
+    expect(expandServiceOverviewQuery(hindiToEnglishKeywords("आप कौन सी सेवाएँ देते हैं?"))).toContain("unlimited leads");
+  });
+  it("does not broaden a focused question", () => {
+    expect(expandServiceOverviewQuery("business plan price")).toBe("business plan price");
   });
 });
 

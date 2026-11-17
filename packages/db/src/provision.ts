@@ -27,6 +27,6 @@ END $$`);
 await pool.query(`ALTER ROLE voiceai_app PASSWORD ${literal(appPassword)}`);
 await pool.query(`GRANT ALL ON ALL TABLES IN SCHEMA public TO voiceai_app`);
 await pool.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO voiceai_app`);
-await pool.query(`GRANT EXECUTE ON FUNCTION auth_find_user(text), auth_claim_pairing_code(text), auth_find_device(text), worker_pending_analysis(integer), worker_expired_recordings(integer), worker_expired_transcripts(integer) TO voiceai_app`);
+await pool.query(`GRANT EXECUTE ON FUNCTION auth_find_user(text), auth_claim_pairing_code(text), auth_find_device(text), auth_find_api_token(text), worker_pending_analysis(integer), worker_expired_recordings(integer), worker_expired_transcripts(integer) TO voiceai_app`);
 await pool.end();
 console.log("application role ready");

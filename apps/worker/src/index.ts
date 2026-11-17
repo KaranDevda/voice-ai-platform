@@ -100,7 +100,7 @@ async function runCampaigns() {
     try {
       const res = await fetch(`${voiceUrl}/plivo/outbound`, {
         method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${dialToken(job, campaignKey!)}` },
-        body: JSON.stringify({ leadId: job.leadId, language: job.language, opening: job.opening ?? undefined, detectMachines: job.detectMachines, campaignAudio: job.mode === "audio" ? job.campaignId : undefined }), signal: AbortSignal.timeout(20_000),
+        body: JSON.stringify({ leadId: job.leadId, language: job.language, callerId: job.callerId ?? undefined, opening: job.opening ?? undefined, detectMachines: job.detectMachines, campaignAudio: job.mode === "audio" ? job.campaignId : undefined }), signal: AbortSignal.timeout(20_000),
       });
       if (res.status === 202) { log(`${tag}: dialling`); continue; }
       const b = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };

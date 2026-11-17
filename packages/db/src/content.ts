@@ -75,3 +75,74 @@ export async function saveTranslation(db: Db, actor: AuthUser, input: { lang: st
   await audit(db, actor, "content.translation", { lang: input.lang, key: input.key, removed: !value });
   return { lang: input.lang, key: input.key, value };
 }
+
+/** Org-scoped: list extra languages with enabled flag. */
+export async function listExtraLanguagesOrg(db: Db, actor: AuthUser) {
+  assertAuthorized(actor, "platform.admin");
+  return (await db.execute<{ code: string; name: string; nativeName: string; rtl: boolean; enabled: boolean }>(
+    sql`select code, name, native_name as "nativeName", rtl, enabled from extra_languages where org_id = ${actor.orgId} order by name`
+  )).rows;
+}
+
+/** Org-scoped: upsert an extra language. */
+export async function upsertExtraLanguage(db: Db, actor: AuthUser, input: { code: string; name: string; nativeName: string; rtl: boolean }) {
+  assertAuthorized(actor, "platform.admin");
+  const code = input.code.trim().toLowerCase();
+  const name = input.name.normalize("NFC").replace(/[\u0000-\u001f<>]/g, " ").trim();
+  const nativeName = input.nativeName.normalize("NFC").replace(/[\u0000-\u001f<>]/g, " ").trim();
+  if (!/^[a-z]{2,3}(-[a-z]{2})?$/.test(code)) throw new ContentError("the language code must be 2 or 3 letters, like sw or pt-br");
+  if (!name || name.length > 40) throw new ContentError("enter the language's name (up to 40 characters)");
+  if (!nativeName || nativeName.length > 40) throw new ContentError("enter the native name (up to 40 characters)");
+  const stored = code.includes("-") ? `${code.split("-")[0]}-${code.split("-")[1]!.toUpperCase()}` : code;
+  await db.execute(sql`
+    insert into extra_languages (org_id, code, name, native_name, rtl, enabled)
+    values (${actor.orgId}, ${stored}, ${name}, ${nativeName}, ${input.rtl}, true)
+    on conflict (org_id, code) do update set name = excluded.name, native_name = excluded.native_name, rtl = excluded.rtl, enabled = true
+  `);
+  return { code: stored, name, nativeName, rtl: input.rtl, enabled: true };
+}
+
+/** Org-scoped: update extra language enabled flag. */
+export async function updateExtraLanguage(db: Db, actor: AuthUser, code: string, enabled: boolean) {
+  assertAuthorized(actor, "platform.admin");
+  await db.execute(sql`update extra_languages set enabled = ${enabled} where org_id = ${actor.orgId} and code = ${code}`);
+  return { code, enabled };
+}
+
+/** Org-scoped: delete extra language and its translations. */
+export async function deleteExtraLanguage(db: Db, actor: AuthUser, code: string) {
+  assertAuthorized(actor, "platform.admin");
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`delete from extra_languages where org_id = ${actor.orgId} and code = ${code}`);
+    await tx.execute(sql`delete from translations where org_id = ${actor.orgId} and lang = ${code}`);
+  });
+  return { code };
+}
+
+/** Org-scoped: list all translation overrides. */
+export async function listTranslationOverridesOrg(db: Db, actor: AuthUser) {
+  assertAuthorized(actor, "platform.admin");
+  return (await db.execute<{ key: string; language: string; value: string }>(
+    sql`select key, lang as language, value from translations where org_id = ${actor.orgId} order by lang, key`
+  )).rows;
+}
+
+/** Org-scoped: upsert a translation override. */
+export async function upsertTranslationOverride(db: Db, actor: AuthUser, input: { key: string; language: string; value: string }) {
+  assertAuthorized(actor, "platform.admin");
+  const value = input.value.normalize("NFC").replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim();
+  if (!value) throw new ContentError("value cannot be empty");
+  await db.execute(sql`
+    insert into translations (org_id, lang, key, value, updated_at)
+    values (${actor.orgId}, ${input.language}, ${input.key}, ${value}, now())
+    on conflict (org_id, lang, key) do update set value = excluded.value, updated_at = now()
+  `);
+  return { key: input.key, language: input.language, value };
+}
+
+/** Org-scoped: delete a translation override. */
+export async function deleteTranslationOverride(db: Db, actor: AuthUser, key: string, language: string) {
+  assertAuthorized(actor, "platform.admin");
+  await db.execute(sql`delete from translations where org_id = ${actor.orgId} and lang = ${language} and key = ${key}`);
+  return { key, language };
+}

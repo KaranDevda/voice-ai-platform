@@ -96,7 +96,7 @@ Everything lives in `.local/` (gitignored). Download only from the official sour
 | Caller stops talking to first AI sound | 1.29 to 1.35 s | 1.38 to 1.44 s |
 | Whisper on one utterance | about 0.5 s | about 0.5 s |
 
-The speech-to-text is the slowest part: the caller must be silent for 400 ms by default (`ENDPOINTING_MS`), and the large Whisper model then takes 0.5 to 1.3 s. English uses 650 ms by default to avoid splitting short pauses between clauses; the small model (`WHISPER_URL_EN`, see VOICE_PIPELINE.md "Speed") takes about 0.26 s.
+The speech-to-text is the slowest part: the caller must be silent for 700 ms by default on Hindi/Hinglish (`ENDPOINTING_MS`), and the large Whisper model then takes 0.5 to 1.3 s. English uses 650 ms by default to avoid splitting short pauses between clauses; the small model (`WHISPER_URL_EN`, see VOICE_PIPELINE.md "Speed") takes about 0.26 s.
 
 ## Known limits
 

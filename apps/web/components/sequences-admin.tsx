@@ -7,7 +7,16 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Textarea } from "./ui/form";
 import { titleCase } from "@/lib/utils";
 
-interface Sequence { id: string; name: string; status: string; steps: { delayMin: number; body: string }[]; counts: Record<string, number> }
+interface Sequence {
+  id: string;
+  name: string;
+  status: string;
+  steps: { delayMin: number; body: string }[];
+  counts: Record<string, number>;
+  stepProgress: { step: number; queued: number; sent: number; failed: number; waiting: number; replies: number; responseRate: number }[];
+  stepTrackingEnabled: boolean;
+  messageCounts: Record<string, number>;
+}
 interface Step { delayMin: number; body: string }
 const wait = (m: number) => (m === 0 ? "right away" : m % 1440 === 0 ? `${m / 1440} day${m === 1440 ? "" : "s"} later` : m % 60 === 0 ? `${m / 60} hour${m === 60 ? "" : "s"} later` : `${m} min later`);
 
@@ -70,9 +79,18 @@ export function SequencesAdmin({ sequences }: { sequences: Sequence[] }) {
 
       {sequences.map((q) => (
         <Card key={q.id}>
-          <CardHeader title={q.name} description={`${q.steps.length} step${q.steps.length === 1 ? "" : "s"} · active ${q.counts.active ?? 0} · paused ${q.counts.paused ?? 0} · finished ${q.counts.completed ?? 0} · stopped ${q.counts.stopped ?? 0}`} action={<Badge tone={q.status === "active" ? "success" : "neutral"}>{titleCase(q.status)}</Badge>} />
+          <CardHeader title={q.name} description={`${q.steps.length} step${q.steps.length === 1 ? "" : "s"} · active ${q.counts.active ?? 0} · paused ${q.counts.paused ?? 0} · all steps queued ${q.counts.completed ?? 0} · stopped ${q.counts.stopped ?? 0}`} action={<Badge tone={q.status === "active" ? "success" : "neutral"}>{titleCase(q.status)}</Badge>} />
           <CardBody className="grid gap-3">
-            <ol className="list-decimal pl-5 text-sm">{q.steps.map((s, i) => <li key={i}><span className="text-muted-foreground">{wait(s.delayMin)}:</span> {s.body}</li>)}</ol>
+            <div className="text-xs text-muted-foreground" aria-label="Sequence message outcomes">
+              Messages: {q.messageCounts.sent ?? 0} sent · {q.messageCounts.failed ?? 0} failed · {q.messageCounts.queued ?? 0} queued · {q.messageCounts.sending ?? 0} sending
+            </div>
+            <ol className="list-decimal pl-5 text-sm">{q.steps.map((s, i) => {
+              const progress = q.stepProgress[i];
+              return <li key={i}><span className="text-muted-foreground">{wait(s.delayMin)} · queued {progress?.queued ?? 0} · sent {progress?.sent ?? 0} · failed {progress?.failed ?? 0} · waiting {progress?.waiting ?? 0} · replies {progress?.replies ?? 0} · response rate {progress?.responseRate ?? 0}%:</span> {s.body}</li>;
+            })}</ol>
+            {q.stepTrackingEnabled
+              ? <p className="text-xs text-muted-foreground">Per-step delivery counts cover texts queued after the step-tracking update; older texts are included in the overall totals above.</p>
+              : <p role="status" className="text-xs text-warning">Per-step delivery details are unavailable until migration 0036 is applied. Overall sequence totals are still shown.</p>}
             {q.status === "active" && (
               <div className="flex flex-wrap items-end gap-2">
                 <div className="min-w-48 flex-1"><Field label="Enrol everyone with tags"><Input value={enrol[q.id] ?? ""} onChange={(e) => setEnrol((x) => ({ ...x, [q.id]: e.target.value }))} placeholder="diwali, vip" /></Field></div>

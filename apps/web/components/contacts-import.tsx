@@ -6,9 +6,10 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Textarea } from "./ui/form";
 
 interface Result { created: number; updated: number; skippedExisting: number; duplicatesInFile: number; problems: { row: number; reason: string }[] }
+interface ContactExportFilters { q?: string; status?: string; heat?: string; sort?: string; tag?: string; consent?: string; dnd?: string }
 
 /** Add a contact list: a CSV file or pasted rows, with tags that group the people (use a tag to pick who a campaign calls). */
-export function ContactsImport({ canExport }: { canExport: boolean }) {
+export function ContactsImport({ canExport, exportFilters = {} }: { canExport: boolean; exportFilters?: ContactExportFilters }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -20,11 +21,15 @@ export function ContactsImport({ canExport }: { canExport: boolean }) {
   const [exportBytes, setExportBytes] = useState(0);
   const [exportMessage, setExportMessage] = useState("");
   const [importProgress, setImportProgress] = useState<{ processed: number; total: number } | null>(null);
+  const hasExportFilters = Object.values(exportFilters).some(Boolean);
 
   async function exportContacts() {
     setExporting(true); setExportBytes(0); setExportMessage(""); setError("");
     try {
-      const res = await fetch("/api/contacts/export");
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(exportFilters)) if (value) params.set(key, value);
+      const query = params.toString();
+      const res = await fetch(`/api/contacts/export${query ? `?${query}` : ""}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setError(body.message ?? body.error ?? "Could not export contacts"); return;
@@ -37,7 +42,10 @@ export function ContactsImport({ canExport }: { canExport: boolean }) {
         if (done) break;
         chunks.push(value); bytes += value.length; setExportBytes(bytes);
       }
-      const blob = new Blob(chunks, { type: "text/csv;charset=utf-8" });
+      const exportBuffer = new ArrayBuffer(bytes), exportData = new Uint8Array(exportBuffer);
+      let offset = 0;
+      for (const chunk of chunks) { exportData.set(chunk, offset); offset += chunk.length; }
+      const blob = new Blob([exportBuffer], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob), anchor = document.createElement("a");
       anchor.href = url; anchor.download = `contacts-${new Date().toISOString().slice(0, 10)}.csv`; anchor.click(); URL.revokeObjectURL(url);
       setExportMessage(`Export downloaded (${Math.ceil(bytes / 1024)} KB).`);
@@ -74,10 +82,10 @@ export function ContactsImport({ canExport }: { canExport: boolean }) {
     finally { setBusy(false); setImportProgress(null); }
   }
 
-  if (!open) return <div className="flex flex-wrap gap-2">{canExport && <Button size="sm" variant="outline" onClick={() => void exportContacts()} disabled={exporting}>{exporting ? `Exporting… ${Math.ceil(exportBytes / 1024)} KB` : "Export contacts"}</Button>}<Button size="sm" onClick={() => setOpen(true)}>Import contacts</Button>{exportMessage && <span role="status" className="self-center text-xs text-success">{exportMessage}</span>}{error && <span role="alert" className="self-center text-xs text-danger">{error}</span>}</div>;
+  if (!open) return <div className="flex flex-wrap gap-2">{canExport && <Button size="sm" variant="outline" onClick={() => void exportContacts()} disabled={exporting}>{exporting ? `Exporting… ${Math.ceil(exportBytes / 1024)} KB` : hasExportFilters ? "Export matching contacts" : "Export contacts"}</Button>}<Button size="sm" onClick={() => setOpen(true)}>Import contacts</Button>{exportMessage && <span role="status" className="self-center text-xs text-success">{exportMessage}</span>}{error && <span role="alert" className="self-center text-xs text-danger">{error}</span>}</div>;
   return (
     <Card className="mb-6 w-full">
-      <CardHeader title="Import contacts" description="A CSV with a header row. Needs a phone column; name, email, tags and any other columns are kept." action={<div className="flex gap-2">{canExport && <Button size="sm" variant="outline" onClick={() => void exportContacts()} disabled={exporting}>{exporting ? `Exporting… ${Math.ceil(exportBytes / 1024)} KB` : "Export CSV"}</Button>}<Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button></div>} />
+      <CardHeader title="Import contacts" description="A CSV with a header row. Needs a phone column; name, email, tags and any other columns are kept." action={<div className="flex gap-2">{canExport && <Button size="sm" variant="outline" onClick={() => void exportContacts()} disabled={exporting}>{exporting ? `Exporting… ${Math.ceil(exportBytes / 1024)} KB` : hasExportFilters ? "Export matching CSV" : "Export CSV"}</Button>}<Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button></div>} />
       <CardBody>
         <form onSubmit={submit} className="grid gap-3">
           <input type="file" accept=".csv,.txt,.tsv" aria-label="CSV file" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setText(await f.text()); }} />

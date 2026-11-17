@@ -19,6 +19,8 @@ interface AvailableNumber { number: string; type: string; subType: string; city:
 export function PlatformPanel({ kyc, numbers, orgs, requests, jobs }: { kyc: Kyc[]; numbers: Num[]; orgs: { id: string; name: string }[]; requests: Request[]; jobs: Job[] }) {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [jobRows, setJobRows] = useState(jobs);
+  const [jobMonitorError, setJobMonitorError] = useState("");
   const [newNumber, setNewNumber] = useState("+91");
   const [label, setLabel] = useState("");
   const [email, setEmail] = useState("");
@@ -38,6 +40,21 @@ export function PlatformPanel({ kyc, numbers, orgs, requests, jobs }: { kyc: Kyc
   const [shopError, setShopError] = useState("");
   const [shopNote, setShopNote] = useState("");
   useEffect(() => { void fetch("/api/platform/email").then((r) => r.json()).then(setMail).catch(() => setMail(null)); }, []);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/platform/jobs", { cache: "no-store" });
+        if (!response.ok) throw new Error("Could not refresh worker health.");
+        const current = await response.json() as Job[];
+        if (active) { setJobRows(current); setJobMonitorError(""); }
+      } catch {
+        if (active) setJobMonitorError("Worker health could not be refreshed. Reload the page to check your connection and access.");
+      }
+    };
+    const timer = setInterval(() => { void refresh(); }, 15_000);
+    return () => { active = false; clearInterval(timer); };
+  }, []);
   async function testMail() {
     setMailMsg("Sending…");
     const res = await fetch("/api/platform/email", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: mailTo }) });
@@ -99,9 +116,10 @@ export function PlatformPanel({ kyc, numbers, orgs, requests, jobs }: { kyc: Kyc
 
       <Card>
         <CardHeader title="Background jobs" description="Each job reports every few seconds while it runs. Red means it failed or went quiet." />
-        {jobs.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No job has reported yet. Start the worker.</p></CardBody> : (
+        {jobMonitorError && <CardBody><p role="status" className="text-sm text-danger">{jobMonitorError}</p></CardBody>}
+        {jobRows.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No job has reported yet. Start the worker.</p></CardBody> : (
           <Table><thead><tr><Th>Job</Th><Th>Last seen</Th><Th>State</Th><Th>Runs</Th><Th>Last error</Th></tr></thead>
-            <tbody>{jobs.map((j) => <Tr key={j.name}><Td className="font-medium">{j.name}</Td><Td>{formatDateTime(j.lastRunAt)}</Td><Td><Badge tone={!j.lastOk || stale(j.lastRunAt) ? "danger" : "success"}>{!j.lastOk ? "Failing" : stale(j.lastRunAt) ? "Quiet" : "Running"}</Badge></Td><Td>{j.runs}</Td><Td className="text-muted-foreground">{j.lastError ?? ""}</Td></Tr>)}</tbody></Table>
+            <tbody>{jobRows.map((j) => <Tr key={j.name}><Td className="font-medium">{j.name}</Td><Td>{formatDateTime(j.lastRunAt)}</Td><Td><Badge tone={!j.lastOk || stale(j.lastRunAt) ? "danger" : "success"}>{!j.lastOk ? "Failing" : stale(j.lastRunAt) ? "Quiet" : "Running"}</Badge></Td><Td>{j.runs}</Td><Td className="text-muted-foreground">{j.lastError ?? ""}</Td></Tr>)}</tbody></Table>
         )}
       </Card>
 

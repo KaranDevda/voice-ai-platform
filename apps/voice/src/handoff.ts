@@ -46,6 +46,8 @@ export function detectHandoff(text: string, enabled: HandoffEnabled): HandoffRea
 
 export const HANDOFF_HINDI = "ठीक है, मैं आपकी बात हमारे एक सहयोगी से करवाता हूँ। कृपया लाइन पर बने रहिए।";
 export const HANDOFF_ENGLISH = "Let me connect you with a colleague. Please stay on the line.";
+export const PRACTICE_HANDOFF_HINDI = "यह अभ्यास कॉल है, इसलिए मैं आपको किसी सहयोगी से ट्रांसफ़र नहीं कर सकता। मैं यहीं आपकी मदद जारी रख सकता हूँ।";
+export const PRACTICE_HANDOFF_ENGLISH = "This is a practice call, so I can't transfer you to a colleague. I can keep helping you here.";
 
 // The AI offers a person ("if you like, I will connect you with a colleague"): the next "yes" from the caller must really hand the call over.
 const OFFER: RegExp[] = [

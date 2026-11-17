@@ -4,6 +4,18 @@ import { withOrg, type Db } from "./client";
 
 export interface HourStat { hourIst: number; attempts: number; answered: number; rate: number }
 
+/** Next occurrence of a valid India calling hour, with enough lead time for the campaign worker to pick it up. */
+export function nextBestHourAt(hourIst: number, now = new Date(), leadTimeMs = 5 * 60_000): Date {
+  if (!Number.isInteger(hourIst) || hourIst < 9 || hourIst >= 21) throw new RangeError("best calling hour must be between 09:00 and 20:00 India time");
+  if (!Number.isFinite(now.getTime()) || !Number.isFinite(leadTimeMs) || leadTimeMs < 0) throw new RangeError("invalid scheduling time");
+  const IST_MS = 330 * 60_000;
+  const istNow = new Date(now.getTime() + IST_MS);
+  const targetIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate(), hourIst);
+  let target = targetIst - IST_MS;
+  if (target < now.getTime() + leadTimeMs) target += 86_400_000;
+  return new Date(target);
+}
+
 /**
  * When people actually pick up: for each hour of the day (India time) within the calling window, how many outbound calls were made in the last
  * `days` days and how many were answered. `best` lists the strongest hours that have at least `minAttempts` calls behind them (a rate from 2 calls means nothing).

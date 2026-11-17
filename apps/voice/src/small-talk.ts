@@ -18,7 +18,16 @@ const IDENTITY_QUESTION = /^(?:what are you|who are you|are you (?:an ai|a perso
 type GreetingKind = "greeting" | "how" | "greeting-and-how";
 
 function greetingKind(text: string): GreetingKind | null {
-  const normalized = text.normalize("NFC").toLowerCase().replace(/[.,!?؟।]+/gu, " ").replace(/\s+/gu, " ").trim();
+  let normalized = text.normalize("NFC").toLowerCase().replace(/[.,!?؟।]+/gu, " ").replace(/\s+/gu, " ").trim();
+  // Whisper occasionally prefixes a clean greeting with a stray fragment such as "who Hi, how are you?".
+  // Only trim it when the remainder still matches one of the exact greeting patterns below.
+  normalized = normalized.replace(/^(?:(?:who|uh|um|well|yeah|yes|so)\s+)+(?=(?:hi|hello|hey|good morning|good afternoon|good evening|नमस्ते|नमस्कार|हेलो|हाय|namaste|namaskar)(?:\s|$))/iu, "");
+  // Hindi Whisper can repeat a greeting or add short scraps like "कर दो" / "अब". Accept this only when
+  // every recognized word is still part of a greeting, so a real question after the greeting is never discarded.
+  const hindiGreeting = /(?:नमस्ते|नमस्कार|हेलो|हाय)/u.test(normalized);
+  const hindiHow = /(?:कैसे|कैसी)\s+(?:हैं|है|हो)\s*(?:आप)?/u.test(normalized);
+  const hindiGreetingOnlyWords = new Set(["नमस्ते", "नमस्कार", "हेलो", "हाय", "कैसे", "कैसी", "हैं", "है", "हो", "आप", "अब", "कर", "दो"]);
+  if (hindiGreeting && hindiHow && normalized.split(/\s+/u).every((word) => hindiGreetingOnlyWords.has(word))) return "greeting-and-how";
   if (greetAndHow.test(normalized)) return "greeting-and-how";
   if (greetOnly.test(normalized)) return "greeting";
   if (howOnly.test(normalized)) return "how";
@@ -63,4 +72,18 @@ export function replyToGreeting(text: string, callLanguage: CallLanguage, previo
 export function replyToIdentityQuestion(text: string, callLanguage: CallLanguage): string | null {
   if (callLanguage !== "en" || !IDENTITY_QUESTION.test(text.normalize("NFC").trim())) return null;
   return "I'm Bizfy's AI voice assistant. I can help with our plans and services.";
+}
+
+/** A clipped transcript is better handled by asking for the missing question than by sending a fragment to the LLM. */
+export function replyToOrphanedPlanFragment(text: string, callLanguage: CallLanguage): string | null {
+  const normalized = text.normalize("NFC").toLowerCase().replace(/[.,!?؟।]+/gu, " ").replace(/\s+/gu, " ").trim();
+  const english = /^(?:(?:through|with|of|from|to|for|because|and|but)\s+)+(?:the\s+)?(?:business|starter|enterprise)\s+plans?$/iu.test(normalized);
+  if (!english) return null;
+  if (callLanguage === "hi") return "माफ़ कीजिए, आपकी बात का आख़िरी हिस्सा ही सुनाई दिया। Business plan के बारे में क्या जानना चाहेंगे?";
+  if (callLanguage === "en-hi") {
+    const lang = detectCallerLanguage(text);
+    if (lang === "hi") return "माफ़ कीजिए, आपकी बात का आख़िरी हिस्सा ही सुनाई दिया। Business plan के बारे में क्या जानना चाहेंगे?";
+    if (lang === "hinglish") return "Sorry, आपकी बात का last part ही सुनाई दिया। Business plan के बारे में क्या जानना चाहेंगे?";
+  }
+  return "Sorry, I only caught the end of that. What would you like to know about the Business plan?";
 }

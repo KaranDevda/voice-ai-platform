@@ -51,8 +51,11 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 export const plivoStreamXml = (streamUrl: string) =>
   `<?xml version="1.0" encoding="UTF-8"?><Response><Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">${esc(streamUrl)}</Stream></Response>`;
 
-/** Hands the call to a person's phone number. */
-export const plivoDialXml = (toNumber: string) => `<?xml version="1.0" encoding="UTF-8"?><Response><Dial><Number>${esc(toNumber)}</Number></Dial></Response>`;
+/** Hands the call to a person's phone number. Optional timeout/action let the caller receive a result if nobody answers. */
+export const plivoDialXml = (toNumber: string, options?: { timeoutS?: number; actionUrl?: string }) =>
+  `<?xml version="1.0" encoding="UTF-8"?><Response><Dial${options?.timeoutS ? ` timeout="${Math.max(10, Math.min(120, Math.trunc(options.timeoutS)))}"` : ""}${options?.actionUrl ? ` action="${esc(options.actionUrl)}" method="POST" redirect="true"` : ""}><Number>${esc(toNumber)}</Number></Dial></Response>`;
+/** Speaks a brief handoff outcome and then ends a call. */
+export const plivoSpeakHangupXml = (text: string) => `<?xml version="1.0" encoding="UTF-8"?><Response><Speak>${esc(text.slice(0, 500))}</Speak><Hangup/></Response>`;
 
 /**
  * A touch-tone menu: plays the prompt (an audio file made by our own voice) and waits for one key. The key goes to `actionUrl`; with no key

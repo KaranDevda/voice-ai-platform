@@ -29,10 +29,10 @@ pids=()
 trap 'kill "${pids[@]}" 2>/dev/null || true' EXIT INT TERM
 # Hindi and mixed calls: -ac 1000 -bs 2 -bo 2 on 8 threads. Measured on spoken Hindi: the old quick setting (-ac 640, greedy) got 57-62% of characters
 # wrong on quiet or noisy microphone audio, this one 2-7% (about 1.0 s instead of 0.6 s per phrase).
-"$WHISPER" -m "$MODEL" --host 127.0.0.1 --port 8767 -t 8 -nt -ac 1000 -bs 2 -bo 2 > "$LOCAL/logs/whisper.log" 2>&1 & pids+=($!)
+DYLD_LIBRARY_PATH="$PWD/$LOCAL/whisper.cpp/build/bin${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" "$WHISPER" -m "$MODEL" --host 127.0.0.1 --port 8767 -t 8 -nt -ac 1000 -bs 2 -bo 2 > "$LOCAL/logs/whisper.log" 2>&1 & pids+=($!)
 # Optional: a small English-only model for faster English calls (set WHISPER_URL_EN=http://127.0.0.1:8770 in apps/voice/.env.local to use it).
 SMALL_EN="$LOCAL/models/ggml-small.en-q5_1.bin"
-[ -e "$SMALL_EN" ] && { "$WHISPER" -m "$SMALL_EN" --host 127.0.0.1 --port 8770 -t 4 -nt -ac 640 -bs 1 -bo 1 -nf > "$LOCAL/logs/whisper-en.log" 2>&1 & pids+=($!); }
+[ -e "$SMALL_EN" ] && { DYLD_LIBRARY_PATH="$PWD/$LOCAL/whisper.cpp/build/bin${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" "$WHISPER" -m "$SMALL_EN" --host 127.0.0.1 --port 8770 -t 4 -nt -ac 640 -bs 1 -bo 1 -nf > "$LOCAL/logs/whisper-en.log" 2>&1 & pids+=($!); }
 "$TTS" serve --host 127.0.0.1 --port 8765 > "$LOCAL/logs/voice-en.log" 2>&1 & pids+=($!)
 KOKORO_PY="$LOCAL/kokoro-venv/bin/python"
 if [ -x "$KOKORO_PY" ] && [ -f "$LOCAL/models/kokoro-v1.0.onnx" ]; then

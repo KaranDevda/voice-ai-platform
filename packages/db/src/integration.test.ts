@@ -10,6 +10,7 @@ import { applySuggestedStatus, countFailedAnalyses, listExpiredRecordings, listE
 import { listCalls } from "./queries";
 import { scopedRepos } from "./scoped";
 import { createVoiceProfile, findOrCreateVoiceDonor, listSelectableVoices, updateVoiceProfile, resolveCallVoice, revokeVoiceProfile } from "./voice-profiles";
+import { createAgentProfile, deleteAgentProfile, listAgentProfiles, updateAgentProfile } from "./campaigns";
 
 // Owner connection seeds data; TEST_APP_DATABASE_URL is a NON-owner role so RLS actually applies.
 const ownerUrl = process.env.TEST_DATABASE_URL;
@@ -87,6 +88,25 @@ describe.skipIf(!ownerUrl || !appUrl)("integration", () => {
 
     const audit = await owner.db.execute(sql`select action from audit_logs where entity_id = ${profile.id} order by at`);
     expect(audit.rows.map((r) => r.action)).toEqual(["voice_profile.create", "voice_profile.revoke"]);
+  });
+
+  it("campaign agent profiles can be edited within their organisation and audit changes without storing their text", async () => {
+    const admin = user("org_admin", ids.admin!, []);
+    const profile = await createAgentProfile(app.db, admin, { name: "  Campaign Helper ", instructions: "Original instructions", knowledgeText: "Original knowledge" });
+    const duplicate = await createAgentProfile(app.db, admin, { name: "Another Helper", instructions: "Instructions", knowledgeText: "Knowledge" });
+    expect(await listAgentProfiles(app.db, admin)).toContainEqual({ ...profile, instructions: "Original instructions", knowledgeText: "Original knowledge" });
+    const updated = await updateAgentProfile(app.db, admin, profile.id, { name: " Updated Helper ", instructions: "  Updated instructions  ", knowledgeText: "  Updated knowledge  " });
+
+    expect(updated).toMatchObject({ id: profile.id, name: "Updated Helper", instructions: "Updated instructions", knowledgeText: "Updated knowledge" });
+    await expect(updateAgentProfile(app.db, admin, profile.id, { name: duplicate.name, instructions: "Updated instructions", knowledgeText: "Updated knowledge" })).rejects.toThrow(/already exists/);
+    const otherOrg: AuthUser = { id: ids.admin!, orgId: ids.o2!, teamIds: [], permissions: ROLE_PERMISSIONS.org_admin };
+    await expect(updateAgentProfile(app.db, otherOrg, profile.id, { name: "Other Org", instructions: "Instructions", knowledgeText: "Knowledge" })).rejects.toThrow(/not found/);
+
+    const audit = await owner.db.execute(sql`select action, "after" as details from audit_logs where entity_id = ${profile.id} order by at`);
+    expect(audit.rows.map((row) => row.action)).toEqual(["agent_profile.create", "agent_profile.update"]);
+    expect(JSON.stringify(audit.rows)).not.toContain("Updated instructions");
+    await deleteAgentProfile(app.db, admin, profile.id);
+    await deleteAgentProfile(app.db, admin, duplicate.id);
   });
 
   it("voice donors: found or added by first and last name, cannot sign in, never duplicated, audited", async () => {

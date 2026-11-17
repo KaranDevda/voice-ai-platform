@@ -12,6 +12,12 @@ export async function getPhoneConfig(db: Db, orgId: string) {
   return orgSettingsSchema.parse(org?.s ?? {}).phone;
 }
 
+/** How long a caller should hear ringback while the requested colleague is being dialled. */
+export async function getHandoffTimeoutSeconds(db: Db, orgId: string) {
+  const [org] = await withOrg(db, orgId, (tx) => tx.select({ s: organizations.settingsJson }).from(organizations).where(eq(organizations.id, orgId)));
+  return orgSettingsSchema.parse(org?.s ?? {}).ai.handoffTimeoutSeconds;
+}
+
 /** The text settings of an organisation (automatic replies), for the voice service. */
 export async function getSmsSettings(db: Db, orgId: string) {
   const [org] = await withOrg(db, orgId, (tx) => tx.select({ s: organizations.settingsJson }).from(organizations).where(eq(organizations.id, orgId)));

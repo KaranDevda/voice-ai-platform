@@ -88,6 +88,25 @@ export const userRoles = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.roleId] })],
 );
 
+/** Customer-managed API credentials. The raw secret is returned once and only its SHA-256 hash is stored. */
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    permissions: text("permissions").array().notNull().default(sql`'{}'::text[]`),
+    expiresAt: tstz("expires_at"),
+    lastUsedAt: tstz("last_used_at"),
+    revokedAt: tstz("revoked_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("api_tokens_user_created_idx").on(t.userId, t.createdAt), orgIsolationPolicy()],
+).enableRLS();
+
 export const devices = pgTable(
   "devices",
   {

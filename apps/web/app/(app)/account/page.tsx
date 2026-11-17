@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { AccountPanel } from "@/components/account-panel";
+import { ApiTokenManager } from "@/components/api-token-manager";
+import { API_TOKEN_PERMISSIONS } from "@voiceai/db";
 import { profileOf, requirePageUser } from "@/lib/page-auth";
 import { titleCase } from "@/lib/utils";
 
@@ -20,6 +22,7 @@ export default async function AccountPage() {
           </CardBody>
         </Card>
         <AccountPanel />
+        <ApiTokenManager availablePermissions={API_TOKEN_PERMISSIONS(user)} />
       </div>
     </>
   );

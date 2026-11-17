@@ -23,7 +23,7 @@ Code: `apps/voice/src` (`pipeline.ts` is the conversation, `index.ts` the WebSoc
 - Browser calls require recognized words before interrupting playback; raw speech-start detection can mistake the assistant coming through the speakers for the caller. Phone calls keep immediate speech-start barge-in.
 - If the model fails before anything is spoken, a fallback message is spoken.
 - Limits: 20 sessions (`MAX_SESSIONS`), 15 minutes per call (`MAX_CALL_MINUTES`), 64 KB per frame.
-- Speech-end wait: `ENDPOINTING_MS` (Deepgram default 300 ms; local Whisper defaults to 650 ms for English and 400 ms otherwise). Local Whisper also holds visibly unfinished text for `TURN_HOLD_MS` (350 ms by default); if speech resumes during that window, it waits for the continuation transcript before answering.
+- Speech-end wait: `ENDPOINTING_MS` (Deepgram default 300 ms; local Whisper defaults to 650 ms for English and 700 ms for Hindi/Hinglish). Local Whisper also holds visibly unfinished text for `TURN_HOLD_MS` (350 ms by default); if speech resumes during that window, it waits for the continuation transcript before answering.
 
 Running it fully locally in English and Hindi: [LOCAL_VOICE_STACK.md](LOCAL_VOICE_STACK.md).
 

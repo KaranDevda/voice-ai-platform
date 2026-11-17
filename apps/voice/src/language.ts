@@ -69,7 +69,7 @@ export function strictNote(session: "en" | "hi" | "en-hi"): string {
 /** What to say if the model keeps answering in the wrong language. */
 /** Said when the AI has not started answering after a few seconds, so the caller knows the call is alive. */
 export function stillWorking(session: "en" | "hi" | "en-hi"): string {
-  return session === "en" ? "One moment, I am checking that for you." : "बस एक पल, ज़रा रुकिए।";
+  return session === "en" ? "I’m still here with you." : session === "hi" ? "जी, मैं सुन रहा हूँ।" : "हाँ, मैं सुन रहा हूँ।";
 }
 
 /** Said when AskG1 did not start answering in time: nothing is wrong with the call, the caller is invited to ask again (no hand-over). */

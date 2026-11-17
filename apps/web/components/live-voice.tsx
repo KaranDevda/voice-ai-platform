@@ -1,5 +1,5 @@
 "use client";
-import { AudioLines, Loader2, Mic, Square } from "lucide-react";
+import { AudioLines, Loader2, Mic, MicOff, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -27,6 +27,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
   const [language, setLanguage] = useState<"en" | "hi" | "en-hi">("en-hi");
   const [listen, setListen] = useState<"close" | "anyone" | "push">("close");
   const [talking, setTalking] = useState(false); // hold-to-talk button or Space is down
+  const [muted, setMuted] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const [partial, setPartial] = useState("");
   const [timings, setTimings] = useState<Timing[]>([]);
@@ -42,6 +43,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
   const endRef = useRef<HTMLDivElement>(null);
   const listenRef = useRef(listen);
   const heldRef = useRef(false);
+  const mutedRef = useRef(false);
   useEffect(() => { listenRef.current = listen; }, [listen]);
 
   const stopAudio = useCallback(() => {
@@ -62,6 +64,8 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
     stopAudio();
     void play.current?.ctx.close();
     play.current = null;
+    mutedRef.current = false;
+    setMuted(false);
     setPhase("idle"); setAi("listening"); setPartial(""); setLevel(0);
   }, [stopAudio]);
 
@@ -136,7 +140,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
       case "notice": setNotice(String(e.message)); break;
       case "handoff": {
         const why: Record<string, string> = { person: "asked for a person", complaint: "has a complaint", payment: "has a payment problem", pipeline_error: "the AI could not help" };
-        setNotice(`Handed over to a person: the caller ${why[String(e.reason)] ?? "needs a person"}. On a real phone call the carrier would transfer the call now; in this practice call the AI keeps listening.`);
+        setNotice(`Human handoff requested: the caller ${why[String(e.reason)] ?? "needs a person"}. This practice call cannot transfer to a person. Real phone calls transfer to the configured handoff number.`);
         break;
       }
       case "blocked": setError(String(e.message)); break;
@@ -146,6 +150,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
 
   async function start() {
     setError(""); setNotice(""); setLines([]); setTimings([]); setPartial("");
+    mutedRef.current = false; setMuted(false);
     setPhase("connecting");
     try {
       const output = new AudioContext();
@@ -177,12 +182,12 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
       node.port.onmessage = (m: MessageEvent<ArrayBuffer>) => {
         const s = new Int16Array(m.data);
         // Hold-to-talk: when the button is not held the microphone is replaced by silence, so nothing in the room is heard.
-        if (socket.readyState === 1) socket.send(listenRef.current === "push" && !heldRef.current ? new ArrayBuffer(m.data.byteLength) : m.data);
+        if (socket.readyState === 1) socket.send(mutedRef.current || (listenRef.current === "push" && !heldRef.current) ? new ArrayBuffer(m.data.byteLength) : m.data);
         let sum = 0;
         for (let i = 0; i < s.length; i += 4) sum += (s[i]! / 32768) ** 2;
         const rms = Math.sqrt(sum / (s.length / 4));
         if (rms > LOUD) lastLoud.current = performance.now();
-        setLevel(Math.min(1, rms * 6));
+        setLevel(mutedRef.current ? 0 : Math.min(1, rms * 6));
       };
     } catch (e) {
       stop();
@@ -224,10 +229,12 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
                 {phase === "connecting" ? "Connecting" : "Start"}
               </Button>
             )}
+            {live && <Button type="button" variant="outline" onClick={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }} aria-pressed={muted} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? <MicOff className="h-4 w-4" aria-hidden /> : <Mic className="h-4 w-4" aria-hidden />}{muted ? "Unmute mic" : "Mute mic"}</Button>}
             {live && listen === "push" && (
               <button type="button" onPointerDown={() => hold(true)} onPointerUp={() => hold(false)} onPointerLeave={() => talking && hold(false)}
+                disabled={muted}
                 className={`select-none rounded-lg px-4 py-1.5 text-sm font-medium ${talking ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`}
-                aria-pressed={talking}>{talking ? "Listening…" : "Hold to talk (Space)"}</button>
+                aria-pressed={talking}>{muted ? "Mic muted" : talking ? "Listening…" : "Hold to talk (Space)"}</button>
             )}
             <div className="flex h-8 flex-1 items-center gap-2" aria-hidden>
               <AudioLines className={`h-4 w-4 ${live ? "text-primary" : "text-muted-foreground"}`} />

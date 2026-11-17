@@ -9,6 +9,21 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () =>
 export const CAMPAIGN_STATUSES = ["draft", "scheduled", "running", "paused", "completed", "cancelled"] as const;
 export const TARGET_STATUSES = ["pending", "calling", "done", "failed", "skipped"] as const;
 
+/** Reusable instructions and a private knowledge text for campaign agents. */
+export const agentProfiles = pgTable(
+  "agent_profiles",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    name: text("name").notNull(),
+    instructions: text("instructions").notNull(),
+    knowledgeText: text("knowledge_text").notNull(),
+    createdBy: uuid("created_by").notNull().references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("agent_profiles_org_name_uq").on(t.orgId, t.name), orgIsolationPolicy()],
+).enableRLS();
+
 /** An outbound AI calling campaign: who to call (targets), when, how many at once, and how often to try again. */
 export const campaigns = pgTable(
   "campaigns",
@@ -20,6 +35,12 @@ export const campaigns = pgTable(
     language: text("language").notNull().default("en-hi"),
     /** Voice reference the calls use (e.g. "profile:<id>"); empty = the service default. */
     voice: text("voice"),
+    /** Optional campaign model override; null inherits the organisation's AI setting. */
+    aiModel: text("ai_model", { enum: ["default", "openrouter"] }),
+    openrouterModel: text("openrouter_model"),
+    agentProfileId: uuid("agent_profile_id").references(() => agentProfiles.id, { onDelete: "set null" }),
+    /** An organisation-owned Plivo voice number; null uses the deployment default. */
+    callerId: text("caller_id"),
     startAt: tstz("start_at"),
     maxConcurrent: integer("max_concurrent").notNull().default(2),
     maxAttempts: integer("max_attempts").notNull().default(2),
@@ -48,6 +69,11 @@ export const campaignTemplates = pgTable(
     name: text("name").notNull(),
     language: text("language").notNull().default("en-hi"),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+    callerId: text("caller_id"),
+    aiModel: text("ai_model", { enum: ["default", "openrouter"] }),
+    openrouterModel: text("openrouter_model"),
+    agentProfileId: uuid("agent_profile_id").references(() => agentProfiles.id, { onDelete: "set null" }),
+    autoSchedule: boolean("auto_schedule").notNull().default(false),
     maxConcurrent: integer("max_concurrent").notNull().default(2),
     maxAttempts: integer("max_attempts").notNull().default(2),
     retryDelayMin: integer("retry_delay_min").notNull().default(60),

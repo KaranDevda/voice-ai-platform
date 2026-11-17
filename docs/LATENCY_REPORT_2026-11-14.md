@@ -4,7 +4,7 @@
 
 - The load-test JSON now records the requested question, text sent to the synthetic speaker, recognized transcript, answer text, and timing stages. Transcript and answer fields are captured after the turn completes.
 - The recurring baseline questions now include a long plan comparison, Hindi script, and Latin-script Hinglish. The Hindi speaker input goes through the same Hinglish-to-Devanagari conversion used by the product voice path.
-- Local Whisper keeps its 650 ms English and 400 ms Hindi/mixed endpoint defaults. Unfinished transcript endings, including “plan/plans”, get a 350 ms continuation window. If new speech starts during that window, the timer is cancelled and the next final transcript is joined before answering.
+- Local Whisper kept its 650 ms English and 400 ms Hindi/mixed endpoint defaults. Unfinished transcript endings, including “plan/plans”, get a 350 ms continuation window. If new speech starts during that window, the timer is cancelled and the next final transcript is joined before answering.
 - Mixed Devanagari/Roman Hinglish now transliterates known Roman Hindi words too. For example, “Business plan ka monthly price kya hai aur usme kitne users hain?” is prepared for the Hindi speaker as “बिज़नेस प्लान का मंथली प्राइस क्या है और उसमें कितने यूज़र्स हैं?”
 - The latency summary now reports the SOP first-audio gate (p50 ≤1.0 s, p95 ≤1.5 s) separately from the actual-answer p50 <1.0 s target.
 

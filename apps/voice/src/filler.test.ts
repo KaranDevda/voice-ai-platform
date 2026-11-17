@@ -3,7 +3,7 @@ import { dropFiller } from "./filler";
 
 describe("dropFiller", () => {
   it("drops a sentence that is only stalling", () => {
-    for (const s of ["Sure, let me check that.", "Let me check that for you.", "Sure! Let me look that up.", "One moment, let me see.", "Certainly, I'll check on that.", "Just a moment.", "Hold on while I check.", "ज़रा देखता हूँ।", "बस एक पल।"]) expect(dropFiller(s), s).toBe("");
+    for (const s of ["Sure, let me check that.", "Let me check that for you.", "Sure! Let me look that up.", "One moment, let me see.", "Certainly, I'll check on that.", "Just a moment.", "Hold on while I check.", "Wait!", "I'm checking that for you.", "Wait! I'm checking that for you.", "ज़रा देखता हूँ।", "अभी चेक कर रहा हूँ।", "बस एक पल।"]) expect(dropFiller(s), s).toBe("");
   });
   it("keeps real answers, including ones that mention checking", () => {
     for (const s of ["I'm doing well, thank you! How can I help you today?", "You can check your balance on the Billing page.", "We offer three plans.", "Let me know if you would like a demo.", "Yes, we record calls for quality.", "आपका स्वागत है।"]) expect(dropFiller(s), s).toBe(s);

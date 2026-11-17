@@ -11,16 +11,19 @@ const DEVANAGARI = /[ऀ-ॿ]/;
 const HINDI_ASK = /\?|क्या|कितना|कितनी|कितने|कौन|कैसे|कब|कहाँ|कहां|क्यों|बताइए|बताओ|बताएं|चाहिए|चाहता|चाहती|कर दीजिए|करवा/;
 
 /**
- * Only a real question or request earns an acknowledgement. Statements (a name, a date, "that works for me"), greetings, thanks
- * and short replies get none, because "Sure." after "My name is Karan" sounds wrong. Questions get "Let me check.", requests "Sure.".
+ * Only a real question or request earns a neutral acknowledgement. Statements (a name, a date, "that works for me"), greetings, thanks
+ * and short replies get none, because "Sure." after "My name is Karan" sounds wrong. The acknowledgement never claims that a lookup is happening.
  */
 /** Greetings, thanks and short replies: no acknowledgement, and no "one moment" even when the AI is slow. */
-export const isSmallTalk = (userText: string): boolean => userText.trim().split(/\s+/).length < 4 || SKIP.test(userText.trim());
+export const isSmallTalk = (userText: string): boolean => {
+  const text = userText.trim().replace(/^(?:(?:who|uh|um|well|yeah|yes|so)\s+)+(?=(?:hi|hello|hey|how are you|good morning|good afternoon|good evening)\b)/i, "");
+  return text.split(/\s+/).length < 4 || SKIP.test(text);
+};
 
 export function ackFor(userText: string, language: "en" | "hi" | "en-hi", fastHindi = false): string | null {
   const text = userText.trim();
   if (isSmallTalk(text)) return null;
   if (language === "hi" || DEVANAGARI.test(text)) return fastHindi && HINDI_ASK.test(text) ? "जी।" : null;
   if (REQUEST.test(text)) return "Sure.";
-  return text.endsWith("?") || QUESTION.test(text) ? "Let me check." : null;
+  return text.endsWith("?") || QUESTION.test(text) ? "Sure." : null;
 }

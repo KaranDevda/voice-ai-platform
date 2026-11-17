@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ForbiddenError, ROLE_PERMISSIONS, type AuthUser, type RoleKey } from "@voiceai/auth";
 import { createDb } from "./client";
+import { streamContactsCsv } from "./contacts";
 import { agentProductivity, dashboardStats, getCallDetail, getLeadDetail, listCalls, listLeads, listTeam, listAudit, listKnowledge, listVoiceAdmin } from "./queries";
 import { ingestKnowledge } from "./studio";
 import { callLogs, consentRecords, leads, organizations, roles, teams, userRoles, users, voiceProfiles } from "./schema";
@@ -24,8 +25,8 @@ describe.skipIf(!ownerUrl || !appUrl)("role-scoped queries", () => {
     const mk = (email: string, teamId: string) => ({ orgId: org!.id, teamId, email: `${email}-${tag}@x.io`, passwordHash: "x" });
     const [aN, aS] = await db.insert(users).values([mk("an", tN!.id), mk("as", tS!.id)]).returning();
     const [lN, lS] = await db.insert(leads).values([
-      { orgId: org!.id, teamId: tN!.id, ownerUserId: aN!.id, name: "North Lead", phoneE164: "+919810000001" },
-      { orgId: org!.id, teamId: tS!.id, ownerUserId: aS!.id, name: "South Lead", phoneE164: "+919810000002" },
+      { orgId: org!.id, teamId: tN!.id, ownerUserId: aN!.id, name: "North Lead", phoneE164: "+919810000001", tags: ["vip", "follow-up"], consentStatus: "granted" },
+      { orgId: org!.id, teamId: tS!.id, ownerUserId: aS!.id, name: "South Lead", phoneE164: "+919810000002", tags: ["follow-up"], consentStatus: "denied", dndFlag: true },
     ]).returning();
     await db.insert(leads).values({ orgId: other!.id, phoneE164: "+919810000003", name: "Other Org Lead" });
     const call = (agent: typeof aN, team: typeof tN, lead: typeof lN) => ({
@@ -42,6 +43,26 @@ describe.skipIf(!ownerUrl || !appUrl)("role-scoped queries", () => {
     expect(await names(as("org_admin", "admin", []))).toEqual(["North Lead", "South Lead"]);
     expect(await names(as("manager", "m", [x.tN!]))).toEqual(["North Lead"]);
     expect(await names(as("agent", x.aS!, [x.tS!]))).toEqual(["South Lead"]);
+  });
+
+  it("filters by exact tag, consent and DND while counting only scoped matches", async () => {
+    const admin = as("org_admin", "admin", []);
+    const north = await listLeads(app.db, admin, { tag: "VIP", consent: "granted", dnd: "false" });
+    expect(north.rows.map((r) => r.name)).toEqual(["North Lead"]);
+    expect(north.total).toBe(1);
+
+    const south = await listLeads(app.db, as("manager", "m", [x.tS!]), { tag: "follow-up", consent: "denied", dnd: "true" });
+    expect(south.rows.map((r) => r.name)).toEqual(["South Lead"]);
+    expect(south.total).toBe(1);
+    expect((await listLeads(app.db, admin, { tag: "missing" })).total).toBe(0);
+  });
+
+  it("exports only the matching contacts within the export scope", async () => {
+    const admin = as("org_admin", "admin", []);
+    const csv = await new Response(streamContactsCsv(app.db, admin, { tag: "VIP", consent: "granted", dnd: "false" })).text();
+    expect(csv).toContain("North Lead");
+    expect(csv).not.toContain("South Lead");
+    expect(csv).not.toContain("Other Org Lead");
   });
 
   it("hides out-of-scope records from detail views (returns null, same as a missing id)", async () => {

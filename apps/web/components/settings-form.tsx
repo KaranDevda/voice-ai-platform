@@ -93,7 +93,7 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
             <Field label="Message before transfer"><Input name="handoffMessage" defaultValue={settings.ai.handoffMessage} /></Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Transfer after unsure answers in a row"><Input name="handoffAfterLowConfidence" type="number" min={1} max={5} defaultValue={settings.ai.handoffAfterLowConfidence} /></Field>
-              <Field label="Book a callback if nobody answers (seconds)"><Input name="handoffTimeoutSeconds" type="number" min={10} max={120} defaultValue={settings.ai.handoffTimeoutSeconds} /></Field>
+              <Field label="Colleague ring timeout (seconds)" hint="If the colleague does not answer, the caller hears a clear message in their selected language."><Input name="handoffTimeoutSeconds" type="number" min={10} max={120} defaultValue={settings.ai.handoffTimeoutSeconds} /></Field>
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="handoffOnComplaint" className={check} defaultChecked={settings.ai.handoffOnComplaint} /> Transfer when the caller is making a complaint</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="handoffOnPayment" className={check} defaultChecked={settings.ai.handoffOnPayment} /> Transfer on payment topics</label>

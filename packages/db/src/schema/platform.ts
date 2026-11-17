@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, text, unique, uuid, vector } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, unique, uuid, vector } from "drizzle-orm/pg-core";
 import { createdAt, id, orgIsolationPolicy, tstz } from "./_common";
 import { organizations, teams, users } from "./org";
 
@@ -72,3 +72,75 @@ export const webhookEvents = pgTable(
   },
   (t) => [unique("webhook_events_provider_event_uq").on(t.provider, t.eventId)],
 );
+
+/** Scheduled export jobs (org-scoped, RLS-enabled). */
+export const cronJobs = pgTable(
+  "cron_jobs",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    teamId: uuid("team_id").references(() => teams.id),
+    userId: uuid("user_id").references(() => users.id),
+    name: text("name").notNull(),
+    reportType: text("report_type", { enum: ["contacts", "calls", "sms"] }).notNull(),
+    cron: text("cron").notNull(),
+    timezone: text("timezone").notNull().default("Asia/Kolkata"),
+    email: text("email"),
+    active: boolean("active").notNull().default(true),
+    nextRun: tstz("next_run"),
+    lastRun: tstz("last_run"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("cron_jobs_org_active_idx").on(t.orgId, t.active), orgIsolationPolicy()],
+).enableRLS();
+
+/** Application error log: captures unhandled errors from API routes and client. Org-scoped via RLS. */
+export const appErrors = pgTable(
+  "app_errors",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    teamId: uuid("team_id").references(() => teams.id),
+    userId: uuid("user_id").references(() => users.id),
+    route: text("route").notNull(),
+    method: text("method"),
+    errorMessage: text("error_message").notNull(),
+    errorStack: text("error_stack"),
+    requestBody: jsonb("request_body"),
+    requestHeaders: jsonb("request_headers"),
+    userAgent: text("user_agent"),
+    ip: text("ip"),
+    at: tstz("at").notNull().defaultNow(),
+  },
+  (t) => [index("app_errors_org_at_idx").on(t.orgId, t.at), index("app_errors_route_idx").on(t.route), orgIsolationPolicy()],
+).enableRLS();
+
+/** Extra languages per org (org-scoped, RLS-enabled). */
+export const extraLanguages = pgTable(
+  "extra_languages",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    nativeName: text("native_name").notNull(),
+    rtl: boolean("rtl").notNull().default(false),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [unique("extra_languages_org_code_uq").on(t.orgId, t.code), index("extra_languages_org_idx").on(t.orgId), orgIsolationPolicy()],
+).enableRLS();
+
+/** Translation overrides per org (org-scoped, RLS-enabled). */
+export const translations = pgTable(
+  "translations",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    lang: text("lang").notNull(),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: tstz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [unique("translations_org_lang_key_uq").on(t.orgId, t.lang, t.key), index("translations_org_lang_idx").on(t.orgId, t.lang), orgIsolationPolicy()],
+).enableRLS();

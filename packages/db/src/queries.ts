@@ -1,12 +1,13 @@
 import { aliasedTable, and, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { assertAuthorized, authorize, ForbiddenError, resolveScope, type AuthUser, type ScopedBase } from "@voiceai/auth";
-import { HEATS, heatRange, orgSettingsSchema, orgSettingsUpdateSchema, type Heat, type LeadStatus } from "@voiceai/shared";
+import { orgSettingsSchema, orgSettingsUpdateSchema, type LeadStatus } from "@voiceai/shared";
 import { maskPhone } from "@voiceai/shared";
 import { writeAudit } from "./audit";
 import { withOrg, type Db } from "./client";
+import { leadFilterConditions, type LeadFilters } from "./lead-filters";
 import { scopeCondition } from "./scoped";
 import {
-  auditLogs, callInsights, callLogs, callTranscripts, consentRecords, devices, kbChunks, kbDocuments,
+  appErrors, auditLogs, callInsights, callLogs, callTranscripts, consentRecords, devices, kbChunks, kbDocuments,
   callAnalysisAttempts, leads, leadStatusHistory, organizations, roles, userRoles, users, voiceProfiles,
 } from "./schema";
 
@@ -179,6 +180,38 @@ export async function getCallDetail(db: Db, user: AuthUser, id: string) {
   });
 }
 
+/** Recent calls for a supervisor live-monitor: call + turn-by-turn transcript + insight + lead, org-scoped. */
+export async function listMonitorCalls(db: Db, user: AuthUser, limit = 25) {
+  const { where, aggregateOnly } = aggregateScope(user, "calls.read");
+  if (aggregateOnly) throw new ForbiddenError("calls.read", "aggregate_only");
+  return withOrg(db, user.orgId, async (tx) => {
+    const rows = await tx
+      .select({
+        id: callLogs.id, startedAt: callLogs.startedAt, direction: callLogs.direction, source: callLogs.source,
+        status: callLogs.status, durationS: callLogs.durationS, leadId: callLogs.leadId,
+        leadName: leads.name, leadPhone: leads.phoneE164, agentEmail: users.email,
+        sentimentLabel: callInsights.sentimentLabel, handedOff: sql<boolean>`${callLogs.handoffToUserId} is not null`,
+        transcriptSegments: callTranscripts.segments, transcriptLanguage: callTranscripts.language,
+      })
+      .from(callLogs)
+      .leftJoin(leads, eq(leads.id, callLogs.leadId))
+      .leftJoin(users, eq(users.id, callLogs.agentUserId))
+      .leftJoin(callInsights, eq(callInsights.callLogId, callLogs.id))
+      .leftJoin(callTranscripts, eq(callTranscripts.callLogId, callLogs.id))
+      .where(where)
+      .orderBy(desc(callLogs.startedAt))
+      .limit(limit);
+    return {
+      rows: rows.map((r) => ({
+        ...r,
+        leadPhone: r.leadPhone ? phone(user, r.leadPhone) : null,
+        transcript: r.transcriptSegments ? { segments: r.transcriptSegments as Array<{ speaker: string; startMs: number; endMs: number; text: string; interrupted?: boolean }>, language: r.transcriptLanguage } : null,
+      })),
+      aggregateOnly,
+    };
+  });
+}
+
 /** Authorises and returns the recording key so the route can stream it; the caller audits the play. */
 export async function getRecordingForPlay(db: Db, user: AuthUser, id: string) {
   return withOrg(db, user.orgId, async (tx) => {
@@ -193,21 +226,14 @@ export async function getRecordingForPlay(db: Db, user: AuthUser, id: string) {
 
 // -------------------------------------------------------------------- leads
 
-export interface LeadFilters { q?: string; status?: string; page?: number; /** hot, warm or cold: see the lead score */ heat?: string; /** "score": warmest first */ sort?: string }
-
 export async function listLeads(db: Db, user: AuthUser, f: LeadFilters = {}) {
   const page = Math.max(1, f.page ?? 1);
-  const conds: SQL[] = [scopeCondition(user, "leads.read", leadCols)];
-  if (f.status) conds.push(eq(leads.status, f.status as LeadStatus));
-  if (f.q?.trim()) {
-    const like = `%${f.q.trim()}%`;
-    conds.push(or(ilike(leads.name, like), ilike(leads.phoneE164, like), ilike(leads.email, like))!);
-  }
+  const conds = leadFilterConditions(user, "leads.read", f);
   const scoreOf = sql<number>`lead_score("leads"."id")`;
-  if (f.heat && (HEATS as readonly string[]).includes(f.heat)) { const [lo, hi] = heatRange(f.heat as Heat); conds.push(sql`${scoreOf} between ${lo} and ${hi}`); }
   const owner = aliasedTable(users, "owner");
-  const rows = await withOrg(db, user.orgId, (tx) =>
-    tx
+  const result = await withOrg(db, user.orgId, async (tx) => {
+    const [countRow] = await tx.select({ total: num(sql`count(*)`) }).from(leads).where(and(...conds));
+    const rows = await tx
       .select({
         id: leads.id, name: leads.name, phone: leads.phoneE164, email: leads.email, source: leads.source, status: leads.status,
         score: scoreOf, tags: leads.tags, dnd: leads.dndFlag, ownerEmail: owner.email,
@@ -220,9 +246,36 @@ export async function listLeads(db: Db, user: AuthUser, f: LeadFilters = {}) {
       .where(and(...conds))
       .orderBy(...(f.sort === "score" ? [desc(scoreOf), desc(leads.createdAt)] : [desc(leads.createdAt)]))
       .limit(PAGE_SIZE + 1)
-      .offset((page - 1) * PAGE_SIZE),
-  );
-  return { rows: rows.slice(0, PAGE_SIZE).map((r) => ({ ...r, score: r.score == null ? null : Number(r.score), phone: phone(user, r.phone) })), hasMore: rows.length > PAGE_SIZE, page };
+      .offset((page - 1) * PAGE_SIZE);
+    return { rows, total: countRow?.total ?? 0 };
+  });
+  return { rows: result.rows.slice(0, PAGE_SIZE).map((r) => ({ ...r, score: r.score == null ? null : Number(r.score), phone: phone(user, r.phone) })), total: result.total, hasMore: result.rows.length > PAGE_SIZE, page };
+}
+
+/** Bulk-update leads that the user can see: set status, consent, DND, tags, or add/remove tags. Logs each changed lead to the audit trail. */
+export async function bulkUpdateLeads(db: Db, user: AuthUser, ids: string[], patch: { status?: LeadStatus; consent?: string; dnd?: boolean; setTags?: string[]; addTags?: string[]; removeTags?: string[] }) {
+  assertAuthorized(user, "leads.write");
+  return withOrg(db, user.orgId, async (tx) => {
+    const visible = scopeCondition(user, "leads.read", leadCols);
+    const targets = await tx.select({ id: leads.id, status: leads.status, tags: leads.tags, dndFlag: leads.dndFlag }).from(leads).where(and(inArray(leads.id, ids), visible));
+    if (targets.length === 0) return { updated: 0 };
+    const LEAD_STATUSES = ["new", "contacted", "interested", "callback_requested", "not_interested", "won", "lost"] as const;
+    const CONSENT = ["unknown", "granted", "denied", "withdrawn"] as const;
+    for (const t of targets) {
+      const changes: Record<string, unknown> = {};
+      if (patch.status !== undefined && LEAD_STATUSES.includes(patch.status as any)) changes.status = patch.status;
+      if (patch.consent !== undefined && CONSENT.includes(patch.consent as any)) changes.consentStatus = patch.consent;
+      if (patch.dnd !== undefined) changes.dndFlag = patch.dnd;
+      let tags = [...(t.tags ?? [])];
+      if (patch.setTags !== undefined) tags = [...patch.setTags];
+      if (patch.addTags) tags = [...new Set([...tags, ...patch.addTags])];
+      if (patch.removeTags) tags = tags.filter((tag) => !patch.removeTags!.includes(tag));
+      changes.tags = tags;
+      await tx.update(leads).set(changes).where(eq(leads.id, t.id));
+      await writeAudit(tx, { orgId: user.orgId, actorUserId: user.id, action: "lead.bulk_update", entity: "leads", entityId: t.id, after: changes });
+    }
+    return { updated: targets.length };
+  });
 }
 
 export async function getLeadDetail(db: Db, user: AuthUser, id: string) {
@@ -419,6 +472,45 @@ export async function listAudit(db: Db, user: AuthUser, f: { page?: number; acti
       .offset((page - 1) * size),
   );
   return { rows: rows.slice(0, size), hasMore: rows.length > size, page };
+}
+
+export async function listAppErrors(db: Db, user: AuthUser, f: { page?: number; route?: string } = {}) {
+  assertAuthorized(user, "logs.read");
+  const page = Math.max(1, f.page ?? 1);
+  const size = 25;
+  const rows = await withOrg(db, user.orgId, (tx) =>
+    tx
+      .select({ id: appErrors.id, at: appErrors.at, route: appErrors.route, method: appErrors.method, errorMessage: appErrors.errorMessage, errorStack: appErrors.errorStack, userAgent: appErrors.userAgent, ip: appErrors.ip })
+      .from(appErrors)
+      .where(f.route ? ilike(appErrors.route, `${f.route}%`) : undefined)
+      .orderBy(desc(appErrors.at))
+      .limit(size + 1)
+      .offset((page - 1) * size),
+  );
+  return { rows: rows.slice(0, size), hasMore: rows.length > size, page };
+}
+
+// ----------------------------------------------------------------- roles
+
+export async function listRoles(db: Db, actor: AuthUser) {
+  assertAuthorized(actor, "platform.admin");
+  return withOrg(db, actor.orgId, async (tx) => {
+    const rows = await tx.select({ id: roles.id, key: roles.key, name: roles.name, permissions: roles.permissions }).from(roles).where(eq(roles.orgId, actor.orgId)).orderBy(roles.key);
+    return rows.map((r) => ({ ...r, permissions: r.permissions as string[] }));
+  });
+}
+
+export async function updateRole(db: Db, actor: AuthUser, roleKey: string, permission: string, add: boolean) {
+  assertAuthorized(actor, "platform.admin");
+  return withOrg(db, actor.orgId, async (tx) => {
+    const [role] = await tx.select().from(roles).where(and(eq(roles.key, roleKey), eq(roles.orgId, actor.orgId)));
+    if (!role) throw new Error("Role not found");
+    const perms = new Set(role.permissions);
+    if (add) perms.add(permission); else perms.delete(permission);
+    const [updated] = await tx.update(roles).set({ permissions: Array.from(perms) }).where(eq(roles.id, role.id)).returning();
+    if (!updated) throw new Error("Failed to update role");
+    return { ...updated, permissions: updated.permissions as string[] };
+  });
 }
 
 // ----------------------------------------------------------------- settings

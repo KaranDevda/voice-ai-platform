@@ -127,6 +127,9 @@ const voices = await db.insert(t.voiceProfiles).values([
   { orgId, label: "Priya (female)", gender: "female", providerVoiceId: "demo-voice-priya", donorUserId: donorA.id, consentRecordId: consents[0]!.id },
   { orgId, label: "Arjun (male)", gender: "male", providerVoiceId: "demo-voice-arjun", donorUserId: donorB.id, consentRecordId: consents[1]!.id },
   { orgId, label: "Kabir (male, old)", gender: "male", providerVoiceId: "demo-voice-kabir", donorUserId: donorOld.id, consentRecordId: consents[2]!.id, status: "revoked", revokedAt: new Date(Date.now() - 6 * 86400_000) },
+  // Demo cloned voices (placeholder ElevenLabs voice IDs - replace with real ones from ElevenLabs)
+  { orgId, label: "Asha (cloned)", gender: "female", providerVoiceId: "elevenlabs-clone-asha-001", donorUserId: donorA.id, consentRecordId: consents[0]!.id },
+  { orgId, label: "Ravi (cloned)", gender: "male", providerVoiceId: "elevenlabs-clone-ravi-002", donorUserId: donorB.id, consentRecordId: consents[1]!.id },
 ]).returning();
 const activeVoices = voices.filter((v) => v.status === "active");
 

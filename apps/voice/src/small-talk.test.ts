@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { replyToGreeting, replyToIdentityQuestion } from "./small-talk";
+import { replyToGreeting, replyToIdentityQuestion, replyToOrphanedPlanFragment } from "./small-talk";
 
 describe("replyToGreeting", () => {
   it("responds naturally and immediately to English greetings", () => {
     expect(replyToGreeting("Hello", "en")).toBe("Hi! How can I help you today?");
     expect(replyToGreeting("Good morning, how are you?", "en")).toBe("Good morning! I'm doing well, thank you. How can I help you today?");
     expect(replyToGreeting("How are you?", "en")).toBe("I'm doing well, thank you. How can I help you today?");
+    expect(replyToGreeting("who Hi, how are you?", "en")).toBe("Hi! I'm doing well, thank you. How can I help you today?");
   });
 
   describe("replyToIdentityQuestion", () => {
@@ -19,6 +20,7 @@ describe("replyToGreeting", () => {
   it("answers in the selected or detected Hindi and Hinglish", () => {
     expect(replyToGreeting("नमस्ते", "hi")).toBe("नमस्ते! बताइए, मैं आपकी क्या मदद करूँ?");
     expect(replyToGreeting("नमस्ते, आप कैसे हैं?", "en-hi")).toContain("मैं ठीक हूँ");
+    expect(replyToGreeting("कर दो नमस्ते, कैसे हैं आप? नमस्ते, कैसे है अब।", "hi")).toContain("मैं ठीक हूँ");
     expect(replyToGreeting("namaste", "en-hi")).toContain("बताइए");
     expect(replyToGreeting("Hi, kaise ho aap?", "en-hi")).toContain("thank you");
     expect(replyToGreeting("नमस्ते", "en")).toBe("Hi! How can I help you today?");
@@ -28,5 +30,15 @@ describe("replyToGreeting", () => {
     expect(replyToGreeting("Tell me about the Business plan.", "en")).toBeNull();
     expect(replyToGreeting("What's the personal plan?", "en")).toBeNull();
     expect(replyToGreeting("Thanks, tell me about pricing.", "en")).toBeNull();
+    expect(replyToGreeting("नमस्ते, आप कैसे हैं? Business plan में क्या मिलता है?", "hi")).toBeNull();
+  });
+});
+
+describe("replyToOrphanedPlanFragment", () => {
+  it("asks for the missing question instead of sending a clipped phrase to the model", () => {
+    expect(replyToOrphanedPlanFragment("through the business plan.", "en")).toContain("only caught the end");
+    expect(replyToOrphanedPlanFragment("through the business plan.", "en-hi")).toContain("only caught the end");
+    expect(replyToOrphanedPlanFragment("through the business plan.", "hi")).toContain("आख़िरी हिस्सा");
+    expect(replyToOrphanedPlanFragment("What does the business plan include?", "en")).toBeNull();
   });
 });

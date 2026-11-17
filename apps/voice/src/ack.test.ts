@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ackFor } from "./ack";
 
 describe("ackFor", () => {
-  it("says Let me check to a question, Sure to a request, and nothing to a statement", () => {
-    expect(ackFor("What are your prices for the pro plan?", "en")).toBe("Let me check.");
+  it("uses a neutral acknowledgement for questions and requests, and nothing for a statement", () => {
+    expect(ackFor("What are your prices for the pro plan?", "en")).toBe("Sure.");
     expect(ackFor("I would like to book an appointment tomorrow", "en")).toBe("Sure.");
     expect(ackFor("My name is Karan and Saturday works for me", "en")).toBeNull();
     expect(ackFor("First of October and the timing would be 2pm", "en")).toBeNull();
@@ -11,6 +11,7 @@ describe("ackFor", () => {
   it("stays quiet for greetings, short replies, thanks and Hindi", () => {
     expect(ackFor("Hello", "en")).toBeNull();
     expect(ackFor("Hello how are you today", "en")).toBeNull();
+    expect(ackFor("who Hi, how are you?", "en")).toBeNull();
     expect(ackFor("yes please", "en")).toBeNull();
     expect(ackFor("आपकी कीमत क्या है बताइए", "en")).toBeNull();
     expect(ackFor("What are your prices for the pro plan?", "hi")).toBeNull();

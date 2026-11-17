@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { currentLang, isRtl } from "@/lib/i18n-server";
+import { ErrorReporter } from "@/components/error-reporter";
 import "./globals.css";
 
 export const metadata = { title: "Bizfy Voice AI", description: "Bizfy Voice AI: voice studio and call intelligence platform" };
@@ -12,7 +13,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const lang = await currentLang();
   return (
     <html lang={lang} dir={(await isRtl(lang)) ? "rtl" : "ltr"} data-theme={theme}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ErrorReporter />
+      </body>
     </html>
   );
 }

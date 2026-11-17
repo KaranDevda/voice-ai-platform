@@ -49,7 +49,8 @@ export function unknownPlanReply(
 export function normalizeBizfyPlanQuestion(text: string, previous?: string): string {
   const combined = `${previous ?? ""} ${text}`.replace(/\s+/g, " ").trim();
   if (/\bwhat are you\s*[?.!,]*\s*plants?\s+do you have\b/i.test(combined)) return "What plans do you have?";
-  return text;
+  // English Whisper often renders the brand plus "plans" as "Biswai plants" or "Bizfy plants".
+  return text.replace(/\b(?:biswai|bizwai|bisfai|bizfai|bizfy)\s+plants?\b/gi, "Bizfy plans");
 }
 
 /**
@@ -72,6 +73,7 @@ const GLOSSARY: Array<[string[], string]> = [
   [["सारांश", "समरी"], "summaries"],
   [["यूजर", "उपयोगकर्ता"], "users"],
   [["सपोर्ट", "सहायता", "मदद"], "support"],
+  [["सेवा", "सेवाएँ", "सेवाएं", "सर्विस", "सर्विसेज"], "services offer features"],
   [["सुरक्षा", "सिक्योरिटी", "डेटा"], "data security"],
   [["रिटेंशन", "कितने दिन", "कब तक", "रखा जाता", "रखते"], "retention days"],
   [["मोबाइल", "फोन", "एंड्रॉइड", "एंड्रॉयड"], "mobile phone android"],
@@ -111,4 +113,12 @@ export function hindiToEnglishKeywords(question: string): string {
   // "plans" must find "plan" in the documents: search the singular too.
   for (const w of [...out]) if (/^[a-z-]{4,}s$/i.test(w) && !/ss$/i.test(w)) out.push(w.slice(0, -1));
   return [...new Set(out.map((w) => w.toLowerCase()))].join(" ");
+}
+
+/** Add the terms used in the product FAQ when a caller asks for a general service overview. */
+export function expandServiceOverviewQuery(query: string): string {
+  const q = query.toLowerCase();
+  const overview = /\b(services|features|solutions|what do you offer|what can you do|what do you provide|what do you do|aapki services|kya services)\b|सेवाएँ|सेवाएं|सर्विस(?:ेस)?/iu;
+  if (!overview.test(q)) return query;
+  return `${query} plans AI phone assistant call tracking transcripts summaries unlimited leads`;
 }

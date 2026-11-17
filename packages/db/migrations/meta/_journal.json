@@ -204,6 +204,90 @@
       "when": 1794665177992,
       "tag": "0028_pending_phone_numbers",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794817162109,
+      "tag": "0029_campaign_caller_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794820463800,
+      "tag": "0030_campaign_auto_schedule",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794820783527,
+      "tag": "0031_campaign_ai_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794820798111,
+      "tag": "0032_campaign_template_ai_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794820800000,
+      "tag": "0033_campaign_model_worker",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794821337126,
+      "tag": "0034_api_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794821400000,
+      "tag": "0035_api_token_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794821400001,
+      "tag": "0036_sequence_step_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1794821400002,
+      "tag": "0037_campaign_agent_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794821400003,
+      "tag": "0038_app_errors",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794821400004,
+      "tag": "0039_cron_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794821400005,
+      "tag": "0040_translations",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,7 @@ import { dropFiller } from "./filler";
 import { askAgainSlow, greetingFix, sorryAgain, stillWorking, strictNote, wrongLanguage } from "./language";
 import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
-import { replyToGreeting, replyToIdentityQuestion } from "./small-talk";
+import { replyToGreeting, replyToIdentityQuestion, replyToOrphanedPlanFragment } from "./small-talk";
 import type { TranscriptSegment } from "@voiceai/shared";
 
 /** Speaks text as audio chunks in the engine's native format. Abort the signal to stop mid-sentence. */
@@ -357,6 +357,7 @@ export class Conversation {
       else if (userText) {
         scripted = replyToGreeting(userText, this.o.language, this.history.filter((m) => m.role === "user").at(-2)?.content)
           ?? replyToIdentityQuestion(userText, this.o.language)
+          ?? replyToOrphanedPlanFragment(userText, this.o.language)
           ?? scripted;
       }
     }

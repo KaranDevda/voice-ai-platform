@@ -21,6 +21,7 @@ export const smsMessages = pgTable(
     providerUuid: text("provider_uuid"),
     error: text("error"),
     enrollmentId: uuid("enrollment_id"),
+    sequenceStepPosition: integer("sequence_step_position"),
     createdBy: uuid("created_by"),
     createdAt: createdAt(),
     sentAt: tstz("sent_at"),

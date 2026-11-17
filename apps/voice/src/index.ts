@@ -6,19 +6,20 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { z } from "zod";
 import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims } from "@voiceai/auth";
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
-import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getLeadPhone, getPhoneConfig, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, reportMachine, getCampaignAudio, sentTextRecently, saveAiCall, resolveCallVoice, searchKnowledge, type Db } from "@voiceai/db";
+import { asc, eq } from "drizzle-orm";
+import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getCampaignAgentProfile, getLeadPhone, getPhoneConfig, getHandoffTimeoutSeconds, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, reportMachine, getCampaignAudio, saveAiCall, resolveCallVoice, searchKnowledge, isCampaignCallerId, type Db, withOrg, smsMessages } from "@voiceai/db";
 import {
-  createAskG1, createDeepgramLive, createPlivo, embeddingsFromEnv, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
+  createAskG1, createDeepgramLive, createPlivo, embeddingsFromEnv, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoSpeakHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
 import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
 import { MulawTo16k } from "./telephony-audio";
-import { hindiToEnglishKeywords, relevantExcerpt, unknownPlanReply } from "./knowledge";
+import { expandServiceOverviewQuery, hindiToEnglishKeywords, relevantExcerpt, unknownPlanReply } from "./knowledge";
 import { languageNote, sessionLanguageRule } from "./language";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { allowedOrigins, originAllowed } from "./origins";
-import { HANDOFF_HINDI } from "./handoff";
+import { HANDOFF_HINDI, PRACTICE_HANDOFF_ENGLISH, PRACTICE_HANDOFF_HINDI } from "./handoff";
 import { withFailover } from "./llm-failover";
 import { speakerNote, type Gender } from "./gender";
 import { Conversation, primeAck, type ServerEvent, type TtsEngine } from "./pipeline";
@@ -32,6 +33,18 @@ const REPO_DIR = fileURLToPath(new URL("../../..", import.meta.url));
 try { process.loadEnvFile(join(APP_DIR, ".env.local")); } catch { /* keys can also come from the real environment */ }
 const env = (k: string) => process.env[k]?.trim() || undefined;
 const embeddingProvider = embeddingsFromEnv();
+const PROFILE_STOP_WORDS = new Set(["the", "and", "for", "are", "you", "your", "what", "how", "does", "can", "with", "that", "this", "have", "has", "from", "about", "much", "many", "per", "tell", "please"]);
+
+function profileKnowledgeMatches(content: string, query: string, profileName: string): string[] {
+  const terms = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [])].filter((term) => !PROFILE_STOP_WORDS.has(term));
+  if (!terms.length) return [];
+  return content.split(/\n{2,}/).map((text, index) => ({
+    text: text.trim(),
+    index,
+    score: terms.reduce((n, term) => n + (text.toLowerCase().includes(term) ? 1 : 0), 0),
+  })).filter((row) => row.text && row.score > 0).sort((a, b) => b.score - a.score || a.index - b.index).slice(0, 2)
+    .map((row) => `${profileName}: ${relevantExcerpt(row.text, query)}`);
+}
 
 const PORT = Number(env("PORT") ?? 4001);
 const TOKEN_KEY = env("VOICE_TOKEN_SECRET") ?? env("SESSION_SECRET");
@@ -97,7 +110,9 @@ function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line
   const viaDeepgram = env("STT_PROVIDER") === "deepgram" || (env("STT_HINDI") === "deepgram" && language !== "en");
   if (!viaDeepgram && whisper) {
     // English callers often pause briefly between clauses; keep the longer VAD window and hold visibly incomplete text below.
-    const endSilenceMs = Number(env("ENDPOINTING_MS") ?? (language === "en" ? 650 : 400));
+    // Hindi and Hinglish speakers often pause briefly between clauses. 400 ms split product questions into tiny chunks,
+    // where Whisper repeated its prompt words; keep more context per decode for the non-English paths.
+    const endSilenceMs = Number(env("ENDPOINTING_MS") ?? (language === "en" ? 650 : 700));
     return createLocalWhisper({
       baseUrl: whisper,
       // A higher bar and a longer onset in "close" mode, so a nearby conversation does not start the AI talking or stop it.
@@ -292,6 +307,10 @@ async function buildSession(
   const tag = claims.sub.slice(0, 8);
   const voice = p.voice || claims.voice || "pocket:alba";
   const user = env("DATABASE_URL") ? await loadAuthUser(getDb(), claims.org, claims.sub).catch(() => null) : null;
+  const campaignProfile = claims.agentProfileId
+    ? await getCampaignAgentProfile(getDb(), claims.org, claims.agentProfileId)
+    : null;
+  if (claims.agentProfileId && !campaignProfile) throw new SessionRefused(4006, { type: "error", message: "The selected campaign agent profile is unavailable." });
   // Outbound: never place the call to a person who must not be called (SOP: DND, consent, 9am to 9pm India time).
   if (p.leadId) {
     if (!user?.permissions.includes("calls.place")) throw new SessionRefused(4004, { type: "error", message: "You are not allowed to place calls." });
@@ -304,7 +323,7 @@ async function buildSession(
   await findWebBase();
   const tts = await engineFor(voice, claims, io.send, p.language, o.phone);
   tts.cacheKey = `${voice}|${p.language}|${o.phone ? "phone" : "web"}${tts.variant ? `|${tts.variant}` : ""}`;
-  if (env("ACK") !== "off") for (const w of p.language === "en" ? ["Sure.", "Let me check."] : p.language === "hi" ? ["जी।"] : ["Sure.", "Let me check.", "जी।"]) void primeAck(tts, w);
+  if (env("ACK") !== "off") for (const w of p.language === "en" ? ["Sure."] : p.language === "hi" ? ["जी।"] : ["Sure.", "जी।"]) void primeAck(tts, w);
   // The organisation's own AI instruction and greeting (Settings), and its knowledge base, when this is a real signed-in user.
   let systemPrompt = systemPromptFor(p.language), greeting = GREETING, disclosure = "This call may be recorded.";
   let ground: ((text: string, previous?: string) => Promise<string[]>) | undefined;
@@ -312,14 +331,20 @@ async function buildSession(
   let aiChoice: { model: "default" | "openrouter"; openrouterModel: string } | undefined;
   if (user?.permissions.includes("studio.use")) {
     const cfg = await getAgentConfig(getDb(), user);
-    aiChoice = { model: cfg.model, openrouterModel: cfg.openrouterModel };
+    aiChoice = {
+      model: claims.aiModel ?? cfg.model,
+      openrouterModel: claims.aiModel === "openrouter" ? claims.openrouterModel ?? cfg.openrouterModel : cfg.openrouterModel,
+    };
     systemPrompt = `${cfg.systemPrompt}\n\n${voiceRulesFor(p.language)}`;
     greeting = `${cfg.disclosure} ${cfg.greeting}`.trim();
     disclosure = cfg.disclosure; // an A/B opening line replaces the greeting but never the AI and recording notice
-    handoff = { enabled: { person: true, complaint: cfg.handoffOnComplaint, payment: cfg.handoffOnPayment }, message: { en: cfg.handoffMessage, hi: HANDOFF_HINDI } };
+    handoff = {
+      enabled: { person: true, complaint: cfg.handoffOnComplaint, payment: cfg.handoffOnPayment },
+      message: o.phone ? { en: cfg.handoffMessage, hi: HANDOFF_HINDI } : { en: PRACTICE_HANDOFF_ENGLISH, hi: PRACTICE_HANDOFF_HINDI },
+    };
     const lookup = async (text: string) => {
       // The knowledge base is English and matched by words, so a Hindi question is searched by its English keywords.
-      const query = hindiToEnglishKeywords(text); // English words in the question, plus glossary words for Hindi and Hinglish
+      const query = expandServiceOverviewQuery(hindiToEnglishKeywords(text)); // English words in the question, plus glossary words for Hindi and Hinglish
       if (query && query !== text.toLowerCase().replace(/[^\p{L}\p{N} -]/gu, "").trim()) console.log(`[${tag}] searching the knowledge base for: ${query}`);
       if (!query) return [];
       let embedding: number[] | undefined;
@@ -338,6 +363,20 @@ async function buildSession(
       return found.length || !previous ? found : lookup(`${previous} ${text}`);
     };
   }
+  if (campaignProfile) {
+    systemPrompt = `${campaignProfile.instructions}\n\n${voiceRulesFor(p.language)}`;
+    const lookup = (text: string) => {
+      const query = expandServiceOverviewQuery(hindiToEnglishKeywords(text));
+      return query ? profileKnowledgeMatches(campaignProfile.knowledgeText, query, campaignProfile.name) : [];
+    };
+    ground = async (text, previous) => {
+      const found = lookup(text);
+      return found.length || !previous ? found : lookup(`${previous} ${text}`);
+    };
+  }
+  // The worker-issued token can override the organisation-wide model for this campaign, even if the campaign creator
+  // has call permission without Studio permission. The token is signed server-side and contains no provider secret.
+  if (claims.aiModel) aiChoice = { model: claims.aiModel, openrouterModel: claims.openrouterModel ?? "openai/gpt-4o-mini" };
   if (tts.gender) systemPrompt += speakerNote(tts.gender);
   systemPrompt += sessionLanguageRule(p.language);
   const model = llm(io.send, aiChoice);
@@ -484,7 +523,10 @@ app.post("/plivo/menu", async (req, res) => {
   if (choice === "hangup") return void res.type("text/xml").send(plivoHangupXml());
   if (choice === "person") {
     const to = cfg?.handoffNumber || env("PLIVO_HANDOFF_NUMBER");
-    if (to) return void res.type("text/xml").send(plivoDialXml(to));
+    if (!to) return void res.type("text/xml").send(plivoSpeakHangupXml(handoffUnavailable(q.data.lang ?? "en-hi")));
+    const timeoutS = await getHandoffTimeoutSeconds(getDb(), claims.org).catch(() => 30);
+    const actionUrl = `${PUBLIC_URL}/plivo/handoff-result?${new URLSearchParams({ org: claims.org, lang: q.data.lang ?? "en-hi" })}`;
+    return void res.type("text/xml").send(plivoDialXml(to, { timeoutS, actionUrl }));
   }
   res.type("text/xml").send(connectToAi(claims, { lang: q.data.lang, lead: q.data.lead, callUuid: body.CallUUID, from: body.From, op: q.data.op }));
 });
@@ -539,8 +581,10 @@ app.post("/plivo/sms", async (req, res) => {
 });
 
 /**
- * With "answer incoming texts automatically" on (Settings), the AI answers from the knowledge base. The answer is queued like any other
- * text, so the calling hours, Do Not Disturb, KYC and credit rules all still apply. At most one automatic reply per person per 10 minutes.
+ * With "answer incoming texts automatically" on (Settings), the AI answers from the knowledge base and keeps the conversation going
+ * across multiple messages: it reads the recent thread with this person and continues from where it left off. The answer is queued like
+ * any other text, so the calling hours, Do Not Disturb, KYC and credit rules all still apply. It only replies when the person last
+ * messaged (never when the AI already has the last word), which stops two automated agents talking to each other.
  */
 async function autoReplyToText(orgId: string, leadId: string, incoming: string) {
   try {
@@ -550,10 +594,20 @@ async function autoReplyToText(orgId: string, leadId: string, incoming: string) 
     if (!user?.permissions.includes("studio.use")) return;
     const cfg = await getAgentConfig(getDb(), user);
     const settings = await getPhoneConfigSms(orgId);
-    if (!settings || (await sentTextRecently(getDb(), user, leadId, 10))) return;
+    if (!settings) return;
+    // Only continue a conversation the person started: if the AI already has the last word, wait for them.
+    const history = await withOrg(getDb(), orgId, async (tx) => tx.select({ id: smsMessages.id, direction: smsMessages.direction, body: smsMessages.body, status: smsMessages.status })
+      .from(smsMessages).where(eq(smsMessages.leadId, leadId)).orderBy(asc(smsMessages.createdAt)).limit(50));
+    const last = history[history.length - 1];
+    if (last && last.direction === "outbound") return;
+    // Recent thread for multi-turn context (exclude the message we just saved).
+    const recent = history.slice(-8).filter((m) => m.direction === "inbound" || m.status === "sent");
+    const thread = recent
+      .map((m) => `${m.direction === "inbound" ? "Customer" : "AI"}: ${m.body}`)
+      .join("\n");
     const query = hindiToEnglishKeywords(incoming);
     const found = query ? (await searchKnowledge(getDb(), user, query, 2)).map((r) => `${r.title}: ${relevantExcerpt(r.content, query)}`) : [];
-    const system = `${cfg.systemPrompt}\n\nYou are replying to a TEXT MESSAGE. Reply in the same language and script as the sender, in at most 300 characters, plain text only, no markdown. Use only the facts below; if they do not cover the question, say a colleague will get back to them.\n\nFacts:\n${found.join("\n") || "(none)"}`;
+    const system = `${cfg.systemPrompt}\n\nYou are continuing a TEXT MESSAGE conversation. Reply in the same language and script as the sender, in at most 300 characters, plain text only, no markdown. Use only the facts below; if they do not cover the question, say a colleague will get back to them.\n\nFacts:\n${found.join("\n") || "(none)"}\n\nRecent thread:\n${thread || "(none)"}`;
     let reply = "";
     for await (const t of llm(undefined, { model: cfg.model, openrouterModel: cfg.openrouterModel }).chat({ messages: [{ role: "system", content: system }, { role: "user", content: incoming.slice(0, 600) }], signal: AbortSignal.timeout(20_000) })) { reply += t; if (reply.length > 600) break; }
     reply = reply.replace(/\s+/g, " ").trim().slice(0, 320);
@@ -569,7 +623,29 @@ app.post("/plivo/transfer", async (req, res) => {
   const org = z.string().uuid().safeParse(req.query.org);
   const own = org.success ? (await getPhoneConfig(getDb(), org.data).catch(() => null))?.handoffNumber : "";
   const to = own || env("PLIVO_HANDOFF_NUMBER");
-  res.type("text/xml").send(to ? plivoDialXml(to) : plivoHangupXml());
+  const lang = callLanguage.catch("en-hi").parse(req.query.lang);
+  if (!to || !org.success) return void res.type("text/xml").send(plivoSpeakHangupXml(handoffUnavailable(lang)));
+  const timeoutS = await getHandoffTimeoutSeconds(getDb(), org.data).catch(() => 30);
+  const actionUrl = `${PUBLIC_URL}/plivo/handoff-result?${new URLSearchParams({ org: org.data, lang })}`;
+  res.type("text/xml").send(plivoDialXml(to, { timeoutS, actionUrl }));
+});
+
+function handoffUnavailable(language: "en" | "hi" | "en-hi") {
+  if (language === "hi") return "माफ़ कीजिए, अभी मैं किसी सहयोगी से संपर्क नहीं कर पाया। कृपया कुछ देर बाद दोबारा कॉल करें।";
+  if (language === "en-hi") return "Sorry, abhi main team se connect nahi kar paaya. Please thodi der baad dobara call kijiye.";
+  return "Sorry, I couldn't reach a colleague right now. Please call again later.";
+}
+
+/** Plivo returns the call to this signed action URL when the colleague's phone stops ringing. */
+app.post("/plivo/handoff-result", async (req, res) => {
+  if (!fromPlivo(req)) return void res.status(403).type("text/plain").send("bad signature");
+  const query = z.object({ org: z.string().uuid(), lang: callLanguage.default("en-hi") }).safeParse(req.query);
+  const body = z.object({ DialStatus: z.enum(["completed", "busy", "failed", "cancel", "timeout", "no-answer"]) }).safeParse(req.body);
+  if (!query.success || !body.success) return void res.status(400).type("text/plain").send("bad request");
+  const text = body.data.DialStatus === "completed"
+    ? query.data.lang === "hi" ? "हमारी टीम से बात करने के लिए धन्यवाद। नमस्ते।" : query.data.lang === "en-hi" ? "Team se baat karne ke liye thank you. Namaste." : "Thanks for speaking with our team. Goodbye."
+    : handoffUnavailable(query.data.lang);
+  res.type("text/xml").send(plivoSpeakHangupXml(text));
 });
 
 /** Plivo reports whether an answering machine picked up (Machine=true). A machine gets no AI conversation: hang up, and the campaign tries again later. */
@@ -622,19 +698,22 @@ app.post("/plivo/hangup", async (req, res) => {
  * consent and calling-hours check as everywhere else runs BEFORE the phone is dialled.
  */
 app.post("/plivo/outbound", express.json({ limit: "4kb" }), async (req, res) => {
-  if (!phoneReady() || !env("PLIVO_NUMBER")) return void res.status(503).json({ error: "phone_not_configured" });
+  if (!phoneReady()) return void res.status(503).json({ error: "phone_not_configured" });
   const claims = verifyVoiceToken(/^Bearer (\S+)$/.exec(req.header("authorization") ?? "")?.[1] ?? "", TOKEN_KEY!);
-  const b = z.object({ leadId: z.string().uuid(), language: callLanguage.default("en-hi"), opening: z.string().trim().max(300).optional(), detectMachines: z.boolean().optional(), campaignAudio: z.string().uuid().optional() }).safeParse(req.body);
+  const b = z.object({ leadId: z.string().uuid(), language: callLanguage.default("en-hi"), callerId: z.string().regex(/^\+[1-9]\d{4,14}$/).optional(), opening: z.string().trim().max(300).optional(), detectMachines: z.boolean().optional(), campaignAudio: z.string().uuid().optional() }).safeParse(req.body);
   if (!claims || !b.success) return void res.status(claims ? 400 : 401).json({ error: claims ? "invalid_request" : "unauthenticated" });
   try {
     const user = await loadAuthUser(getDb(), claims.org, claims.sub);
     if (!user?.permissions.includes("calls.place")) return void res.status(403).json({ error: "forbidden" });
+    if (b.data.callerId && !(await isCampaignCallerId(getDb(), claims.org, b.data.callerId))) return void res.status(403).json({ error: "caller_id_not_assigned" });
+    const callerId = b.data.callerId ?? env("PLIVO_NUMBER");
+    if (!callerId) return void res.status(503).json({ error: "phone_not_configured" });
     const check = await checkOutboundCall(getDb(), user, b.data.leadId);
     if (!check.allowed) return void res.status(409).json({ error: "blocked", reason: check.reason, message: CALL_BLOCK_MESSAGES[check.reason] });
     const to = await getLeadPhone(getDb(), user, b.data.leadId);
     if (!to) return void res.status(404).json({ error: "unknown_lead" });
-    const t = signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice }, TOKEN_KEY!, 600); // 10 minutes to ring and be answered
-    const { callUuid } = await plivo!.makeCall({ from: env("PLIVO_NUMBER")!, to, answerUrl: `${PUBLIC_URL}/plivo/answer?${new URLSearchParams({ t, lead: b.data.leadId, lang: b.data.language, ...(b.data.opening ? { op: b.data.opening } : {}), ...(b.data.campaignAudio ? { ca: b.data.campaignAudio } : {}) })}`,
+    const t = signVoiceToken({ sub: claims.sub, org: claims.org, voice: claims.voice, aiModel: claims.aiModel, openrouterModel: claims.openrouterModel, agentProfileId: claims.agentProfileId }, TOKEN_KEY!, 600); // 10 minutes to ring and be answered
+    const { callUuid } = await plivo!.makeCall({ from: callerId, to, answerUrl: `${PUBLIC_URL}/plivo/answer?${new URLSearchParams({ t, lead: b.data.leadId, lang: b.data.language, ...(b.data.opening ? { op: b.data.opening } : {}), ...(b.data.campaignAudio ? { ca: b.data.campaignAudio } : {}) })}`,
       ...(b.data.campaignAudio ? { hangupUrl: `${PUBLIC_URL}/plivo/hangup?${new URLSearchParams({ t, lead: b.data.leadId })}` } : {}),
       ...(b.data.detectMachines ? { machineUrl: `${PUBLIC_URL}/plivo/machine?${new URLSearchParams({ lead: b.data.leadId })}` } : {}),
     });
@@ -659,7 +738,9 @@ function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams
   const transfer = () => {
     if (transferring || !plivo || !callUuid || !PUBLIC_URL) return;
     transferring = true;
-    plivo.transferCall({ callUuid, legUrl: `${PUBLIC_URL}/plivo/transfer?org=${claims.org}` }).then(() => console.log(`[${tag}] call handed to a person`), (e) => console.error(`[${tag}] hand-over failed:`, e instanceof Error ? e.message : e));
+    const lang = callLanguage.catch("en-hi").parse(q.get("language"));
+    const transferQuery = new URLSearchParams({ org: claims.org, lang });
+    plivo.transferCall({ callUuid, legUrl: `${PUBLIC_URL}/plivo/transfer?${transferQuery}` }).then(() => console.log(`[${tag}] call handed to a person`), (e) => console.error(`[${tag}] hand-over failed:`, e instanceof Error ? e.message : e));
   };
   const onEvent = (e: ServerEvent) => {
     if (e.type === "clear" && streamId) sendWs(plivoClearAudio(streamId));            // the caller interrupted: drop what is queued

@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
@@ -8,7 +8,7 @@ import { Field, Input } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
 import { formatDateTime, titleCase } from "@/lib/utils";
 
-interface Endpoint { id: string; name: string; url: string; events: string[]; active: boolean; createdAt: string; counts: Record<string, number>; lastDeliveredAt: string | null }
+interface Endpoint { id: string; name: string; url: string; events: string[]; active: boolean; createdAt: string; counts: Record<string, number>; lastDeliveredAt: string | null; test: { status: string; lastStatus: number | null; lastError: string | null; createdAt: string } | null }
 interface Delivery { id: string; endpointId: string; event: string; status: string; attempts: number; lastStatus: number | null; lastError: string | null; nextAttemptAt: string; createdAt: string }
 const TONE: Record<string, "success" | "danger" | "warning" | "neutral"> = { delivered: "success", failed: "danger", pending: "warning", sending: "warning" };
 const EVENT_NOTE: Record<string, string> = { "call.completed": "a call ended", "call.analyzed": "summary, sentiment and next step are ready", "lead.created": "a new lead", "lead.status_changed": "a lead's status changed" };
@@ -22,7 +22,14 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [secret, setSecret] = useState<{ name: string; value: string } | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
   const nameOf = (id: string) => endpoints.find((e) => e.id === id)?.name ?? "";
+
+  useEffect(() => {
+    if (!endpoints.some((e) => e.test?.status === "pending" || e.test?.status === "sending")) return;
+    const timer = setInterval(() => router.refresh(), 3_000);
+    return () => clearInterval(timer);
+  }, [endpoints, router]);
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -37,9 +44,16 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
   async function act(id: string, action: string) {
     if (action === "delete" && !confirm("Remove this address? Its delivery history goes too.")) return;
     setError("");
-    const res = await fetch(`/api/integrations/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) });
-    if (!res.ok) setError(((await res.json().catch(() => ({}))) as { message?: string }).message ?? "That did not work");
-    router.refresh();
+    if (action === "test") setTesting(id);
+    try {
+      const res = await fetch(`/api/integrations/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) });
+      if (!res.ok) setError(((await res.json().catch(() => ({}))) as { message?: string }).message ?? "That did not work");
+      router.refresh();
+    } catch {
+      setError("Could not reach the server. Try again.");
+    } finally {
+      if (action === "test") setTesting(null);
+    }
   }
   async function retry(id: string) {
     setError("");
@@ -81,15 +95,19 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
 
       {endpoints.map((e) => {
         const bad = (e.counts.failed ?? 0) > 0;
+        const testPending = e.test?.status === "pending" || e.test?.status === "sending";
+        const status = !e.active ? "Off" : e.test?.status === "delivered" ? "Test passed" : e.test?.status === "failed" ? "Test failed" : testPending ? "Test waiting" : bad ? "Has failures" : "Not tested";
+        const tone = !e.active ? "neutral" : e.test?.status === "delivered" ? "success" : e.test?.status === "failed" || bad ? "danger" : testPending ? "warning" : "neutral";
         return (
           <Card key={e.id}>
-            <CardHeader title={e.name} description={e.url} action={<Badge tone={!e.active ? "neutral" : bad ? "danger" : "success"}>{!e.active ? "Off" : bad ? "Has failures" : "Healthy"}</Badge>} />
+            <CardHeader title={e.name} description={e.url} action={<Badge tone={tone}>{status}</Badge>} />
             <CardBody className="grid gap-2 text-sm">
               <div className="text-muted-foreground">Last 7 days: {e.counts.delivered ?? 0} delivered · {(e.counts.pending ?? 0) + (e.counts.sending ?? 0)} waiting · {e.counts.failed ?? 0} failed{e.lastDeliveredAt ? ` · last delivered ${formatDateTime(e.lastDeliveredAt)}` : ""}</div>
+              {e.test ? <p role="status" className="text-muted-foreground">Last test {formatDateTime(e.test.createdAt)}: {titleCase(e.test.status)}{e.test.lastStatus ? ` · HTTP ${e.test.lastStatus}` : ""}{e.test.lastError ? ` · ${e.test.lastError}` : ""}</p> : <p className="text-muted-foreground">No connection test has run yet.</p>}
               <div>Events: {e.events.map((ev) => <code key={ev} className="mr-2">{ev}</code>)}</div>
               {canEdit && (
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => void act(e.id, "test")}>Send a test</Button>
+                  <Button size="sm" disabled={!e.active || testing === e.id || testPending} onClick={() => void act(e.id, "test")}>{testing === e.id ? "Queuing…" : testPending ? "Test pending…" : "Send a test"}</Button>
                   <Button size="sm" variant="outline" onClick={() => void act(e.id, e.active ? "disable" : "enable")}>{e.active ? "Turn off" : "Turn on"}</Button>
                   <Button size="sm" variant="outline" onClick={() => void act(e.id, "delete")}>Remove</Button>
                 </div>

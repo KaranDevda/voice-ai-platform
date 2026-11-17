@@ -37,9 +37,18 @@ describe("local Whisper speech-to-text", () => {
     const form = seen[0]!;
     expect(form.get("language")).toBe("hi");
     expect(form.get("prompt")).toContain("बिज़्फी");
+    expect(form.get("prompt")).toContain("एंटरप्राइज़ प्लान");
+    expect(form.get("prompt")).not.toContain("इस हफ़्ते डेमो चाहिए");
     const wav = new Uint8Array(await (form.get("file") as Blob).arrayBuffer());
     expect(String.fromCharCode(...wav.subarray(0, 4))).toBe("RIFF");
     expect(new DataView(wav.buffer, wav.byteOffset).getUint32(24, true)).toBe(16_000);
+  });
+
+  it("hints English Whisper with Bizfy and the plan names on a full question", async () => {
+    const seen: FormData[] = [];
+    await run(Int16Array.from([...quiet(500), ...tone(2400), ...quiet(900)]), fakeWhisper(() => "Bizfy plans", seen), "en");
+    expect(seen[0]!.get("prompt")).toContain("Business plan");
+    expect(seen[0]!.get("prompt")).toContain("Enterprise plan");
   });
 
   it("leaves the brand hint off short utterances, where it makes Whisper repeat itself", async () => {

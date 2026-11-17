@@ -250,6 +250,32 @@ describe("Conversation", () => {
     await convo.close();
   });
 
+  it("still answers a greeting when Whisper adds a stray leading word", async () => {
+    const seen: ChatMessage[][] = [];
+    const { convo, stt, events } = setup({ language: "en", llm: fakeLlm("model answer", { seen }) });
+    await convo.start();
+    stt.fire({ kind: "final", text: "who Hi, how are you?" });
+    await until(() => events.some((e) => e.type === "assistant"));
+    expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual([
+      "Hi! I'm doing well, thank you. How can I help you today?",
+    ]);
+    expect(seen).toHaveLength(0);
+    await convo.close();
+  });
+
+  it("asks the caller to repeat a clipped Business plan fragment without waiting for AskG1", async () => {
+    const seen: ChatMessage[][] = [];
+    const { convo, stt, events } = setup({ language: "en", llm: fakeLlm("model answer", { seen }) });
+    await convo.start();
+    stt.fire({ kind: "final", text: "through the business plan." });
+    await until(() => events.some((e) => e.type === "assistant"));
+    expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual([
+      "Sorry, I only caught the end of that. What would you like to know about the Business plan?",
+    ]);
+    expect(seen).toHaveLength(0);
+    await convo.close();
+  });
+
   it("answers identity truthfully and repairs a split plans question before knowledge search", async () => {
     const asked: string[] = [];
     const { convo, stt, events } = setup({
@@ -417,6 +443,27 @@ describe("Conversation", () => {
     await sleep(20);
     stt.fire({ kind: "final", text: "please explain more" });
     await until(() => events.some((e) => e.type === "clear"));
+    await convo.close();
+  });
+
+  it("cuts off the current answer on a confirmed Hindi interruption and sends the new question next", async () => {
+    const seen: ChatMessage[][] = [];
+    const { convo, stt, events, audio } = setup({
+      language: "hi",
+      llm: fakeLlm("पहला जवाब। दूसरा जवाब।", { seen }),
+      tts: fakeTts(8, 4), chunkMs: 1000, bargeOnVoice: false,
+    });
+    await convo.start();
+    stt.fire({ kind: "final", text: "बिज़नेस प्लान के बारे में बताइए" });
+    await until(() => audio.length >= 2);
+    stt.fire({ kind: "final", text: "इसके दाम क्या हैं?" });
+    await until(() => events.some((e) => e.type === "barge_in"));
+    await until(() => seen.length >= 2);
+    expect(seen[1]!.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "बिज़नेस प्लान के बारे में बताइए",
+      "इसके दाम क्या हैं?",
+    ]);
+    expect(audio.some((a) => a.includes("दूसरा जवाब"))).toBe(false);
     await convo.close();
   });
 

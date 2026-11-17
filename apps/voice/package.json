@@ -17,6 +17,7 @@
     "@voiceai/db": "workspace:*",
     "@voiceai/providers": "workspace:*",
     "@voiceai/shared": "workspace:*",
+    "drizzle-orm": "^0.45.4",
     "express": "^5.1.0",
     "ws": "^8.18.0",
     "zod": "^4.6.6"
