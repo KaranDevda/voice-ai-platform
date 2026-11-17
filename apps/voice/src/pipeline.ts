@@ -166,6 +166,14 @@ export class Conversation {
     if (this.o.greeting) { this.greetingPlaying = true; this.begin(null, this.o.greeting); }
   }
 
+  /** A supervisor speaks through the AI: whatever is playing is stopped and this text is said aloud to the caller next. */
+  interject(text: string): void {
+    if (this.closed || !text.trim()) return;
+    this.greetingPlaying = false;
+    this.bargeIn();
+    this.begin(null, text.trim());
+  }
+
   pushAudio(frame: Uint8Array): void {
     if (!this.closed) this.session?.send(frame);
   }

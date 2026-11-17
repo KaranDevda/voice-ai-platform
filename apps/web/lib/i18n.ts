@@ -3,6 +3,7 @@
  * To add a language, add its code to LANGUAGES and a column to each row below (order: es, fr, ar, zh, hi, pt, ru, ja, de).
  * Page bodies are still English: only the menu and the shell are translated so far.
  */
+import { BODY } from "./i18n-body";
 export const LANGUAGES = [
   { code: "en", name: "English" }, { code: "es", name: "Español" }, { code: "fr", name: "Français" }, { code: "ar", name: "العربية" }, { code: "zh", name: "中文" },
   { code: "hi", name: "हिन्दी" }, { code: "pt", name: "Português" }, { code: "ru", name: "Русский" }, { code: "ja", name: "日本語" }, { code: "de", name: "Deutsch" },
@@ -51,6 +52,8 @@ const ROWS: Record<string, string[]> = {
   "KYC verification": ["Verificación KYC", "Vérification KYC", "التحقق من الهوية (KYC)", "实名认证审核", "केवाईसी सत्यापन", "Verificação KYC", "Проверка KYC", "KYC確認", "KYC-Prüfung"],
   "Language": ["Idioma", "Langue", "اللغة", "语言", "भाषा", "Idioma", "Язык", "言語", "Sprache"],
 };
+
+for (const [k, v] of Object.entries(BODY)) ROWS[k] ??= v; // words used inside pages (see i18n-body.ts)
 
 /** `text` in the language, or in English when there is no translation. */
 /** Every text the interface can translate (the editor lists these). */

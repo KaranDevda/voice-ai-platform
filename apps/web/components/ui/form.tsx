@@ -1,5 +1,6 @@
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
+import { T } from "../t";
 
 const field = "w-full rounded-lg border border-border bg-card px-3 text-sm placeholder:text-muted-foreground focus:border-primary";
 
@@ -10,9 +11,9 @@ export const Textarea = ({ className, ...p }: TextareaHTMLAttributes<HTMLTextAre
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="grid gap-1.5 text-sm">
-      <span className="font-medium">{label}</span>
+      <span className="font-medium"><T>{label}</T></span>
       {children}
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+      {hint && <span className="text-xs text-muted-foreground"><T>{hint}</T></span>}
     </label>
   );
 }

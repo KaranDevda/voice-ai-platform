@@ -7,7 +7,7 @@ import { z } from "zod";
 import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims } from "@voiceai/auth";
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
 import { asc, eq } from "drizzle-orm";
-import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getCampaignAgentProfile, getLeadPhone, getPhoneConfig, getHandoffTimeoutSeconds, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, requestCallback, reportMachine, getCampaignAudio, saveAiCall, resolveCallVoice, searchKnowledge, isCampaignCallerId, type Db, withOrg, smsMessages } from "@voiceai/db";
+import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getCampaignAgentProfile, getLeadPhone, getPhoneConfig, getHandoffTimeoutSeconds, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, requestCallback, writeAudit, reportMachine, getCampaignAudio, saveAiCall, resolveCallVoice, searchKnowledge, isCampaignCallerId, type Db, withOrg, smsMessages } from "@voiceai/db";
 import {
   createAskG1, createDeepgramLive, createPlivo, embeddingsFromEnv, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoSpeakHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
@@ -259,6 +259,64 @@ app.get("/healthz", (_req, res) => res.json({ ok: true, sessions: connections })
 const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
 const sessions = new Set<Conversation>();
+
+/** Calls in progress that a supervisor may listen in on (and speak into). Keyed by call id; removed when the call ends. */
+interface LiveCall { id: string; org: string; teamId: string | null; direction: string; startedAt: number; convo: Conversation; subs: Set<WebSocket>; audio?: { encoding: string; rate: number } }
+const liveCalls = new Map<string, LiveCall>();
+const fanOut = (l: LiveCall | null, data: string | Buffer) => { if (l) for (const s of l.subs) if (s.readyState === 1) s.send(data); };
+/** Wraps a call's output so everything the AI says and plays is also sent to anyone listening in. Audio chunks are prefixed with 1 byte: 1 = AI audio, 2 = caller audio. */
+function tapIo(get: () => LiveCall | null, io: { send: (e: ServerEvent) => void; sendAudio: (c: Uint8Array) => void }) {
+  return {
+    send: (e: ServerEvent) => { io.send(e); const l = get(); if (!l) return; if (e.type === "ready") l.audio = e.audio; fanOut(l, JSON.stringify(e)); },
+    sendAudio: (c: Uint8Array) => { io.sendAudio(c); const l = get(); if (l?.subs.size) fanOut(l, Buffer.concat([Buffer.from([1]), c])); },
+  };
+}
+const tapCaller = (l: LiveCall | null, frame: Uint8Array) => { if (l?.subs.size) fanOut(l, Buffer.concat([Buffer.from([2]), frame])); };
+function registerLive(r: SessionRecord | null, convo: Conversation): LiveCall | null {
+  if (!r) return null;
+  const l: LiveCall = { id: r.callId, org: r.user.orgId, teamId: r.user.teamIds[0] ?? null, direction: r.direction, startedAt: r.startedAt.getTime(), convo, subs: new Set() };
+  liveCalls.set(l.id, l);
+  return l;
+}
+function unregisterLive(l: LiveCall | null) {
+  if (!l) return;
+  liveCalls.delete(l.id);
+  for (const s of l.subs) s.close(1000, "call ended");
+}
+/** What a supervisor may do with a call: listening needs wide read access (or read access to the call's own team); speaking also needs permission to place calls. */
+const canListen = (u: AuthUser, l: LiveCall) => u.permissions.includes("calls.read.all") || (u.permissions.includes("calls.read.team") && !!l.teamId && u.teamIds.includes(l.teamId));
+
+app.get("/live-calls", async (req, res) => {
+  const claims = TOKEN_KEY ? verifyVoiceToken(String(req.query.token ?? ""), TOKEN_KEY) : null;
+  if (!claims) return void res.status(401).json({ error: "unauthorized" });
+  const user = await loadAuthUser(getDb(), claims.org, claims.sub).catch(() => null);
+  if (!user) return void res.status(401).json({ error: "unauthorized" });
+  const calls = [...liveCalls.values()].filter((l) => l.org === claims.org && canListen(user, l))
+    .map((l) => ({ id: l.id, direction: l.direction, startedAt: l.startedAt, listeners: l.subs.size }));
+  res.set("cache-control", "no-store").json({ calls, canSpeak: user.permissions.includes("calls.place") });
+});
+
+/** A supervisor joins a live call: they hear both sides, read the transcript as it happens, and may have the AI say something. */
+async function handleListen(ws: WebSocket, claims: VoiceTokenClaims, callId: string) {
+  const l = liveCalls.get(callId);
+  const user = l && l.org === claims.org ? await loadAuthUser(getDb(), claims.org, claims.sub).catch(() => null) : null;
+  if (!l || !user || !canListen(user, l) || !liveCalls.has(callId)) return void ws.close(4404, "no such live call");
+  l.subs.add(ws);
+  const mayTalk = user.permissions.includes("calls.place");
+  ws.send(JSON.stringify({ type: "joined", canSpeak: mayTalk, audio: l.audio ?? null }));
+  void withOrg(getDb(), claims.org, (tx) => writeAudit(tx, { orgId: claims.org, actorUserId: claims.sub, action: "call.listen_in", entity: "live_call", after: { callId } })).catch(() => {});
+  ws.on("message", (data: RawData, isBinary: boolean) => {
+    if (isBinary || !mayTalk) return;
+    let m: { type?: string; text?: unknown };
+    try { m = JSON.parse(data.toString()); } catch { return; }
+    const text = typeof m.text === "string" ? m.text.trim().slice(0, 300) : "";
+    if (m.type !== "say" || !text) return;
+    l.convo.interject(text);
+    void withOrg(getDb(), claims.org, (tx) => writeAudit(tx, { orgId: claims.org, actorUserId: claims.sub, action: "call.barge_in", entity: "live_call", after: { callId, characters: text.length } })).catch(() => {});
+  });
+  ws.on("close", () => l.subs.delete(ws));
+  ws.on("error", () => ws.close());
+}
 /** Connections accepted and not yet closed. Counted from the moment they are accepted, because a call takes a moment to set up
  * and a burst of simultaneous calls would otherwise all pass the limit before any of them is counted. */
 let connections = 0;
@@ -267,7 +325,8 @@ server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url ?? "/", "http://x");
   const refuse = (code: number, why: string) => { socket.write(`HTTP/1.1 ${code} ${why}\r\nConnection: close\r\n\r\n`); socket.destroy(); };
   const isPhone = url.pathname === "/plivo/stream";
-  if (url.pathname !== "/stream" && !isPhone) return refuse(404, "Not Found");
+  const isListen = url.pathname === "/listen";
+  if (url.pathname !== "/stream" && !isPhone && !isListen) return refuse(404, "Not Found");
   // A browser must come from an allowed page. The phone carrier is not a browser: its audio stream is protected by the signed, short-lived token alone.
   if (!isPhone && !originAllowed(req.headers.origin, ORIGINS)) return refuse(403, "Forbidden");
   if (isPhone && !phoneReady()) return refuse(503, "Phone line not configured");
@@ -276,7 +335,7 @@ server.on("upgrade", (req, socket, head) => {
   if (connections >= MAX_SESSIONS) return refuse(503, "Busy");
   connections++;
   socket.once("close", () => { connections--; }); // the socket, not the WebSocket: it also fires if the upgrade never completes
-  wss.handleUpgrade(req, socket, head, (ws) => (isPhone ? handlePlivo(ws, claims, url.searchParams) : handle(ws, claims)));
+  wss.handleUpgrade(req, socket, head, (ws) => (isListen ? void handleListen(ws, claims, url.searchParams.get("call") ?? "") : isPhone ? handlePlivo(ws, claims, url.searchParams) : handle(ws, claims)));
 });
 
 /** Writes the finished call (log, transcript, and a hand-over audit entry) so it shows in the call logs. A call that fails to save is logged, never lost silently. */
@@ -408,12 +467,13 @@ function endSession(convo: Conversation, record: SessionRecord | null, tag: stri
 function handle(ws: WebSocket, claims: VoiceTokenClaims) {
   let convo: Conversation | null = null;
   let record: SessionRecord | null = null;
+  let live: LiveCall | null = null;
   const send = (e: ServerEvent) => { if (ws.readyState === 1) ws.send(JSON.stringify(e)); };
   const startTimer = setTimeout(() => ws.close(4000, "no start message"), 5000);
   const limit = setTimeout(() => ws.close(4001, "call time limit"), MAX_CALL_MS);
 
   ws.on("message", async (data: RawData, isBinary: boolean) => {
-    if (isBinary) { if (convo) convo.pushAudio(data as Buffer); return; }
+    if (isBinary) { if (convo) { convo.pushAudio(data as Buffer); tapCaller(live, data as Buffer); } return; }
     let msg: unknown;
     try { msg = JSON.parse(data.toString()); } catch { return; }
     if ((msg as { type?: string })?.type === "stop") return void ws.close(1000);
@@ -424,8 +484,9 @@ function handle(ws: WebSocket, claims: VoiceTokenClaims) {
     if (!parsed.success) { send({ type: "error", message: "invalid start message" }); return void ws.close(4002, "bad start"); }
     clearTimeout(startTimer);
     try {
-      const built = await buildSession(claims, parsed.data, { send, sendAudio: (chunk) => { if (ws.readyState === 1) ws.send(chunk); } }, { phone: false, direction: parsed.data.leadId ? "outbound" : "inbound" });
+      const built = await buildSession(claims, parsed.data, tapIo(() => live, { send, sendAudio: (chunk) => { if (ws.readyState === 1) ws.send(chunk); } }), { phone: false, direction: parsed.data.leadId ? "outbound" : "inbound" });
       convo = built.convo; record = built.record;
+      live = registerLive(record, convo);
       sessions.add(convo);
       await convo.start();
       console.log(`[${claims.sub.slice(0, 8)}] session started (${parsed.data.voice || claims.voice}, ${parsed.data.language}, listening: ${parsed.data.listen}); ${sessions.size} active`);
@@ -437,6 +498,7 @@ function handle(ws: WebSocket, claims: VoiceTokenClaims) {
   });
   ws.on("close", () => {
     clearTimeout(startTimer); clearTimeout(limit);
+    unregisterLive(live);
     if (convo) endSession(convo, record, claims.sub.slice(0, 8));
   });
   ws.on("error", () => ws.close());
@@ -746,6 +808,7 @@ app.post("/plivo/outbound", express.json({ limit: "4kb" }), async (req, res) => 
 function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams) {
   const tag = `phone ${claims.sub.slice(0, 6)}`;
   let convo: Conversation | null = null, record: SessionRecord | null = null;
+  let live: LiveCall | null = null;
   let streamId = "", callUuid = q.get("call") ?? "", started = false, transferring = false;
   const upsample = new MulawTo16k();
   const sendWs = (m: string) => { if (ws.readyState === 1) ws.send(m); };
@@ -770,7 +833,7 @@ function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams
   ws.on("message", async (data: RawData) => {
     const m = parsePlivoStreamMessage(data.toString());
     if (!m) return;
-    if (m.type === "media") { convo?.pushAudio(upsample.convert(m.audio)); return; }
+    if (m.type === "media") { const pcm = upsample.convert(m.audio); convo?.pushAudio(pcm); tapCaller(live, pcm); return; }
     if (m.type === "stop") return void ws.close(1000);
     if (m.type !== "start" || started) return;
     started = true; streamId = m.streamId; callUuid = m.callId || callUuid;
@@ -780,8 +843,9 @@ function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams
       // An incoming call is filed under the lead with the caller's number, when there is one.
       const leadId = lead ?? (user && from ? await findLeadIdByPhone(getDb(), user, from).catch(() => null) ?? undefined : undefined);
       const built = await buildSession(claims, { voice: claims.voice ?? "pocket:alba", language: callLanguage.catch("en-hi").parse(q.get("language")), greeting: true, listen: "anyone", leadId: lead, opening: q.get("op")?.slice(0, 300) || undefined },
-        { send: onEvent, sendAudio: (chunk) => sendWs(plivoPlayAudio(chunk)) }, { phone: true, direction: q.get("direction") === "outbound" ? "outbound" : "inbound", callId: callUuid || undefined });
+        tapIo(() => live, { send: onEvent, sendAudio: (chunk) => sendWs(plivoPlayAudio(chunk)) }), { phone: true, direction: q.get("direction") === "outbound" ? "outbound" : "inbound", callId: callUuid || undefined });
       convo = built.convo; record = built.record && leadId ? { ...built.record, leadId } : built.record;
+      live = registerLive(record, convo);
       sessions.add(convo);
       await convo.start();
       console.log(`[${tag}] call started (${q.get("direction")}); ${sessions.size} active`);
@@ -792,6 +856,7 @@ function handlePlivo(ws: WebSocket, claims: VoiceTokenClaims, q: URLSearchParams
   });
   ws.on("close", () => {
     clearTimeout(limit); clearTimeout(transferTimer);
+    unregisterLive(live);
     if (convo) endSession(convo, record, tag);
   });
   ws.on("error", () => ws.close());

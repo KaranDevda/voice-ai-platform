@@ -1,3 +1,4 @@
+import { T } from "../t";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -22,8 +23,8 @@ export function EmptyState({ title, description, icon: Icon }: { title: string; 
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
       {Icon && <Icon className="h-8 w-8 text-muted-foreground" aria-hidden />}
-      <p className="font-medium">{title}</p>
-      {description && <p className="max-w-sm text-sm text-muted-foreground">{description}</p>}
+      <p className="font-medium"><T>{title}</T></p>
+      {description && <p className="max-w-sm text-sm text-muted-foreground"><T>{description}</T></p>}
     </div>
   );
 }
@@ -45,10 +46,10 @@ export function Pager({ basePath, params, page, hasMore }: { basePath: string; p
   const cls = "rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted";
   return (
     <div className="flex items-center justify-between px-5 py-3 text-sm text-muted-foreground">
-      <span>Page {page}</span>
+      <span><T>Page</T> {page}</span>
       <div className="flex gap-2">
-        {page > 1 && <Link className={cls} href={href(page - 1)}>Previous</Link>}
-        {hasMore && <Link className={cls} href={href(page + 1)}>Next</Link>}
+        {page > 1 && <Link className={cls} href={href(page - 1)}><T>Previous</T></Link>}
+        {hasMore && <Link className={cls} href={href(page + 1)}><T>Next</T></Link>}
       </div>
     </div>
   );

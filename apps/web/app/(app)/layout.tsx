@@ -5,10 +5,11 @@ import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks } from "@/components/nav-links";
 import { LanguageSelect } from "@/components/language-select";
+import { I18nProvider } from "@/components/t";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { navFor, profileOf, requirePageUser } from "@/lib/page-auth";
-import { tr } from "@/lib/i18n";
+import { TRANSLATABLE, tr } from "@/lib/i18n";
 import { currentLang, languageOptions, overridesFor } from "@/lib/i18n-server";
 import { SESSION_COOKIE, verifyToken, type SessionClaims } from "@/lib/session";
 import { titleCase } from "@/lib/utils";
@@ -28,6 +29,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const over = await overridesFor(lang);
   const t = (text: string) => over[text] ?? tr(lang, text);
   const groups = rawGroups.map((g) => ({ label: t(g.label), items: g.items.map((i) => ({ ...i, label: t(i.label) })) }));
+  const dict = Object.fromEntries(TRANSLATABLE.map((k) => [k, t(k)] as const).filter(([k, v]) => v && v !== k));
   const langOptions = await languageOptions();
   const brand = profile.brand;
   const brandStyle = brand.primary
@@ -37,6 +39,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const impersonating = !!(await verifyToken<SessionClaims>(jar.get(SESSION_COOKIE)?.value, "session"))?.impBy;
 
   return (
+    <I18nProvider dict={dict}>
     <div className="min-h-screen md:flex md:flex-wrap" style={brandStyle}>
       {impersonating && <div className="w-full"><ImpersonationBanner email={profile.email} /></div>}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-border bg-card md:flex">
@@ -66,5 +69,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>
     </div>
+    </I18nProvider>
   );
 }

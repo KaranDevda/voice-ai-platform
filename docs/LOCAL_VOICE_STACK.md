@@ -106,6 +106,6 @@ The speech-to-text is the slowest part: the caller must be silent for 700 ms by 
 
 ## When AskG1 is down: the backup AI
 
-`pnpm dev:stack` also starts Llama 3.2 3B (llama.cpp, port 8090) when its model file is complete. The voice service uses it only when AskG1 cannot be reached, errors, or does not start answering within 8 seconds (`ASKG1_FIRST_TOKEN_TIMEOUT_MS`). Set `LOCAL_LLM_URL=http://127.0.0.1:8090` in `apps/voice/.env.local` (already in `.env.example`). The Live page shows a notice whenever the backup is the one answering, and the log says `AskG1 skipped (...)`.
+If `.local/llama.cpp` is missing, install the program with `brew install llama.cpp`; `pnpm dev:stack` finds `llama-server` on its own. `pnpm dev:stack` also starts Llama 3.2 3B (llama.cpp, port 8090) when its model file is complete. The voice service uses it only when AskG1 cannot be reached, errors, or does not start answering within 8 seconds (`ASKG1_FIRST_TOKEN_TIMEOUT_MS`). Set `LOCAL_LLM_URL=http://127.0.0.1:8090` in `apps/voice/.env.local` (already in `.env.example`). The Live page shows a notice whenever the backup is the one answering, and the log says `AskG1 skipped (...)`.
 
 The backup is a small model: it follows the knowledge base reasonably in English, and is noticeably weaker in Hindi (it can make up plan names or get a yes/no wrong). It is a safety net so calls do not fail, not a replacement for AskG1. After the first failure the service goes straight to the backup for 2 minutes, then tries AskG1 again.

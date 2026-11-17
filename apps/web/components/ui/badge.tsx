@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn, titleCase } from "@/lib/utils";
+import { T } from "../t";
 
 const tones = {
   neutral: "bg-muted text-muted-foreground",
@@ -12,7 +13,7 @@ const tones = {
 export type Tone = keyof typeof tones;
 
 export function Badge({ tone = "neutral", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", tones[tone], className)}>{children}</span>;
+  return <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", tones[tone], className)}><T>{children}</T></span>;
 }
 
 const LEAD_TONE: Record<string, Tone> = {
