@@ -11,7 +11,7 @@ import { formatDateTime, titleCase } from "@/lib/utils";
 type Gateway = "razorpay" | "stripe" | "paypal" | "paystack" | "flutterwave" | "cryptomus";
 const GATEWAYS: { id: Gateway; label: string; currencies: string[] }[] = [
   { id: "razorpay", label: "Razorpay (UPI, cards, netbanking)", currencies: ["INR"] },
-  { id: "stripe", label: "Stripe (cards)", currencies: ["INR"] },
+  { id: "stripe", label: "Stripe (cards)", currencies: ["INR", "USD", "EUR", "GBP"] },
   { id: "paypal", label: "PayPal", currencies: ["USD", "EUR", "GBP"] },
   { id: "paystack", label: "Paystack", currencies: ["NGN", "GHS", "ZAR", "USD"] },
   { id: "flutterwave", label: "Flutterwave", currencies: ["USD", "NGN", "GHS", "KES", "ZAR"] },
@@ -49,6 +49,7 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
   const [imported, setImported] = useState<{ saved: number; problems: { row: number; reason: string }[] } | null>(null);
   const [fx, setFx] = useState({ currency: "USD", rupees: 83 });
 
+  const usdRate = exchange.find((e) => e.currency === "USD")?.paisePerUnit;
   const fxRate = exchange.find((e) => e.currency === currency)?.paisePerUnit;
   const credit = currency === "INR" ? Math.round(amount * 100) : fxRate ? Math.round(amount * fxRate) : null;
   const pickGateway = (id: Gateway) => { setGateway(id); setCurrency(GATEWAYS.find((x) => x.id === id)!.currencies[0]!); };
@@ -120,7 +121,7 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <Card>
         <CardHeader title="Balance" description={billing.enabled ? `Standard prices: AI calls ${rupees(billing.callPerMinPaise)} per minute · texts ${rupees(billing.smsPaise)} each${billing.enforce ? " · calls and texts stop at zero" : ""}` : "Billing is off: nothing is charged. Turn it on in Settings."} />
-        <CardBody><p className={`text-3xl font-semibold ${balancePaise <= 0 && billing.enabled ? "text-danger" : ""}`}>{rupees(balancePaise)}</p></CardBody>
+        <CardBody><p className={`text-3xl font-semibold ${balancePaise <= 0 && billing.enabled ? "text-danger" : ""}`}>{rupees(balancePaise)}</p>{usdRate ? <p className="mt-1 text-sm text-muted-foreground">≈ ${(balancePaise / usdRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD at today's rate</p> : null}</CardBody>
       </Card>
 
       {low && <p role="status" className="rounded-lg border border-warning bg-warning-soft px-4 py-3 text-sm">Your balance is under the {rupees(billing.lowBalancePaise)} limit you set in Settings. Add credit below{billing.enforce ? ", or calls and texts stop at zero" : ""}.</p>}

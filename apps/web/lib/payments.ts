@@ -31,7 +31,7 @@ export const appUrl = (req: Request) => (env("APP_URL") ?? new URL(req.url).orig
 export function gatewayStatus(base: string) {
   const defs: { id: string; label: string; keys: string[]; webhookKeys: string[]; path: string; note: string }[] = [
     { id: "razorpay", label: "Razorpay", keys: ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"], webhookKeys: ["RAZORPAY_WEBHOOK_SECRET"], path: "razorpay-webhook", note: "Webhook event: payment_link.paid" },
-    { id: "stripe", label: "Stripe", keys: ["STRIPE_SECRET_KEY"], webhookKeys: ["STRIPE_WEBHOOK_SECRET"], path: "stripe-webhook", note: "Webhook events: checkout.session.completed and checkout.session.async_payment_succeeded" },
+    { id: "stripe", label: "Stripe", keys: ["STRIPE_SECRET_KEY"], webhookKeys: ["STRIPE_WEBHOOK_SECRET"], path: "stripe-webhook", note: "Webhook events: checkout.session.completed, checkout.session.async_payment_succeeded, charge.refunded and charge.dispute.created (the last two take credit back automatically)" },
     { id: "paypal", label: "PayPal", keys: ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"], webhookKeys: ["PAYPAL_WEBHOOK_ID"], path: "paypal-webhook", note: "Webhook event: PAYMENT.CAPTURE.COMPLETED. Set PAYPAL_BASE_URL to the sandbox address while testing." },
     { id: "paystack", label: "Paystack", keys: ["PAYSTACK_SECRET_KEY"], webhookKeys: [], path: "paystack-webhook", note: "Webhook event: charge.success (signed with the secret key)" },
     { id: "flutterwave", label: "Flutterwave", keys: ["FLUTTERWAVE_SECRET_KEY"], webhookKeys: ["FLUTTERWAVE_SECRET_HASH"], path: "flutterwave-webhook", note: "Set the same secret hash in their dashboard" },

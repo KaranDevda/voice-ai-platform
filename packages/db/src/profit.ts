@@ -49,6 +49,9 @@ export async function profitReport(db: Db, actor: AuthUser, days = 30): Promise<
   assertAuthorized(actor, "platform.admin");
   const d = Math.max(1, Math.min(366, Math.round(days)));
   const costs = await getCarrierCosts(db, actor);
+  // A country with its own carrier cost (Pricing rules) is costed at that; every other country at the platform-wide cost.
+  const perCountry = new Map((await db.execute<{ country: string; c: number; s: number }>(sql`select country, call_cost_per_min_paise as c, sms_cost_paise as s from carrier_costs`)).rows.map((x) => [x.country, { callPerMinPaise: x.c, smsPaise: x.s }]));
+  const costOf = (country: string): CarrierCosts => perCountry.get(country) ?? costs;
   const usage = await db.execute<{ org_id: string; org_name: string; day: string; kind: string; country: string; amount_paise: string; units: string }>(sql`select * from platform_usage_rows(${d})`);
   const money = await db.execute<{ org_id: string; org_name: string; topups_paise: string; balance_paise: string }>(sql`select * from platform_money(${d})`);
   const orgs = new Map(money.rows.map((m) => [m.org_id, { orgId: m.org_id, orgName: m.org_name, topupsPaise: Number(m.topups_paise), balancePaise: Number(m.balance_paise), ...empty() }]));
@@ -56,10 +59,11 @@ export async function profitReport(db: Db, actor: AuthUser, days = 30): Promise<
   for (const r of usage.rows) {
     const amount = Number(r.amount_paise), units = Number(r.units), dayKey = typeof r.day === "string" ? r.day.slice(0, 10) : new Date(r.day).toISOString().slice(0, 10);
     const o = orgs.get(r.org_id);
-    if (o) add(o, r.kind, amount, units, costs);
-    const c = r.country; if (!country.has(c)) country.set(c, { country: c, ...empty() }); add(country.get(c)!, r.kind, amount, units, costs);
-    if (!day.has(dayKey)) day.set(dayKey, { day: dayKey, ...empty() }); add(day.get(dayKey)!, r.kind, amount, units, costs);
-    add(total, r.kind, amount, units, costs);
+    const k = costOf(r.country);
+    if (o) add(o, r.kind, amount, units, k);
+    const c = r.country; if (!country.has(c)) country.set(c, { country: c, ...empty() }); add(country.get(c)!, r.kind, amount, units, k);
+    if (!day.has(dayKey)) day.set(dayKey, { day: dayKey, ...empty() }); add(day.get(dayKey)!, r.kind, amount, units, k);
+    add(total, r.kind, amount, units, k);
   }
   const byOrg = [...orgs.values()];
   return {

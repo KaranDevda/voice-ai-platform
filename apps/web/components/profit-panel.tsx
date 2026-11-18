@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button, buttonClass } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
-import { Field, Input } from "./ui/form";
+import { Field, Input, Select } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
+import { priceWithMargin, marginOfRevenuePct } from "@voiceai/shared";
 
 interface Bucket { revenuePaise: number; callMinutes: number; texts: number; costPaise: number; profitPaise: number }
 interface Report {
@@ -15,16 +16,41 @@ interface Report {
   byCountry: (Bucket & { country: string })[];
   byDay: (Bucket & { day: string })[];
 }
+interface CarrierCost { country: string; callCostPerMinPaise: number; smsCostPaise: number; marginPct: number; callPricePaise: number; smsPricePaise: number }
 const rs = (p: number) => `${p < 0 ? "-" : ""}Rs ${(Math.abs(p) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const tone = (p: number) => (p < 0 ? "text-danger" : "text-success");
 
 /** Revenue, estimated carrier cost and profit; carrier costs can be edited here. */
-export function ProfitPanel({ report: r }: { report: Report }) {
+export function ProfitPanel({ report: r, carrierCosts, defaultMarginPct }: { report: Report; carrierCosts: CarrierCost[]; defaultMarginPct: number }) {
   const router = useRouter();
   const [call, setCall] = useState(r.costs.callPerMinPaise);
   const [sms, setSms] = useState(r.costs.smsPaise);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [rule, setRule] = useState({ country: "", call: 0, sms: 0, margin: defaultMarginPct });
+  const [orgId, setOrgId] = useState(r.byOrg[0]?.orgId ?? "");
+  const [ruleNote, setRuleNote] = useState("");
+  const [ruleError, setRuleError] = useState("");
+
+  async function api(url: string, method: string, body?: unknown) {
+    const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+    return { ok: res.ok, b: await res.json().catch(() => ({})) as any };
+  }
+  const failRule = (b: any) => setRuleError(b.message ?? b.issues?.[0]?.message ?? b.error ?? "Could not save");
+  async function saveRule(e: FormEvent) {
+    e.preventDefault(); setRuleError(""); setRuleNote("");
+    const { ok, b } = await api("/api/platform/carrier-costs", "POST", { country: rule.country, callCostPerMinPaise: rule.call, smsCostPaise: rule.sms, marginPct: rule.margin });
+    if (!ok) return failRule(b);
+    setRuleNote(`${b.country}: calls sell at ${rs(b.callPricePaise)}/min, texts at ${rs(b.smsPricePaise)}.`); setRule((x) => ({ ...x, country: "", call: 0, sms: 0 })); router.refresh();
+  }
+  async function removeRule(country: string) { await api(`/api/platform/carrier-costs?country=${country}`, "DELETE"); router.refresh(); }
+  async function apply() {
+    setRuleError(""); setRuleNote("");
+    const { ok, b } = await api("/api/platform/carrier-costs/apply", "POST", { orgId });
+    if (!ok) return failRule(b);
+    setRuleNote(`Prices set for ${b.applied} countries on ${r.byOrg.find((o) => o.orgId === orgId)?.orgName ?? "the organisation"}.`); router.refresh();
+  }
+  async function saveDefault() { const { ok, b } = await api("/api/platform/carrier-costs", "POST", { defaultMarginPct: rule.margin }); if (!ok) return failRule(b); setRuleError(""); setRuleNote(`Default margin set to ${b.defaultMarginPct}%.`); }
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -35,8 +61,8 @@ export function ProfitPanel({ report: r }: { report: Report }) {
     setSaved(true); router.refresh();
   }
   const noCosts = r.costs.callPerMinPaise === 0 && r.costs.smsPaise === 0;
-  const cols = <><Th>Charged</Th><Th>Call min</Th><Th>Texts</Th><Th>Est. carrier cost</Th><Th>Est. profit</Th></>;
-  const nums = (b: Bucket) => <><Td>{rs(b.revenuePaise)}</Td><Td>{b.callMinutes}</Td><Td>{b.texts}</Td><Td>{rs(b.costPaise)}</Td><Td className={tone(b.profitPaise)}>{rs(b.profitPaise)}</Td></>;
+  const cols = <><Th>Charged</Th><Th>Call min</Th><Th>Texts</Th><Th>Est. carrier cost</Th><Th>Est. profit</Th><Th>Margin</Th></>;
+  const nums = (b: Bucket) => <><Td>{rs(b.revenuePaise)}</Td><Td>{b.callMinutes}</Td><Td>{b.texts}</Td><Td>{rs(b.costPaise)}</Td><Td className={tone(b.profitPaise)}>{rs(b.profitPaise)}</Td><Td>{marginOfRevenuePct(b.revenuePaise, b.costPaise)}%</Td></>;
 
   return (
     <div className="grid gap-6">
@@ -65,6 +91,33 @@ export function ProfitPanel({ report: r }: { report: Report }) {
           {noCosts && <p className="mt-2 text-sm text-warning">No carrier costs set yet, so the profit shown is not real.</p>}
           {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
           {saved && <p role="status" className="mt-2 text-sm text-success">Saved.</p>}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Pricing rules" description="Per country: what the carrier charges you plus the profit margin you want on top. The selling price is cost + margin (rounded up). Press Apply to set an organisation's prices to these. Profit reports use each country's cost here; other countries use the carrier costs above." />
+        <CardBody className="grid gap-4">
+          <form onSubmit={saveRule} className="grid gap-3 sm:grid-cols-5">
+            <Field label="Country (2 letters)"><Input value={rule.country} maxLength={2} placeholder="IN" onChange={(e) => setRule((x) => ({ ...x, country: e.target.value.toUpperCase() }))} /></Field>
+            <Field label="Carrier cost per call min (paise)"><Input type="number" min={0} max={100000} value={rule.call} onChange={(e) => setRule((x) => ({ ...x, call: Math.round(Number(e.target.value)) }))} /></Field>
+            <Field label="Carrier cost per text (paise)"><Input type="number" min={0} max={100000} value={rule.sms} onChange={(e) => setRule((x) => ({ ...x, sms: Math.round(Number(e.target.value)) }))} /></Field>
+            <Field label="Margin on top (%)"><Input type="number" min={0} max={1000} step="0.5" value={rule.margin} onChange={(e) => setRule((x) => ({ ...x, margin: Number(e.target.value) }))} /></Field>
+            <div className="flex items-end gap-2"><Button type="submit">Save rule</Button><Button type="button" variant="outline" onClick={() => void saveDefault()}>Keep as default</Button></div>
+          </form>
+          {rule.call + rule.sms > 0 && <p className="text-sm text-muted-foreground">Preview: calls sell at {rs(priceWithMargin(rule.call, Math.min(1000, Math.max(0, rule.margin || 0))))}/min, texts at {rs(priceWithMargin(rule.sms, Math.min(1000, Math.max(0, rule.margin || 0))))}.</p>}
+          {carrierCosts.length > 0 && (
+            <Table><thead><tr><Th>Country</Th><Th>Carrier cost / min</Th><Th>Carrier cost / text</Th><Th>Margin</Th><Th>Sells at / min</Th><Th>Sells at / text</Th><Th>{""}</Th></tr></thead>
+              <tbody>{carrierCosts.map((c) => <Tr key={c.country}><Td className="font-medium">{c.country}</Td><Td>{rs(c.callCostPerMinPaise)}</Td><Td>{rs(c.smsCostPaise)}</Td><Td>{c.marginPct}%</Td><Td>{rs(c.callPricePaise)}</Td><Td>{rs(c.smsPricePaise)}</Td>
+                <Td className="text-end"><Button size="sm" variant="outline" onClick={() => setRule({ country: c.country, call: c.callCostPerMinPaise, sms: c.smsCostPaise, margin: c.marginPct })}>Edit</Button> <Button size="sm" variant="outline" onClick={() => void removeRule(c.country)}>Remove</Button></Td></Tr>)}</tbody></Table>
+          )}
+          {carrierCosts.length > 0 && (
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Apply these prices to"><Select value={orgId} onChange={(e) => setOrgId(e.target.value)}>{r.byOrg.map((o) => <option key={o.orgId} value={o.orgId}>{o.orgName}</option>)}</Select></Field>
+              <Button type="button" disabled={!orgId} onClick={() => void apply()}>Apply margins</Button>
+            </div>
+          )}
+          {ruleError && <p role="alert" className="text-sm text-danger">{ruleError}</p>}
+          {ruleNote && <p role="status" className="text-sm text-success">{ruleNote}</p>}
         </CardBody>
       </Card>
 

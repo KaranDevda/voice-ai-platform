@@ -19,6 +19,7 @@ export * from "./callbacks";
 export * from "./billing";
 export * from "./platform-admin";
 export * from "./profit";
+export * from "./pricing";
 export * from "./integrations";
 export * from "./widgets";
 export * from "./password";

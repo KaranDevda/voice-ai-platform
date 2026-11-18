@@ -34,10 +34,12 @@ describe("gateway calls", () => {
   it("Stripe checkout is made in rupees with our payment id", async () => {
     let form = "";
     const p = createPayments({ stripeSecretKey: "sk", fetch: (async (_u: string, init: any) => { form = String(init.body); return new Response(JSON.stringify({ id: "cs_1", url: "https://checkout.stripe.com/x" })); }) as any });
-    expect(await p.stripeCheckout({ amountPaise: 50000, paymentId: "pay-uuid", description: "Credit", successUrl: "https://a/s", cancelUrl: "https://a/c" })).toEqual({ id: "cs_1", url: "https://checkout.stripe.com/x" });
+    expect(await p.stripeCheckout({ amountMinor: 50000, currency: "INR", paymentId: "pay-uuid", description: "Credit", successUrl: "https://a/s", cancelUrl: "https://a/c" })).toEqual({ id: "cs_1", url: "https://checkout.stripe.com/x" });
     expect(form).toContain("line_items%5B0%5D%5Bprice_data%5D%5Bcurrency%5D=inr");
     expect(form).toContain("unit_amount%5D=50000");
     expect(form).toContain("client_reference_id=pay-uuid");
+    await p.stripeCheckout({ amountMinor: 1000, currency: "USD", paymentId: "p2", description: "Credit", successUrl: "https://a/s", cancelUrl: "https://a/c" });
+    expect(form).toContain("%5Bcurrency%5D=usd"); expect(form).toContain("%5Bunit_amount%5D=1000");
   });
   it("says so plainly when a gateway is not set up", async () => {
     await expect(createPayments({}).razorpayLink({ amountPaise: 10000, paymentId: "x", description: "c", callbackUrl: "https://a" })).rejects.toThrow(/not set up/);
@@ -75,5 +77,12 @@ describe("more gateways", () => {
     expect(await p.paypalOrder({ amountMinor: 1000, currency: "USD", paymentId: "pid", description: "Credit", returnUrl: "https://a/r", cancelUrl: "https://a/c" })).toEqual({ id: "ORD1", url: "https://paypal.test/approve" });
     expect(await p.paypalCapture("ORD1")).toEqual({ completed: true, captureId: "CAP1", amountMinor: 1000, currency: "USD" });
     expect(calls).toContain("POST /v2/checkout/orders/ORD1/capture");
+  });
+  it("Flutterwave: verifies a transaction with the secret key and reports what Flutterwave says", async () => {
+    let url = "", auth = "";
+    const reply = (body: unknown) => createPayments({ flutterwaveSecretKey: "FLWSECK_TEST-x", fetch: (async (u: string, init: any) => { url = u; auth = init.headers.authorization; return new Response(JSON.stringify(body)); }) as any });
+    expect(await reply({ status: "success", data: { id: 99, tx_ref: "pid-1", status: "successful", amount: 10.5, currency: "NGN" } }).flutterwaveVerify("99")).toEqual({ successful: true, txRef: "pid-1", amountMinor: 1050, currency: "NGN", id: "99" });
+    expect(url).toBe("https://api.flutterwave.com/v3/transactions/99/verify"); expect(auth).toBe("Bearer FLWSECK_TEST-x");
+    expect((await reply({ status: "success", data: { id: 99, tx_ref: "pid-1", status: "failed", amount: 10, currency: "NGN" } }).flutterwaveVerify("99")).successful).toBe(false);
   });
 });

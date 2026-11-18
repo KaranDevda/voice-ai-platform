@@ -55,7 +55,7 @@ export async function getBilling(db: Db, actor: AuthUser) {
 
 export type Gateway = "razorpay" | "stripe" | "paypal" | "paystack" | "flutterwave" | "cryptomus";
 /** The currencies each gateway is offered in. Rupee gateways take rupees; the others need an exchange rate (set by platform staff). */
-export const GATEWAY_CURRENCIES: Record<Gateway, readonly string[]> = { razorpay: ["INR"], stripe: ["INR"], paypal: ["USD", "EUR", "GBP"], paystack: ["NGN", "GHS", "ZAR", "USD"], flutterwave: ["USD", "NGN", "GHS", "KES", "ZAR"], cryptomus: ["USD"] };
+export const GATEWAY_CURRENCIES: Record<Gateway, readonly string[]> = { razorpay: ["INR"], stripe: ["INR", "USD", "EUR", "GBP"], paypal: ["USD", "EUR", "GBP"], paystack: ["NGN", "GHS", "ZAR", "USD"], flutterwave: ["USD", "NGN", "GHS", "KES", "ZAR"], cryptomus: ["USD"] };
 
 /**
  * Records that a top-up is starting (not yet paid, not yet credited). The amount is in the gateway's currency (`amountMinor`: paise or cents);
@@ -91,6 +91,16 @@ export type PaymentOutcome = "credited" | "already" | "unknown" | "amount_mismat
 /** The gateway said this payment succeeded (its webhook, after the signature was checked). Credits once, and only if the amount matches. */
 export async function markPaymentPaid(db: Db, gateway: Gateway, gatewayRef: string, gatewayPaymentId: string | null, amountMinor: number | null, currency: string | null = null): Promise<PaymentOutcome> {
   const r = await db.execute<{ r: PaymentOutcome }>(sql`select payment_mark_paid(${gateway}, ${gatewayRef}, ${gatewayPaymentId}, ${amountMinor}::bigint, ${currency}) as r`);
+  return r.rows[0]!.r;
+}
+
+export type ReversalOutcome = "reversed" | "already" | "unknown";
+/**
+ * A gateway took money back (refund or chargeback). Takes the matching credit back, once per event, never more than the payment credited.
+ * `paymentRef` is the gateway's own payment id (kept when the payment was credited); `mode` "cumulative" = total refunded so far, "add" = one more amount.
+ */
+export async function reversePayment(db: Db, gateway: Gateway, paymentRef: string, amountMinor: number, mode: "cumulative" | "add", eventKey: string): Promise<ReversalOutcome> {
+  const r = await db.execute<{ r: ReversalOutcome }>(sql`select payment_reverse(${gateway}, ${paymentRef}, ${amountMinor}::bigint, ${mode}, ${eventKey}) as r`);
   return r.rows[0]!.r;
 }
 
@@ -243,11 +253,11 @@ export async function platformBalances(db: Db, actor: AuthUser, days = 30) {
 const AUTO_CURRENCIES = ["USD", "EUR", "GBP", "NGN", "GHS", "ZAR", "KES"];
 
 /**
- * Platform staff: sets every rate (for the currencies already listed, plus the ones the gateways take) from the market rate of the day
+ * Sets every rate (for the currencies already listed, plus the ones the gateways take) from the market rate of the day
  * (open.er-api.com, free, no key). Rates are paise per one unit. A rate that comes back strange (zero, or moving more than 25 percent at once) is skipped and listed.
+ * `audit` runs inside the transaction (staff refreshes are audited; the scheduled refresh has no person to attribute it to).
  */
-export async function refreshExchangeRates(db: Db, actor: AuthUser, fetcher: typeof fetch = fetch) {
-  assertAuthorized(actor, "platform.admin");
+async function applyMarketRates(db: Db, fetcher: typeof fetch, audit?: (tx: DbTx, summary: { updated: number; skipped: number }) => Promise<void>) {
   const res = await fetcher("https://open.er-api.com/v6/latest/INR", { signal: AbortSignal.timeout(10_000) }).catch(() => null);
   const body = res?.ok ? ((await res.json().catch(() => null)) as { result?: string; rates?: Record<string, number> } | null) : null;
   if (!body || body.result !== "success" || !body.rates) throw new BillingError("The market rate service did not answer. Try again in a minute, or set the rates by hand.");
@@ -263,10 +273,25 @@ export async function refreshExchangeRates(db: Db, actor: AuthUser, fetcher: typ
       await tx.execute(sql`insert into exchange_rates (currency, paise_per_unit, updated_at) values (${c}, ${paise}, now()) on conflict (currency) do update set paise_per_unit = excluded.paise_per_unit, updated_at = now()`);
       updated.push({ currency: c, paisePerUnit: paise });
     }
-    await tx.execute(sql`select set_config('app.org_id', ${actor.orgId}, true)`);
-    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "billing.exchange_rate_refresh", entity: "exchange_rates", after: { updated: updated.length, skipped: skipped.length } });
+    await audit?.(tx, { updated: updated.length, skipped: skipped.length });
   });
   return { updated, skipped };
+}
+
+/** Platform staff: refresh all exchange rates from the market now. */
+export async function refreshExchangeRates(db: Db, actor: AuthUser, fetcher: typeof fetch = fetch) {
+  assertAuthorized(actor, "platform.admin");
+  return applyMarketRates(db, fetcher, async (tx, after) => {
+    await tx.execute(sql`select set_config('app.org_id', ${actor.orgId}, true)`);
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "billing.exchange_rate_refresh", entity: "exchange_rates", after });
+  });
+}
+
+/** For the background worker: refresh the rates if they are older than `maxAgeHours` (or there are none). Returns null when they were fresh enough. */
+export async function refreshExchangeRatesIfStale(db: Db, maxAgeHours = 6, fetcher: typeof fetch = fetch) {
+  const r = await db.execute<{ stale: boolean }>(sql`select coalesce(max(updated_at) < now() - make_interval(hours => ${maxAgeHours}), true) as stale from exchange_rates`);
+  if (!r.rows[0]?.stale) return null;
+  return applyMarketRates(db, fetcher);
 }
 
 export async function deleteExchangeRate(db: Db, actor: AuthUser, currency: string) {

@@ -122,6 +122,16 @@ export function createPayments(config: PaymentsConfig) {
       if (!r.data?.link) throw new ProviderError("Flutterwave did not return a payment page", 502, "flutterwave");
       return { id: i.txRef, url: String(r.data.link) };
     },
+    /**
+     * Asks Flutterwave (with our secret key) what really happened to a transaction, by the id it put on the redirect back.
+     * Used when the person returns, so a payment is credited even if the webhook is late or never arrives. Amounts are what Flutterwave says, not the redirect's.
+     */
+    async flutterwaveVerify(transactionId: string): Promise<{ successful: boolean; txRef: string | null; amountMinor: number | null; currency: string | null; id: string }> {
+      if (!config.flutterwaveSecretKey) throw new ProviderError("Flutterwave is not set up (FLUTTERWAVE_SECRET_KEY)", 503, "flutterwave");
+      const r = await send("flutterwave", `https://api.flutterwave.com/v3/transactions/${encodeURIComponent(transactionId)}/verify`, { method: "GET", headers: { authorization: `Bearer ${config.flutterwaveSecretKey}` } });
+      const d = r.data ?? {};
+      return { successful: r.status === "success" && d.status === "successful", txRef: typeof d.tx_ref === "string" ? d.tx_ref : null, amountMinor: typeof d.amount === "number" ? Math.round(d.amount * 100) : null, currency: typeof d.currency === "string" ? d.currency : null, id: String(d.id ?? transactionId) };
+    },
     /** Cryptomus: a crypto payment page for a fiat amount. The webhook carries the invoice uuid, which is what we keep. */
     async cryptomusInvoice(i: { amountMinor: number; currency: string; orderId: string; callbackUrl: string; returnUrl: string }): Promise<{ id: string; url: string }> {
       if (!config.cryptomus) throw new ProviderError("Cryptomus is not set up (CRYPTOMUS_MERCHANT_ID, CRYPTOMUS_API_KEY)", 503, "cryptomus");
@@ -131,12 +141,12 @@ export function createPayments(config: PaymentsConfig) {
       if (!r.result?.uuid || !r.result?.url) throw new ProviderError("Cryptomus did not return a payment page", 502, "cryptomus");
       return { id: String(r.result.uuid), url: String(r.result.url) };
     },
-    /** A Stripe Checkout page for the amount in rupees. */
-    async stripeCheckout(i: { amountPaise: number; paymentId: string; description: string; successUrl: string; cancelUrl: string }): Promise<{ id: string; url: string }> {
+    /** A Stripe Checkout page for the amount in the given currency (INR, USD, EUR, GBP). `amountMinor` is paise or cents. */
+    async stripeCheckout(i: { amountMinor: number; currency: string; paymentId: string; description: string; successUrl: string; cancelUrl: string }): Promise<{ id: string; url: string }> {
       if (!config.stripeSecretKey) throw new ProviderError("Stripe is not set up (STRIPE_SECRET_KEY)", 503, "stripe");
       const form = new URLSearchParams({
         mode: "payment", success_url: i.successUrl, cancel_url: i.cancelUrl, client_reference_id: i.paymentId, "metadata[payment_id]": i.paymentId,
-        "line_items[0][quantity]": "1", "line_items[0][price_data][currency]": "inr", "line_items[0][price_data][unit_amount]": String(i.amountPaise), "line_items[0][price_data][product_data][name]": i.description,
+        "line_items[0][quantity]": "1", "line_items[0][price_data][currency]": i.currency.toLowerCase(), "line_items[0][price_data][unit_amount]": String(i.amountMinor), "line_items[0][price_data][product_data][name]": i.description,
       });
       const r = await send("stripe", "https://api.stripe.com/v1/checkout/sessions", { method: "POST", headers: { authorization: `Bearer ${config.stripeSecretKey}`, "content-type": "application/x-www-form-urlencoded" }, body: form });
       if (!r.id || !r.url) throw new ProviderError("Stripe did not return a checkout page", 502, "stripe");

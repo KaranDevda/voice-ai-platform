@@ -21,10 +21,10 @@ export async function POST(req: Request) {
     const email = (await userEmail(getDb(), user)) ?? "billing@example.com";
     const made =
       b.gateway === "razorpay" ? await g.razorpayLink({ amountPaise: amountMinor, paymentId, description, callbackUrl: `${back}?paid=1` })
-      : b.gateway === "stripe" ? await g.stripeCheckout({ amountPaise: amountMinor, paymentId, description, successUrl: `${back}?paid=1`, cancelUrl: `${back}?cancelled=1` })
+      : b.gateway === "stripe" ? await g.stripeCheckout({ amountMinor, currency, paymentId, description, successUrl: `${back}?paid=1`, cancelUrl: `${back}?cancelled=1` })
       : b.gateway === "paypal" ? await g.paypalOrder({ amountMinor, currency, paymentId, description, returnUrl: `${base}/api/billing/paypal-return`, cancelUrl: `${back}?cancelled=1` })
       : b.gateway === "paystack" ? await g.paystackInit({ email, amountMinor, currency, reference: paymentId, callbackUrl: `${back}?paid=1` })
-      : b.gateway === "flutterwave" ? await g.flutterwavePay({ email, amountMinor, currency, txRef: paymentId, redirectUrl: `${back}?paid=1` })
+      : b.gateway === "flutterwave" ? await g.flutterwavePay({ email, amountMinor, currency, txRef: paymentId, redirectUrl: `${base}/api/billing/flutterwave-return` })
       : await g.cryptomusInvoice({ amountMinor, currency, orderId: paymentId, callbackUrl: `${base}/api/billing/cryptomus-webhook`, returnUrl: `${back}?paid=1` });
     await attachGatewayRef(getDb(), user, paymentId, made.id);
     return Response.json({ url: made.url, creditPaise: started.amountPaise });

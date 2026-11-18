@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { campaignTick, createDb, crmClaim, crmDone, dialToken, heartbeat, lowBalanceDue, lowBalanceSent, smsDone, smsRound, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, reportDial, saveAnalysis } from "@voiceai/db";
+import { campaignTick, createDb, crmClaim, crmDone, dialToken, heartbeat, lowBalanceDue, lowBalanceSent, refreshExchangeRatesIfStale, smsDone, smsRound, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, reportDial, saveAnalysis } from "@voiceai/db";
 import { createAskG1, createPlivo, S3Recordings, sendCrmWebhook, sendEmail, smtpFromEnv, type LlmAdapter } from "@voiceai/providers";
 import { analyzeCall } from "./analyze";
 import { renderTemplate } from "@voiceai/shared";
@@ -164,17 +164,24 @@ async function runLowBalance() {
   }
 }
 
+/** Keeps the exchange rates (used to credit payments in other currencies) no more than 6 hours old, from the free market-rate service. */
+async function runExchangeRates() {
+  const r = await refreshExchangeRatesIfStale(db, 6);
+  if (r) log(`exchange rates refreshed: ${r.updated.length} updated${r.skipped.length ? `, ${r.skipped.length} skipped (${r.skipped.map((x) => x.currency).join(", ")})` : ""}`);
+}
+
 const PARALLEL = Math.max(1, Math.min(8, Number(env("WORKER_PARALLEL") ?? 3)));
 let stopping = false;
 for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => { stopping = true; });
 log(`post-call worker started (${askg1 ? "AskG1" : "no AskG1"}${local ? " + local backup" : ""}, ${PARALLEL} calls at a time)`);
-let lastPurge = 0, lastCampaignRound = 0, lastSmsRound = 0, lastCrmRound = 0, lastLowBalance = 0;
+let lastPurge = 0, lastCampaignRound = 0, lastSmsRound = 0, lastCrmRound = 0, lastLowBalance = 0, lastFx = 0;
 do {
   if (Date.now() - lastPurge > 3_600_000) { lastPurge = Date.now(); await purgeExpired().catch((e) => log(`retention run failed: ${e instanceof Error ? e.message : e}`)); }
   if (campaignKey && Date.now() - lastCampaignRound > 5000) { lastCampaignRound = Date.now(); await runCampaigns().then(() => heartbeat(db, "campaign runner", true), (e) => { log(`campaign round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "campaign runner", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
   if (plivoSms && Date.now() - lastSmsRound > 5000) { lastSmsRound = Date.now(); await runSms().then(() => heartbeat(db, "text sender", true), (e) => { log(`text round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "text sender", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
   if (Date.now() - lastCrmRound > 5000) { lastCrmRound = Date.now(); await runCrm().then(() => heartbeat(db, "CRM webhooks", true), (e) => { log(`webhook round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "CRM webhooks", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
   if (smtp && Date.now() - lastLowBalance > 600_000) { lastLowBalance = Date.now(); await runLowBalance().then(() => heartbeat(db, "low balance alerts", true), (e) => { log(`low balance round failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "low balance alerts", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
+  if (Date.now() - lastFx > 900_000) { lastFx = Date.now(); await runExchangeRates().then(() => heartbeat(db, "exchange rates", true), (e) => { log(`exchange rate refresh failed: ${e instanceof Error ? e.message : e}`); return heartbeat(db, "exchange rates", false, String(e instanceof Error ? e.message : e)); }).catch(() => {}); }
   let pending: Awaited<ReturnType<typeof listPendingAnalysis>> = [];
   try { pending = await listPendingAnalysis(db, PARALLEL * 2); await heartbeat(db, "call analysis", true); } catch (e) { log(`could not read the queue: ${e instanceof Error ? e.message : e}`); await heartbeat(db, "call analysis", false, String(e instanceof Error ? e.message : e)).catch(() => {}); }
   // Several calls at once: each is mostly waiting for the AI, so this multiplies throughput without more machines.
