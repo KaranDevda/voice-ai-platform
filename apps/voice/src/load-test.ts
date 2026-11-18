@@ -33,6 +33,8 @@ const SUB = arg("sub", "00000000-0000-4000-8000-000000000001"); // a user that d
 const ORG = arg("org", "00000000-0000-4000-8000-0000000000aa");
 const ORIGIN = arg("origin", "http://localhost:3000");
 const SPEAKER = arg("speaker", LANGUAGE === "en" ? "am_michael" : "hm_omega");
+const AI = arg("ai", "default"); // "openrouter" makes the calls use OpenRouter (needs OPENROUTER_API_KEY in the voice service)
+const OR_MODEL = arg("or-model", "openai/gpt-4o-mini");
 const KOKORO = arg("kokoro", process.env.KOKORO_URL ?? "http://127.0.0.1:8768");
 const REPLY_TIMEOUT_MS = Number(arg("reply-timeout", "30000"));
 const KEY = process.env.VOICE_TOKEN_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
@@ -77,7 +79,7 @@ interface TurnResult { question: string; spokenText: string; transcript: string;
 interface CallResult { ok: boolean; why?: string; turns: TurnResult[] }
 
 async function oneCall(n: number): Promise<CallResult> {
-  const token = signVoiceToken({ sub: SUB, org: ORG }, KEY!, 120);
+  const token = signVoiceToken({ sub: SUB, org: ORG, ...(AI === "openrouter" ? { aiModel: "openrouter" as const, openrouterModel: OR_MODEL } : {}) }, KEY!, 120);
   const ws = new WebSocket(`${URL_}?token=${encodeURIComponent(token)}`, { headers: { origin: ORIGIN } });
   const turns: TurnResult[] = [];
   let lastStages: Stages | null = null, handedOff = false, ready = false, failed: string | null = null, audioAt = 0, timing: number | null = null, state = "", assistantCount = 0;
