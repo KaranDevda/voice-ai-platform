@@ -111,6 +111,8 @@ export const appErrors = pgTable(
     userAgent: text("user_agent"),
     ip: text("ip"),
     at: tstz("at").notNull().defaultNow(),
+    resolvedAt: tstz("resolved_at"),
+    resolvedBy: uuid("resolved_by").references(() => users.id),
   },
   (t) => [index("app_errors_org_at_idx").on(t.orgId, t.at), index("app_errors_route_idx").on(t.route), orgIsolationPolicy()],
 ).enableRLS();

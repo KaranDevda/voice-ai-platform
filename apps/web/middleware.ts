@@ -22,6 +22,8 @@ export async function middleware(req: NextRequest) {
   const claims = await verifyToken<SessionClaims>(req.cookies.get(SESSION_COOKIE)?.value, "session");
 
   if (!claims) {
+    // An API token (va_…) has no cookie; the route itself checks it (requireUser), so let a token-shaped request through to be validated there.
+    if (pathname.startsWith("/api/") && /^Bearer va_[A-Za-z0-9_-]{40,}$/.test(req.headers.get("authorization") ?? "")) return NextResponse.next();
     if (PUBLIC.some((p) => p.test(pathname))) return NextResponse.next();
     if (pathname.startsWith("/api/")) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
     return NextResponse.redirect(new URL("/login", req.url));

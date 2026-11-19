@@ -323,6 +323,13 @@
       "when": 1794821405005,
       "tag": "0045_mfa_recovery_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794821406005,
+      "tag": "0046_app_errors_resolved",
+      "breakpoints": true
     }
   ]
 }

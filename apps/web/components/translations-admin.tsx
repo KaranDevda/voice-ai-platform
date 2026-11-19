@@ -18,7 +18,7 @@ export function ExtraLanguagesForm({ extras }: { extras: Array<{ code: string; n
     setBusy((b) => new Set([...b, "add"]));
     try {
       const res = await fetch("/api/translations/extras", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) { const b = await res.json().catch(() => ({})); setNote(b.message ?? "Could not add language"); return; }
+      if (!res.ok) { const b = await res.json().catch(() => ({})); setNote(`Could not add language: ${b.message ?? (b.issues ? b.issues.map((i: { path: unknown[]; message: string }) => `${i.path.join(".")} ${i.message}`).join("; ") : b.error) ?? "error"} (HTTP ${res.status})`); return; }
       setNote("Language added. Reload to see it.");
       (e.target as HTMLFormElement).reset();
       window.location.reload();
@@ -75,7 +75,7 @@ export function OverridesTable({ overrides }: { overrides: Array<{ key: string; 
     setBusy((b) => new Set([...b, "add"]));
     try {
       const res = await fetch("/api/translations/overrides", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) { const b = await res.json().catch(() => ({})); setNote(b.message ?? "Could not add override"); return; }
+      if (!res.ok) { const b = await res.json().catch(() => ({})); setNote(`Could not add override: ${b.message ?? (b.issues ? b.issues.map((i: { path: unknown[]; message: string }) => `${i.path.join(".")} ${i.message}`).join("; ") : b.error) ?? "error"} (HTTP ${res.status})`); return; }
       setNote("Override added.");
       (e.target as HTMLFormElement).reset();
       window.location.reload();

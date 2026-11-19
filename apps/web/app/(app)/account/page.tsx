@@ -24,9 +24,9 @@ export default async function AccountPage() {
             <span className="text-muted-foreground">Role</span><span>{p.roles.map(titleCase).join(", ")}</span>
           </CardBody>
         </Card>
-        <AccountPanel />
-        <MfaPanel {...mfa} />
-        <ApiTokenManager availablePermissions={API_TOKEN_PERMISSIONS(user)} />
+        <div id="password" className="scroll-mt-20"><AccountPanel /></div>
+        <div id="two-factor" className="scroll-mt-20"><MfaPanel {...mfa} /></div>
+        <div id="api-tokens" className="scroll-mt-20"><ApiTokenManager availablePermissions={API_TOKEN_PERMISSIONS(user)} /></div>
       </div>
     </>
   );

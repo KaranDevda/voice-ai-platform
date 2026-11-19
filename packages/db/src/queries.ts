@@ -474,20 +474,32 @@ export async function listAudit(db: Db, user: AuthUser, f: { page?: number; acti
   return { rows: rows.slice(0, size), hasMore: rows.length > size, page };
 }
 
-export async function listAppErrors(db: Db, user: AuthUser, f: { page?: number; route?: string } = {}) {
+export async function listAppErrors(db: Db, user: AuthUser, f: { page?: number; route?: string; status?: "open" | "resolved" | "all" } = {}) {
   assertAuthorized(user, "logs.read");
+  const status = f.status ?? "open";
   const page = Math.max(1, f.page ?? 1);
   const size = 25;
   const rows = await withOrg(db, user.orgId, (tx) =>
     tx
-      .select({ id: appErrors.id, at: appErrors.at, route: appErrors.route, method: appErrors.method, errorMessage: appErrors.errorMessage, errorStack: appErrors.errorStack, userAgent: appErrors.userAgent, ip: appErrors.ip })
+      .select({ id: appErrors.id, at: appErrors.at, route: appErrors.route, method: appErrors.method, errorMessage: appErrors.errorMessage, errorStack: appErrors.errorStack, userAgent: appErrors.userAgent, ip: appErrors.ip, resolvedAt: appErrors.resolvedAt })
       .from(appErrors)
-      .where(f.route ? ilike(appErrors.route, `${f.route}%`) : undefined)
+      .where(and(f.route ? ilike(appErrors.route, `${f.route}%`) : undefined, status === "open" ? isNull(appErrors.resolvedAt) : status === "resolved" ? sql`${appErrors.resolvedAt} is not null` : undefined))
       .orderBy(desc(appErrors.at))
       .limit(size + 1)
       .offset((page - 1) * size),
   );
   return { rows: rows.slice(0, size), hasMore: rows.length > size, page };
+}
+
+/** Marks an error resolved (or re-opens it). Audit-logged. */
+export async function setAppErrorResolved(db: Db, user: AuthUser, id: string, resolved: boolean) {
+  assertAuthorized(user, "logs.read");
+  return withOrg(db, user.orgId, async (tx) => {
+    const [row] = await tx.update(appErrors).set({ resolvedAt: resolved ? new Date() : null, resolvedBy: resolved ? user.id : null }).where(eq(appErrors.id, id)).returning({ id: appErrors.id });
+    if (!row) return false;
+    await writeAudit(tx, { orgId: user.orgId, actorUserId: user.id, action: resolved ? "error.resolve" : "error.reopen", entity: "app_errors", entityId: id });
+    return true;
+  });
 }
 
 // ----------------------------------------------------------------- roles
