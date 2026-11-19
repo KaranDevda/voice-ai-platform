@@ -55,6 +55,8 @@ export const users = pgTable(
     mfaSecretEnc: text("mfa_secret_enc"),
     /** Last accepted TOTP time step; codes at or before it are rejected (replay guard). */
     mfaLastStep: bigint("mfa_last_step", { mode: "number" }),
+    /** JSON array of SHA-256 hashes of unused one-time recovery codes. */
+    mfaRecoveryCodes: text("mfa_recovery_codes"),
     status: userStatus("status").notNull().default("active"),
     /** Lockout after 5 failed logins (SOP: Authentication). */
     failedLoginCount: integer("failed_login_count").notNull().default(0),

@@ -36,8 +36,8 @@ export default function LoginPage() {
         <Field label="Password"><Input name="password" type="password" autoComplete="current-password" required /></Field>
       </div>
       {needTotp && (
-        <Field label="6-digit code" hint="Open your authenticator app and enter the current code.">
-          <Input name="totp" inputMode="numeric" pattern="\d{6}" autoComplete="one-time-code" autoFocus required />
+        <Field label="6-digit code or recovery code" hint="Enter the current code from your authenticator app. Lost your phone? Use one of your recovery codes.">
+          <Input name="totp" autoComplete="one-time-code" autoFocus required />
         </Field>
       )}
       {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}

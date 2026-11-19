@@ -1,4 +1,4 @@
-import type { Db, DbTx } from "./client";
+import { withOrg, type Db, type DbTx } from "./client";
 import { appErrors } from "./schema";
 
 export interface ErrorEntry {
@@ -27,7 +27,8 @@ export async function writeAppError(tx: DbTx, entry: ErrorEntry) {
 /** Insert an application error using a database connection (wraps in withOrg). Does not throw on failure. */
 export async function writeAppErrorOrg(db: Db, entry: ErrorEntry) {
   try {
-    await db.insert(appErrors).values(entry);
+    // The table is row-level secured by organisation, so the organisation must be set first or the insert is silently refused.
+    await withOrg(db, entry.orgId, (tx) => tx.insert(appErrors).values(entry));
   } catch {
     // Never throw from error logging.
   }

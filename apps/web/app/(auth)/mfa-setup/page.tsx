@@ -6,6 +6,7 @@ import { Field, Input } from "@/components/ui/form";
 export default function MfaSetupPage() {
   const [setup, setSetup] = useState<{ secret: string; uri: string } | null>(null);
   const [error, setError] = useState("");
+  const [codes, setCodes] = useState<string[] | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/mfa/begin", { method: "POST" }).then(async (r) => {
@@ -18,8 +19,22 @@ export default function MfaSetupPage() {
     e.preventDefault();
     const code = new FormData(e.currentTarget).get("code");
     const res = await fetch("/api/auth/mfa/confirm", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) });
-    if (res.ok) window.location.href = "/";
+    if (res.ok) setCodes((await res.json()).codes ?? []);
     else setError("That code did not match. Use the current code from your app.");
+  }
+
+  if (codes) {
+    return (
+      <div className="grid gap-4">
+        <h1 className="text-lg font-semibold">Save your recovery codes</h1>
+        <p className="text-sm text-muted-foreground">If you lose your phone, each of these works once in place of the 6-digit code. They are shown only this one time.</p>
+        <code className="grid grid-cols-2 gap-1 rounded-lg bg-muted px-3 py-2 text-sm tracking-wider">{codes.map((c) => <span key={c}>{c}</span>)}</code>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" onClick={() => void navigator.clipboard.writeText(codes.join("\n"))}>Copy</Button>
+          <Button type="button" onClick={() => (window.location.href = "/")}>I saved them, continue</Button>
+        </div>
+      </div>
+    );
   }
 
   return (

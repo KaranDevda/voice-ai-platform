@@ -2,13 +2,16 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { AccountPanel } from "@/components/account-panel";
 import { ApiTokenManager } from "@/components/api-token-manager";
-import { API_TOKEN_PERMISSIONS } from "@voiceai/db";
+import { MfaPanel } from "@/components/mfa-panel";
+import { API_TOKEN_PERMISSIONS, getMfaStatus } from "@voiceai/db";
+import { getDb } from "@/lib/server";
 import { profileOf, requirePageUser } from "@/lib/page-auth";
 import { titleCase } from "@/lib/utils";
 
 export default async function AccountPage() {
   const user = await requirePageUser();
   const p = await profileOf(user);
+  const mfa = await getMfaStatus(getDb(), user);
   return (
     <>
       <PageHeader title="My account" description="Your sign-in details." />
@@ -22,6 +25,7 @@ export default async function AccountPage() {
           </CardBody>
         </Card>
         <AccountPanel />
+        <MfaPanel {...mfa} />
         <ApiTokenManager availablePermissions={API_TOKEN_PERMISSIONS(user)} />
       </div>
     </>

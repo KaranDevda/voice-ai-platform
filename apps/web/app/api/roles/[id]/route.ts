@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { updateRole } from "@voiceai/db";
+import { setRoleScope, updateRole } from "@voiceai/db";
 import { toResponse } from "@/lib/api-errors";
 import { assertSameOrigin, getDb, requireUser } from "@/lib/server";
 
-const patch = z.object({
-  permission: z.string().min(1).max(100),
-  add: z.boolean(),
-});
+const patch = z.union([
+  z.object({ permission: z.string().min(1).max(100), add: z.boolean() }),
+  z.object({ base: z.string().min(1).max(100), scope: z.string().max(20).nullable() }),
+]);
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await assertSameOrigin())) return Response.json({ error: "bad_origin" }, { status: 403 });
@@ -18,7 +18,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const parsed = patch.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "invalid_request", issues: parsed.error.issues }, { status: 400 });
   try {
-    const role = await updateRole(getDb(), user, id.data, parsed.data.permission, parsed.data.add);
+    const d = parsed.data;
+    const role = "base" in d ? await setRoleScope(getDb(), user, id.data, d.base, d.scope) : await updateRole(getDb(), user, id.data, d.permission, d.add);
     return Response.json(role);
   } catch (err) { return toResponse(err); }
 }

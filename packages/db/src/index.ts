@@ -23,6 +23,7 @@ export * from "./pricing";
 export * from "./integrations";
 export * from "./widgets";
 export * from "./password";
+export * from "./mfa";
 export * from "./scheduling";
 export * from "./content";
 export * from "./api-tokens";

@@ -1,5 +1,5 @@
-import { aliasedTable, and, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
-import { assertAuthorized, authorize, ForbiddenError, resolveScope, type AuthUser, type ScopedBase } from "@voiceai/auth";
+import { aliasedTable, and, desc, eq, gte, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { assertAuthorized, authorize, FLAG_PERMISSIONS, ForbiddenError, resolveScope, SCOPED_PERMISSIONS, type AuthUser, type ScopedBase } from "@voiceai/auth";
 import { orgSettingsSchema, orgSettingsUpdateSchema, type LeadStatus } from "@voiceai/shared";
 import { maskPhone } from "@voiceai/shared";
 import { writeAudit } from "./audit";
@@ -435,7 +435,7 @@ export async function listTeam(db: Db, user: AuthUser) {
       .innerJoin(users, eq(users.id, devices.userId))
       .where(where)
       .orderBy(users.email);
-    return { members, devices: deviceRows, canRevoke: !!resolveScope(user, "devices.revoke"), canPair: user.permissions.includes("calls.place") };
+    return { members, devices: deviceRows, canRevoke: !!resolveScope(user, "devices.revoke"), canResetMfa: user.permissions.includes("users.write"), selfId: user.id, canPair: user.permissions.includes("calls.place") };
   });
 }
 
@@ -492,23 +492,55 @@ export async function listAppErrors(db: Db, user: AuthUser, f: { page?: number; 
 
 // ----------------------------------------------------------------- roles
 
+/** The built-in roles are system rows (no organisation); an organisation's own custom roles are listed too. */
 export async function listRoles(db: Db, actor: AuthUser) {
   assertAuthorized(actor, "platform.admin");
   return withOrg(db, actor.orgId, async (tx) => {
-    const rows = await tx.select({ id: roles.id, key: roles.key, name: roles.name, permissions: roles.permissions }).from(roles).where(eq(roles.orgId, actor.orgId)).orderBy(roles.key);
+    const rows = await tx.select({ id: roles.id, key: roles.key, name: roles.name, permissions: roles.permissions }).from(roles).where(or(isNull(roles.orgId), eq(roles.orgId, actor.orgId))).orderBy(roles.key);
     return rows.map((r) => ({ ...r, permissions: r.permissions as string[] }));
   });
 }
 
+export class RoleEditError extends Error {}
+
+async function roleRow(tx: Parameters<Parameters<typeof withOrg>[2]>[0], actor: AuthUser, roleKey: string) {
+  const rows = await tx.select().from(roles).where(and(eq(roles.key, roleKey), or(isNull(roles.orgId), eq(roles.orgId, actor.orgId))));
+  // An organisation's own role with the same key wins over the system one.
+  const role = rows.find((r) => r.orgId === actor.orgId) ?? rows[0];
+  if (!role) throw new RoleEditError("that role does not exist");
+  return role;
+}
+
+/** Turn an on/off permission on or off for a role. Platform admins only; written to the audit log. */
 export async function updateRole(db: Db, actor: AuthUser, roleKey: string, permission: string, add: boolean) {
   assertAuthorized(actor, "platform.admin");
+  if (!(FLAG_PERMISSIONS as readonly string[]).includes(permission)) throw new RoleEditError("that is not an on/off permission");
   return withOrg(db, actor.orgId, async (tx) => {
-    const [role] = await tx.select().from(roles).where(and(eq(roles.key, roleKey), eq(roles.orgId, actor.orgId)));
-    if (!role) throw new Error("Role not found");
+    const role = await roleRow(tx, actor, roleKey);
+    if (roleKey === "super_admin" && permission === "platform.admin" && !add) throw new RoleEditError("Super admin must keep platform admin, or nobody could manage roles");
     const perms = new Set(role.permissions);
     if (add) perms.add(permission); else perms.delete(permission);
     const [updated] = await tx.update(roles).set({ permissions: Array.from(perms) }).where(eq(roles.id, role.id)).returning();
-    if (!updated) throw new Error("Failed to update role");
+    if (!updated) throw new RoleEditError("could not update the role");
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "role.permission_changed", entity: "roles", entityId: role.id, after: { role: roleKey, permission, on: add } });
+    return { ...updated, permissions: updated.permissions as string[] };
+  });
+}
+
+/** Set how far a role can reach for one scoped permission ("all", "team", "own", "aggregate"), or remove it with null. Exactly one scope is kept. */
+export async function setRoleScope(db: Db, actor: AuthUser, roleKey: string, base: string, scope: string | null) {
+  assertAuthorized(actor, "platform.admin");
+  const allowedScopes = (SCOPED_PERMISSIONS as Record<string, readonly string[]>)[base];
+  if (!allowedScopes) throw new RoleEditError("that is not a scoped permission");
+  if (scope !== null && !allowedScopes.includes(scope)) throw new RoleEditError(`${base} cannot be set to ${scope}`);
+  return withOrg(db, actor.orgId, async (tx) => {
+    const role = await roleRow(tx, actor, roleKey);
+    if (roleKey === "super_admin" && base === "users.read" && scope === null) throw new RoleEditError("Super admin must keep user access");
+    const perms = role.permissions.filter((p) => !allowedScopes.some((s) => p === `${base}.${s}`));
+    if (scope) perms.push(`${base}.${scope}`);
+    const [updated] = await tx.update(roles).set({ permissions: perms }).where(eq(roles.id, role.id)).returning();
+    if (!updated) throw new RoleEditError("could not update the role");
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "role.scope_changed", entity: "roles", entityId: role.id, after: { role: roleKey, base, scope } });
     return { ...updated, permissions: updated.permissions as string[] };
   });
 }

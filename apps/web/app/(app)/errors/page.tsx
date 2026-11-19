@@ -1,4 +1,5 @@
 import { listAppErrors } from "@voiceai/db";
+import { CopyButton } from "@/components/copy-button";
 import { Forbidden } from "@/components/forbidden";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -39,7 +40,7 @@ export default async function ErrorsPage({ searchParams }: { searchParams: Promi
                     <Td className="max-w-[300px] truncate" title={e.errorMessage}>{e.errorMessage}</Td>
                     <Td className="text-end">
                       {e.errorStack && (
-                        <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(e.errorStack!); alert("Stack trace copied"); }}>Copy stack</Button>
+                        <CopyButton text={e.errorStack} label="Copy stack" />
                       )}
                     </Td>
                   </Tr>

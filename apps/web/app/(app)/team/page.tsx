@@ -24,7 +24,7 @@ export default async function TeamPage() {
         <Card>
           <CardHeader title="People" />
           <Table>
-            <thead><tr><Th>Email</Th><Th>Roles</Th><Th>Status</Th><Th>2FA</Th><Th>Last sign-in</Th></tr></thead>
+            <thead><tr><Th>Email</Th><Th>Roles</Th><Th>Status</Th><Th>2FA</Th><Th>Last sign-in</Th><Th /></tr></thead>
             <tbody>
               {data.members.map((m) => (
                 <Tr key={m.id}>
@@ -33,6 +33,9 @@ export default async function TeamPage() {
                   <Td><Badge tone={m.status === "active" ? "success" : "danger"}>{titleCase(m.status)}</Badge></Td>
                   <Td>{m.mfa ? <Badge tone="success">On</Badge> : <Badge>Off</Badge>}</Td>
                   <Td>{m.lastLoginAt ? timeAgo(m.lastLoginAt) : "Never"}</Td>
+                  <Td className="text-end">
+                    {data.canResetMfa && m.mfa && m.id !== data.selfId && <PostButton url={`/api/team/${m.id}/mfa-reset`} variant="outline" size="sm" confirm={`Reset two-factor authentication for ${m.email}? They will need to set it up again.`}>Reset 2FA</PostButton>}
+                  </Td>
                 </Tr>
               ))}
             </tbody>

@@ -76,6 +76,7 @@ export function navFor(u: AuthUser): NavGroup[] {
         { href: "/profit", label: "Profit", icon: "profit", visible: can(u, "platform.admin") },
         { href: "/platform", label: "Platform", icon: "platform", visible: can(u, "platform.admin") },
         { href: "/billing", label: "Billing", icon: "billing", visible: can(u, "org_settings.read") },
+        { href: "/security", label: "Security & compliance", icon: "shield", visible: can(u, "audit.read") },
         { href: "/audit", label: "Audit log", icon: "audit", visible: can(u, "audit.read") },
         { href: "/errors", label: "Error log", icon: "logs", visible: u.permissions.includes("logs.read") },
         { href: "/permissions", label: "Permissions", icon: "shield", visible: u.permissions.includes("platform.admin") },

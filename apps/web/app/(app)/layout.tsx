@@ -41,8 +41,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <I18nProvider dict={dict}>
     <div className="min-h-screen md:flex md:flex-wrap" style={brandStyle}>
-      {impersonating && <div className="w-full"><ImpersonationBanner email={profile.email} /></div>}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-border bg-card md:flex">
+      {impersonating && <div className="w-full print:hidden"><ImpersonationBanner email={profile.email} /></div>}
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-border bg-card md:flex print:!hidden">
         <div className="flex items-center gap-2.5 px-5 py-4">
           <BizfyMark className="h-9 w-9" />
           <div className="leading-tight">
@@ -58,15 +58,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="min-w-0 flex-1">
-        <header className="flex items-center justify-between gap-3 border-b border-border bg-card/70 px-4 py-3 backdrop-blur md:px-8">
+        <header className="flex items-center justify-between gap-3 border-b border-border bg-card/70 px-4 py-3 backdrop-blur md:px-8 print:hidden">
           <div className="min-w-0">
             <div className="truncate text-sm font-medium">{profile.orgName}</div>
             <div className="truncate text-xs text-muted-foreground md:hidden">{profile.email}</div>
           </div>
           <div className="flex items-center gap-1"><a href="/account" className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{t("Account")}</a><LanguageSelect initial={lang} label={t("Language")} options={langOptions} /><ThemeToggle initial={theme} /><LogoutButton /></div>
         </header>
-        <div className="border-b border-border bg-card md:hidden"><NavLinks groups={groups} orientation="horizontal" /></div>
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</main>
+        <div className="border-b border-border bg-card md:hidden print:hidden"><NavLinks groups={groups} orientation="horizontal" /></div>
+        <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8 print:max-w-none print:p-0">{children}</main>
       </div>
     </div>
     </I18nProvider>

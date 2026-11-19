@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import { hashRecoveryCode, parseRecoveryHashes } from "./mfa-codes";
 import {
   decryptSecret,
   encryptSecret,
@@ -110,9 +111,20 @@ export async function login(db: Db, input: LoginInput, deps: LoginDeps): Promise
     let step: number | null = null;
     if (row.mfa_secret_enc) {
       if (!input.totp) return { ok: false, reason: "mfa_required" };
-      const secret = decryptSecret(row.mfa_secret_enc, deps.encryptionKey);
-      step = verifyTotp(secret, input.totp, now.getTime(), row.mfa_last_step ? Number(row.mfa_last_step) : -1);
-      if (step === null) return fail("totp");
+      if (/^\d{6}$/.test(input.totp)) {
+        const secret = decryptSecret(row.mfa_secret_enc, deps.encryptionKey);
+        step = verifyTotp(secret, input.totp, now.getTime(), row.mfa_last_step ? Number(row.mfa_last_step) : -1);
+        if (step === null) return fail("totp");
+      } else {
+        // Not a 6-digit code: treat it as a one-time recovery code and use it up.
+        const [rc] = await tx.select({ c: users.mfaRecoveryCodes }).from(users).where(eq(users.id, row.id));
+        const hashes = parseRecoveryHashes(rc?.c);
+        const at = hashes.indexOf(hashRecoveryCode(input.totp));
+        if (at < 0) return fail("recovery");
+        hashes.splice(at, 1);
+        await tx.update(users).set({ mfaRecoveryCodes: JSON.stringify(hashes) }).where(eq(users.id, row.id));
+        await audit(tx, "mfa.recovery_used", { left: hashes.length });
+      }
     } else if (mfaRequired) {
       return { ok: false, reason: "mfa_enrollment_required", userId: row.id, orgId: row.org_id };
     }

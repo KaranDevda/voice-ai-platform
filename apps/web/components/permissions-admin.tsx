@@ -1,118 +1,78 @@
 "use client";
-import { Button } from "@/components/ui/button";
-import { Table, Td, Th, Tr } from "@/components/ui/table";
-import { Select } from "@/components/ui/form";
-import type { Permission } from "@voiceai/auth";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Td, Tr } from "@/components/ui/table";
+import { Select } from "@/components/ui/form";
 
-const SCOPES = ["all", "team", "own", "aggregate"] as const;
+type Role = { key: string; name: string; permissions: string[] };
 
-export function PermissionRow({ role, roles, bases }: { bases: readonly string[]; role: { key: string; name: string; permissions: Permission[] }; roles: Array<{ key: string; permissions: Permission[] }> }) {
-
-  const [busy, setBusy] = useState<Set<string>>(new Set());
-
-  // Parse scoped permissions into base -> scope map
-  const [local, setLocal] = useState<Record<string, string>>(() => {
-    const map: Record<string, string> = {};
-    for (const base of bases) {
-      const perm = role.permissions.find((p) => p.startsWith(base + "."));
-      map[base] = perm ? perm.split(".").pop() ?? "aggregate" : "aggregate";
-    }
-    return map;
-  });
-
-  async function save(base: string) {
-    const scope = local[base];
-    const key = base + "." + scope;
-    setBusy((b) => new Set([...b, base]));
-    try {
-      const res = await fetch(`/api/roles/${role.key}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ permission: key, add: true }),
-      });
-      if (!res.ok) { alert("Failed to save"); return; }
-      setLocal((l: Record<string, string>) => Object.assign({}, l, { [base]: scope }));
-    } finally { setBusy((b) => new Set([...b].filter((x) => x !== base))); }
-  }
-
-  return (
-    <Tr>
-      <Td className="font-medium">{role.name}</Td>
-      {bases.map((base) => {
-        const currentScope = local[base];
-        const hasPerm = role.permissions.some((p) => p.startsWith(base + ".") && p.split(".").pop() === currentScope);
-        return (
-          <Td key={base} className="text-center">
-            <Select
-              value={local[base]}
-              onChange={(e) => setLocal((l: Record<string, string>) => Object.assign({}, l, { [base]: e.target.value }))}
-              disabled={busy.has(base)}
-              aria-label={`${base} scope`}
-            >
-              {SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </Select>
-            <Button size="sm" variant="outline" className="mt-1" onClick={() => save(base)} disabled={busy.has(base) || hasPerm}>
-              {busy.has(base) ? "…" : "Save"}
-            </Button>
-          </Td>
-        );
-      })}
-    </Tr>
-  );
+async function patch(roleKey: string, body: object): Promise<string | null> {
+  const res = await fetch(`/api/roles/${roleKey}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (res.ok) return null;
+  if (res.status === 401 || res.status === 403) return "You are no longer signed in as a platform admin. Another tab may have signed in as a different user. Sign in as admin@demo.io again.";
+  const b = await res.json().catch(() => ({}));
+  return b.message ? `${b.message[0].toUpperCase()}${b.message.slice(1)}.` : "Could not save.";
 }
 
-export function FlagRow({ role, roles, flags }: { flags: readonly string[]; role: { key: string; name: string; permissions: Permission[] }; roles: Array<{ key: string; permissions: Permission[] }> }) {
+/** One role's reach for each scoped permission. Choosing a value saves it straight away, and replaces the previous one. */
+export function PermissionRow({ role, bases, allowed }: { role: Role; bases: readonly string[]; allowed: Record<string, readonly string[]> }) {
+  const router = useRouter();
+  const widest = (base: string) => (allowed[base] ?? []).find((s) => role.permissions.includes(`${base}.${s}`)) ?? "none";
+  const [local, setLocal] = useState<Record<string, string>>(() => Object.fromEntries(bases.map((b) => [b, widest(b)])));
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  const [busy, setBusy] = useState<Set<string>>(new Set());
-  const has = (flag: string) => role.permissions.some((p) => p === flag);
-
-  async function toggle(flag: string) {
-    setBusy((b) => new Set([...b, flag]));
-    try {
-      const res = await fetch(`/api/roles/${role.key}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ permission: flag, add: !has(flag) }),
-      });
-      if (!res.ok) { alert("Failed to save"); return; }
-    } finally { setBusy((b) => new Set([...b].filter((x) => x !== flag))); }
+  async function change(base: string, value: string) {
+    const before = local[base];
+    setLocal((l) => ({ ...l, [base]: value })); setBusy(base); setError("");
+    const err = await patch(role.key, { base, scope: value === "none" ? null : value });
+    setBusy(null);
+    if (err) { setLocal((l) => ({ ...l, [base]: before! })); setError(err); } else router.refresh();
   }
 
   return (
     <Tr>
-      <Td className="font-medium">{role.name}</Td>
-      {flags.map((flag) => (
-        <Td key={flag} className="text-center">
-          <Button
-            size="sm"
-            variant={has(flag) ? "default" : "outline"}
-            onClick={() => toggle(flag)}
-            disabled={busy.has(flag)}
-            aria-pressed={has(flag)}
-          >
-            {busy.has(flag) ? "…" : has(flag) ? "On" : "Off"}
-          </Button>
+      <Td className="font-medium">{role.name}{error && <span role="alert" className="block text-xs font-normal text-danger">{error}</span>}</Td>
+      {bases.map((base) => (
+        <Td key={base} className="text-center">
+          <Select value={local[base]} onChange={(e) => void change(base, e.target.value)} disabled={busy === base} aria-label={`${role.name}: ${base}`}>
+            <option value="none">none</option>
+            {(allowed[base] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
         </Td>
       ))}
     </Tr>
   );
 }
 
-export function SaveAllButton({ roles }: { roles: Array<{ key: string; name: string; permissions: Permission[] }> }) {
+/** One role's on/off permissions. */
+export function FlagRow({ role, flags }: { role: Role; flags: readonly string[] }) {
+  const router = useRouter();
+  const [on, setOn] = useState<Set<string>>(() => new Set(role.permissions));
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
+  async function toggle(flag: string) {
+    const add = !on.has(flag);
+    setBusy(flag); setError("");
+    const err = await patch(role.key, { permission: flag, add });
+    setBusy(null);
+    if (err) return setError(err);
+    setOn((s) => { const n = new Set(s); if (add) n.add(flag); else n.delete(flag); return n; });
+    router.refresh();
+  }
 
   return (
-    <Button variant="outline" disabled={busy} onClick={async () => {
-      setBusy(true); setNote("");
-      try {
-        // Could implement a bulk save endpoint here
-        setNote("Use per-row Save buttons for now.");
-      } finally { setBusy(false); }
-    }}>
-      {busy ? "Saving…" : "Save all"}
-    </Button>
+    <Tr>
+      <Td className="font-medium">{role.name}{error && <span role="alert" className="block text-xs font-normal text-danger">{error}</span>}</Td>
+      {flags.map((flag) => (
+        <Td key={flag} className="text-center">
+          <Button size="sm" variant={on.has(flag) ? "default" : "outline"} onClick={() => void toggle(flag)} disabled={busy === flag} aria-pressed={on.has(flag)}>
+            {busy === flag ? "…" : on.has(flag) ? "On" : "Off"}
+          </Button>
+        </Td>
+      ))}
+    </Tr>
   );
 }
