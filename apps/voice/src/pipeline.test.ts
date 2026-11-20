@@ -97,7 +97,7 @@ describe("Conversation grounding", () => {
     stt.fire({ kind: "final", text: "Tell me about the Personal plan." });
     await until(() => events.some((e) => e.type === "assistant"));
     expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual([
-      "I don't have reliable details for the Personal plan. Would you like me to connect you with the team?",
+      "I don't have reliable details for the Personal plan. I can tell you about the plans I do have. Would you like that?",
     ]);
     expect(seen).toHaveLength(0);
     await convo.close();
@@ -263,16 +263,14 @@ describe("Conversation", () => {
     await convo.close();
   });
 
-  it("asks the caller to repeat a clipped Business plan fragment without waiting for AskG1", async () => {
+  it("turns a clipped Business plan fragment into a real question for the model", async () => {
     const seen: ChatMessage[][] = [];
     const { convo, stt, events } = setup({ language: "en", llm: fakeLlm("model answer", { seen }) });
     await convo.start();
     stt.fire({ kind: "final", text: "through the business plan." });
     await until(() => events.some((e) => e.type === "assistant"));
-    expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual([
-      "Sorry, I only caught the end of that. What would you like to know about the Business plan?",
-    ]);
-    expect(seen).toHaveLength(0);
+    expect(events.filter((e) => e.type === "assistant").map((e) => (e as { text: string }).text)).toEqual(["model answer"]);
+    expect(seen[0]!.at(-1)!.content).toContain("Tell me about the Business plan.");
     await convo.close();
   });
 

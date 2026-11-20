@@ -4,7 +4,7 @@ import { toResponse } from "@/lib/api-errors";
 import { assertSameOrigin, getDb, requireUser } from "@/lib/server";
 
 const body = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("add"), e164: z.string().max(20), label: z.string().max(80).optional() }),
+  z.object({ action: z.literal("add"), e164: z.string().max(20), label: z.string().max(80).optional(), carrier: z.enum(["plivo", "twilio"]).optional() }),
   z.object({ action: z.literal("assign"), numberId: z.string().uuid(), orgId: z.string().uuid() }),
   z.object({ action: z.literal("release"), numberId: z.string().uuid() }),
 ]);

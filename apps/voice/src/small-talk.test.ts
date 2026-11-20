@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { replyToGreeting, replyToIdentityQuestion, replyToOrphanedPlanFragment } from "./small-talk";
+import { replyToGreeting, replyToIdentityQuestion, replyToOrphanedPlanFragment, completeOrphanedPlanFragment } from "./small-talk";
 
 describe("replyToGreeting", () => {
   it("responds naturally and immediately to English greetings", () => {
@@ -31,6 +31,15 @@ describe("replyToGreeting", () => {
     expect(replyToGreeting("What's the personal plan?", "en")).toBeNull();
     expect(replyToGreeting("Thanks, tell me about pricing.", "en")).toBeNull();
     expect(replyToGreeting("नमस्ते, आप कैसे हैं? Business plan में क्या मिलता है?", "hi")).toBeNull();
+  });
+});
+
+describe("completeOrphanedPlanFragment", () => {
+  it("turns a clipped plan fragment into a question about that plan, in English only", () => {
+    expect(completeOrphanedPlanFragment("through the business plan.", "en")).toBe("Tell me about the Business plan.");
+    expect(completeOrphanedPlanFragment("to the starter plan", "en")).toBe("Tell me about the Starter plan.");
+    expect(completeOrphanedPlanFragment("through the business plan.", "hi")).toBeNull();
+    expect(completeOrphanedPlanFragment("What does the business plan include?", "en")).toBeNull();
   });
 });
 

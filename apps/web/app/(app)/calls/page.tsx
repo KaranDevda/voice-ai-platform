@@ -1,4 +1,5 @@
 import { Mic } from "lucide-react";
+import { currentLang } from "@/lib/i18n-server";
 import Link from "next/link";
 import { listCalls } from "@voiceai/db";
 import { CALL_SOURCES, CALL_STATUSES } from "@voiceai/shared";
@@ -12,10 +13,12 @@ import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { formatDateTime, formatDuration, titleCase } from "@/lib/utils";
+import { T } from "@/components/t";
 
 const SOURCE_LABEL: Record<string, string> = { ai_inbound: "AI inbound", ai_outbound: "AI outbound", web_dialer: "Web dialer", mobile_sim: "Mobile SIM" };
 
 export default async function CallsPage({ searchParams }: { searchParams: Promise<{ q?: string; source?: string; status?: string; day?: string; analysis?: string; page?: string }> }) {
+  const lang = await currentLang();
   const user = await requirePageUser();
   const sp = await searchParams;
   const data = await allowed(() => listCalls(getDb(), user, { q: sp.q, source: sp.source, status: sp.status, day: sp.day, analysis: sp.analysis === "failed" ? "failed" : undefined, page: Number(sp.page) || 1 }));
@@ -44,13 +47,13 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
             <tbody>
               {data.rows.map((c) => (
                 <Tr key={c.id}>
-                  <Td><Link className="text-primary hover:underline" href={`/calls/${c.id}`}>{formatDateTime(c.startedAt)}</Link></Td>
-                  <Td>{c.leadName ?? <span className="text-muted-foreground">Unknown caller</span>}<div className="text-xs text-muted-foreground">{c.leadPhone}</div></Td>
+                  <Td><Link className="text-primary hover:underline" href={`/calls/${c.id}`}>{formatDateTime(c.startedAt, lang)}</Link></Td>
+                  <Td>{c.leadName ?? <span className="text-muted-foreground"><T>Unknown caller</T></span>}<div className="text-xs text-muted-foreground">{c.leadPhone}</div></Td>
                   <Td><div className="flex items-center gap-1.5"><SourceBadge source={c.source} />{c.handedOff && <Badge tone="warning">Handoff</Badge>}</div></Td>
                   <Td>{titleCase(c.direction)}</Td>
                   <Td><CallStatusBadge status={c.status} /></Td>
                   <Td className="tabular-nums">{c.durationS ? formatDuration(c.durationS) : "—"}</Td>
-                  <Td>{c.agentEmail ?? <span className="text-muted-foreground">AI</span>}</Td>
+                  <Td>{c.agentEmail ?? <span className="text-muted-foreground"><T>AI</T></span>}</Td>
                   <Td><SentimentBadge label={c.sentimentLabel} /></Td>
                   <Td>{c.hasRecording ? <Mic className="h-4 w-4 text-muted-foreground" aria-label="Has recording" /> : <span className="text-muted-foreground">—</span>}</Td>
                 </Tr>

@@ -1,4 +1,5 @@
 import { Clock, Gauge, Phone, Smile } from "lucide-react";
+import { currentLang } from "@/lib/i18n-server";
 import Link from "next/link";
 import { countFailedAnalyses, dashboardStats, listCalls } from "@voiceai/db";
 import { CallsChart } from "@/components/dashboard/calls-chart";
@@ -13,6 +14,7 @@ import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { formatDuration, formatDateTime, pct, titleCase } from "@/lib/utils";
+import { T, Tf } from "@/components/t";
 
 /** One colour per lead status, matching the status badges elsewhere in the app. */
 const STATUS_COLOR: Record<string, string> = {
@@ -23,6 +25,7 @@ const STATUS_COLOR: Record<string, string> = {
 const RANGES = [7, 14, 30];
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ days?: string }> }) {
+  const lang = await currentLang();
   const user = await requirePageUser();
   const days = RANGES.includes(Number((await searchParams).days)) ? Number((await searchParams).days) : 7;
   const stats = await allowed(() => dashboardStats(getDb(), user, days));
@@ -37,9 +40,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   return (
     <DashboardFrame title="Dashboard" description={`Last ${days} days${aggregateOnly ? " · summary view" : ""}`} days={days} ranges={RANGES}>
-      {aggregateOnly && <div className="mb-6"><Notice>You have a summary-only view. Individual calls, leads and recordings are not shown for your role.</Notice></div>}
+      {aggregateOnly && <div className="mb-6"><Notice><T>You have a summary-only view. Individual calls, leads and recordings are not shown for your role.</T></Notice></div>}
 
-      {failedAnalyses > 0 && <div className="mb-6"><Notice tone="warning">The AI could not analyse {failedAnalyses} call{failedAnalyses === 1 ? "" : "s"}. <Link href="/calls?analysis=failed" className="font-medium underline">See which, and try again</Link>.</Notice></div>}
+      {failedAnalyses > 0 && <div className="mb-6"><Notice tone="warning"><Tf text={failedAnalyses === 1 ? "The AI could not analyse {n} call." : "The AI could not analyse {n} calls."} vars={{ n: failedAnalyses }} /> <Link href="/calls?analysis=failed" className="font-medium underline"><T>See which, and try again</T></Link></Notice></div>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi href={aggregateOnly ? undefined : "/calls"} label="Total calls" value={totals.total} hint={`${totals.connected} connected · ${totals.missed} missed`} icon={Phone} tone="blue" />
         <Kpi href={aggregateOnly ? undefined : "/calls?status=connected"} label="Connect rate" value={`${connectRate}%`} hint={`Talk time ${formatDuration(totals.talkSeconds)}`} icon={Gauge} tone="green"><Meter value={connectRate} color="var(--success)" /></Kpi>
@@ -76,14 +79,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       {recent && (
         <Card className="mt-6">
-          <CardHeader title="Recent calls" description="Click a row to open the call" action={<Link href="/calls" className={buttonClass({ variant: "outline", size: "sm" })}>View all</Link>} />
+          <CardHeader title="Recent calls" description="Click a row to open the call" action={<Link href="/calls" className={buttonClass({ variant: "outline", size: "sm" })}><T>View all</T></Link>} />
           <Table>
             <thead><tr><Th>When</Th><Th>Lead</Th><Th>Source</Th><Th>Status</Th><Th>Duration</Th><Th>Sentiment</Th></tr></thead>
             <tbody>
               {recent.rows.map((c) => (
                 <Tr key={c.id} className="group relative cursor-pointer">
-                  <Td><Link className="text-primary after:absolute after:inset-0 hover:underline" href={`/calls/${c.id}`}>{formatDateTime(c.startedAt)}</Link></Td>
-                  <Td>{c.leadName ?? <span className="text-muted-foreground">Unknown caller</span>}<div className="text-xs text-muted-foreground">{c.leadPhone}</div></Td>
+                  <Td><Link className="text-primary after:absolute after:inset-0 hover:underline" href={`/calls/${c.id}`}>{formatDateTime(c.startedAt, lang)}</Link></Td>
+                  <Td>{c.leadName ?? <span className="text-muted-foreground"><T>Unknown caller</T></span>}<div className="text-xs text-muted-foreground">{c.leadPhone}</div></Td>
                   <Td><SourceBadge source={c.source} /></Td>
                   <Td><CallStatusBadge status={c.status} /></Td>
                   <Td className="tabular-nums">{c.durationS ? formatDuration(c.durationS) : "—"}</Td>

@@ -74,6 +74,18 @@ export function replyToIdentityQuestion(text: string, callLanguage: CallLanguage
   return "I'm Bizfy's AI voice assistant. I can help with our plans and services.";
 }
 
+/**
+ * The start of a sentence is sometimes lost ("walk me through the Business plan" arrives as "through the business plan").
+ * When what is left clearly names a plan, treat it as a question about that plan and let the model answer it, instead of
+ * making the caller repeat themselves.
+ */
+export function completeOrphanedPlanFragment(text: string, callLanguage: CallLanguage): string | null {
+  if (callLanguage !== "en") return null;
+  const normalized = text.normalize("NFC").toLowerCase().replace(/[.,!?؟।]+/gu, " ").replace(/\s+/gu, " ").trim();
+  const m = /^(?:(?:through|with|of|from|to|for|because|and|but)\s+)+(?:the\s+)?(business|starter|enterprise)\s+plans?$/iu.exec(normalized);
+  return m ? `Tell me about the ${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} plan.` : null;
+}
+
 /** A clipped transcript is better handled by asking for the missing question than by sending a fragment to the LLM. */
 export function replyToOrphanedPlanFragment(text: string, callLanguage: CallLanguage): string | null {
   const normalized = text.normalize("NFC").toLowerCase().replace(/[.,!?؟।]+/gu, " ").replace(/\s+/gu, " ").trim();
@@ -85,5 +97,5 @@ export function replyToOrphanedPlanFragment(text: string, callLanguage: CallLang
     if (lang === "hi") return "माफ़ कीजिए, आपकी बात का आख़िरी हिस्सा ही सुनाई दिया। Business plan के बारे में क्या जानना चाहेंगे?";
     if (lang === "hinglish") return "Sorry, आपकी बात का last part ही सुनाई दिया। Business plan के बारे में क्या जानना चाहेंगे?";
   }
-  return "Sorry, I only caught the end of that. What would you like to know about the Business plan?";
+  return "Sorry, I only caught the end of that. What would you like to know about the plan?";
 }

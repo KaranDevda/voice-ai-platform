@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Input, Textarea } from "@/components/ui/form";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
+import { T, Tf } from "@/components/t";
 
 export default async function ThemeBuilderPage() {
   const user = await requirePageUser();
@@ -20,11 +21,11 @@ export default async function ThemeBuilderPage() {
         <CardBody className="grid gap-4 max-w-2xl">
           <form action="/api/theme/landing" method="POST" className="grid gap-4">
             <div>
-              <label htmlFor="headline" className="block text-sm font-medium mb-1">Headline (max 60 chars)</label>
+              <label htmlFor="headline" className="block text-sm font-medium mb-1"><T>Headline (max 60 chars)</T></label>
               <Input id="headline" name="headline" defaultValue={landing.headline} maxLength={60} required />
             </div>
             <div>
-              <label htmlFor="text" className="block text-sm font-medium mb-1">Sub-text (max 140 chars)</label>
+              <label htmlFor="text" className="block text-sm font-medium mb-1"><T>Sub-text (max 140 chars)</T></label>
               <Textarea id="text" name="text" defaultValue={landing.text} maxLength={140} required rows={3} />
             </div>
             <Button type="submit">Save</Button>
@@ -47,11 +48,11 @@ export default async function ThemeBuilderPage() {
 function ThemePreview({ theme }: { theme: "light" | "dark" }) {
   return (
     <div className={`rounded-lg border border-border p-4 ${theme === "dark" ? "bg-neutral-900 text-neutral-50" : "bg-white text-neutral-900"}`}>
-      <div className="font-semibold mb-2">{theme === "light" ? "Light" : "Dark"} mode</div>
-      <div className="text-sm opacity-80">This is how cards and text look in {theme} mode.</div>
+      <div className="font-semibold mb-2"><T>{theme === "light" ? "Light mode" : "Dark mode"}</T></div>
+      <div className="text-sm opacity-80"><Tf text={theme === "light" ? "This is how cards and text look in light mode." : "This is how cards and text look in dark mode."} /></div>
       <div className="mt-3 flex items-center gap-2">
-        <span className="rounded bg-primary px-3 py-1 text-xs text-primary-foreground">Primary button</span>
-        <span className="rounded border border-border px-3 py-1 text-xs">Outline button</span>
+        <span className="rounded bg-primary px-3 py-1 text-xs text-primary-foreground"><T>Primary button</T></span>
+        <span className="rounded border border-border px-3 py-1 text-xs"><T>Outline button</T></span>
       </div>
     </div>
   );

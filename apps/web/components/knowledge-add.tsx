@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Textarea } from "./ui/form";
 import { cn } from "@/lib/utils";
+import { T } from "./t";
 
 export function KnowledgeAdd() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export function KnowledgeAdd() {
       <CardHeader title="Add knowledge" description="The AI can answer from pasted text, uploaded documents, or a public web page." />
       <CardBody>
         <div className="mb-4 flex gap-1" role="tablist">
-          {(["paste", "file", "url"] as const).map((t) => <button key={t} role="tab" aria-selected={tab === t} type="button" onClick={() => setTab(t)} className={cn("rounded-full px-3 py-1 text-sm", tab === t ? "bg-primary-soft font-medium text-primary" : "text-muted-foreground hover:bg-muted")}>{t === "paste" ? "Paste text" : t === "file" ? "Upload file" : "Import URL"}</button>)}
+          {(["paste", "file", "url"] as const).map((t) => <button key={t} role="tab" aria-selected={tab === t} type="button" onClick={() => setTab(t)} className={cn("rounded-full px-3 py-1 text-sm", tab === t ? "bg-primary-soft font-medium text-primary" : "text-muted-foreground hover:bg-muted")}><T>{t === "paste" ? "Paste text" : t === "file" ? "Upload file" : "Import URL"}</T></button>)}
         </div>
         <form onSubmit={submit} className="grid gap-4">
           {tab === "paste" ? (
@@ -52,10 +53,10 @@ export function KnowledgeAdd() {
           ) : (
             <>
               <Field label="Title (optional)" hint="Defaults to the file name."><Input name="title" maxLength={200} /></Field>
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-8 text-sm hover:bg-muted/50"><Upload className="h-4 w-4" aria-hidden />Choose a .txt, .md, .csv or .html file<input name="file" type="file" required accept=".txt,.md,.markdown,.csv,.html,.htm,text/plain,text/html" className="ms-2 max-w-52 text-xs" /></label>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-8 text-sm hover:bg-muted/50"><Upload className="h-4 w-4" aria-hidden /><T>Choose a .txt, .md, .csv or .html file</T><input name="file" type="file" required accept=".txt,.md,.markdown,.csv,.html,.htm,text/plain,text/html" className="ms-2 max-w-52 text-xs" /></label>
             </>
           )}
-          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+          {error && <p role="alert" className="text-sm text-danger"><T>{error}</T></p>}
           {done && <p role="status" className="text-sm text-success">{done}</p>}
           <div><Button type="submit" disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}Add to knowledge base</Button></div>
         </form>

@@ -3,6 +3,7 @@ import { Mic, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clockMs, cn } from "@/lib/utils";
 import { Button } from "./ui/button";
+import { T } from "./t";
 
 const BARS = 24;
 
@@ -99,7 +100,7 @@ export function Recorder({ onRecorded, onStart, maxSeconds = 120, disabled, labe
           {clockMs(elapsed)}
         </div>
       </div>
-      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+      {error && <p role="alert" className="text-xs text-danger"><T>{error}</T></p>}
     </div>
   );
 }

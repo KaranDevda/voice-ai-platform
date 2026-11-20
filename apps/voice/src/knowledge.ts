@@ -30,9 +30,10 @@ export function unknownPlanReply(
   passages: string[],
   session: "en" | "hi" | "en-hi",
   previous?: string,
+  canConnect = true,
 ): string | null {
   const requested = /([\p{L}\p{N}][\p{L}\p{N}'-]*)\s+plans?(?![\p{L}\p{N}])/iu.exec(question)?.[1];
-  const generic = /^(?:the|a|an|what|which|other|another|this|that|my|your|our|any|all|best|cheapest|available|different)$/iu;
+  const generic = /^(?:the|a|an|what|which|other|another|this|that|my|your|our|any|all|best|cheapest|available|different|pricing|price|prices|cost|costs|rate|rates|subscription|subscriptions|monthly|yearly|annual|annually|paid|payment|service|services|membership|product|products|current|existing|these|those|their|its|both|various|several|two|three|four|of|on|in|to|for|about|with|through|your|bizfy|each|every|many|some|more|other|new|old)$/iu;
   if (!requested || generic.test(requested)) return null;
   const plan = requested.toLocaleLowerCase();
   const known = new RegExp(`${plan.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+plans?(?![\\p{L}\\p{N}])`, "iu");
@@ -40,9 +41,10 @@ export function unknownPlanReply(
 
   const language = session === "en" ? "en" : session === "hi" ? "hi" : detectCallerLanguage(question) ?? (previous ? detectCallerLanguage(previous) : undefined) ?? "en";
   const name = `${requested[0]!.toLocaleUpperCase()}${requested.slice(1)}`;
-  if (language === "hi") return `माफ़ कीजिए, ${name} plan की जानकारी अभी मेरे पास नहीं है। क्या मैं आपको टीम से जोड़ दूँ?`;
-  if (language === "hinglish") return `माफ़ कीजिए, ${name} plan की reliable details अभी मेरे पास नहीं हैं। क्या मैं आपको team से connect करूँ?`;
-  return `I don't have reliable details for the ${name} plan. Would you like me to connect you with the team?`;
+  // Only offer a person when one can actually take the call; a practice call cannot, and offering then refusing sounds broken.
+  if (language === "hi") return `माफ़ कीजिए, ${name} plan की जानकारी अभी मेरे पास नहीं है।${canConnect ? " क्या मैं आपको टीम से जोड़ दूँ?" : " मैं आपको हमारे बाक़ी plans के बारे में बता सकता हूँ। क्या बताऊँ?"}`;
+  if (language === "hinglish") return `माफ़ कीजिए, ${name} plan की reliable details अभी मेरे पास नहीं हैं।${canConnect ? " क्या मैं आपको team से connect करूँ?" : " मैं आपको हमारे बाक़ी plans के बारे में बता सकता हूँ। बताऊँ?"}`;
+  return `I don't have reliable details for the ${name} plan.${canConnect ? " Would you like me to connect you with the team?" : " I can tell you about the plans I do have. Would you like that?"}`;
 }
 
 /** Whisper can split "What are your plans?" into "What are you?" and "plants do you have?". */

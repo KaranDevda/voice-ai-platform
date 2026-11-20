@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Select } from "./ui/form";
 import { Notice } from "./ui/page";
 import type { VoiceChoice } from "./voice-picker";
+import { T, Tf } from "./t";
 
 type Phase = "idle" | "connecting" | "live";
 type AiState = "listening" | "thinking" | "speaking";
@@ -229,15 +230,15 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
       <Card>
         <CardHeader title="Conversation" description="Wear headphones: the microphone can hear the speaker and mistake the AI for you." action={live ? <Badge tone={ai === "speaking" ? "primary" : ai === "thinking" ? "warning" : "success"}>{ai === "speaking" ? "AI speaking" : ai === "thinking" ? "Thinking" : "Listening"}</Badge> : undefined} />
         <CardBody className="grid gap-4">
-          {lead && <Notice tone="info">Practice call to {lead.name ?? "an unknown caller"} ({lead.phone}). You play the lead, speaking into this computer; no phone line is used. Do Not Disturb, consent and calling hours are checked first, exactly as for a real call, and the call is saved to the call logs.</Notice>}
-          {error && <Notice tone="warning">{error}</Notice>}
-          {notice && <Notice tone="info">{notice}</Notice>}
+          {lead && <Notice tone="info"><Tf text={lead.name ? "Practice call to {name} ({phone}). You play the lead, speaking into this computer; no phone line is used. Do Not Disturb, consent and calling hours are checked first, exactly as for a real call, and the call is saved to the call logs." : "Practice call to an unknown caller ({phone}). You play the lead, speaking into this computer; no phone line is used. Do Not Disturb, consent and calling hours are checked first, exactly as for a real call, and the call is saved to the call logs."} vars={{ name: lead.name ?? "", phone: lead.phone }} /></Notice>}
+          {error && <Notice tone="warning"><T>{error}</T></Notice>}
+          {notice && <Notice tone="info"><T>{notice}</T></Notice>}
           <div className="min-h-64 max-h-[28rem] overflow-y-auto rounded-xl bg-muted p-4" aria-live="polite">
-            {!lines.length && !partial && <p className="text-sm text-muted-foreground">{live ? "Say something. The AI will answer aloud." : "Press Start, allow the microphone, and begin talking."}</p>}
+            {!lines.length && !partial && <p className="text-sm text-muted-foreground"><T>{live ? "Say something. The AI will answer aloud." : "Press Start, allow the microphone, and begin talking."}</T></p>}
             <div className="grid gap-3">
               {lines.map((l, i) => (
                 <div key={i} className={l.who === "you" ? "justify-self-end" : "justify-self-start"}>
-                  <div className="mb-0.5 text-xs text-muted-foreground">{l.who === "you" ? "You" : "AI"}</div>
+                  <div className="mb-0.5 text-xs text-muted-foreground"><T>{l.who === "you" ? "You" : "AI"}</T></div>
                   <div className={`max-w-[34rem] rounded-2xl px-4 py-2 text-sm ${l.who === "you" ? "bg-primary-soft" : "bg-card"}`}>{l.text}</div>
                 </div>
               ))}
@@ -261,11 +262,11 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
               <button type="button" onPointerDown={() => hold(true)} onPointerUp={() => hold(false)} onPointerLeave={() => talking && hold(false)}
                 disabled={muted}
                 className={`select-none rounded-lg px-4 py-1.5 text-sm font-medium ${talking ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`}
-                aria-pressed={talking}>{muted ? "Mic muted" : talking ? "Listening…" : "Hold to talk (Space)"}</button>
+                aria-pressed={talking}><T>{muted ? "Mic muted" : talking ? "Listening…" : "Hold to talk (Space)"}</T></button>
             )}
             {live && (
               <div className="w-full" role="group" aria-label="Keypad">
-                <div className="mb-1 h-5 text-sm tabular-nums text-muted-foreground" aria-live="polite">{dialed || "Keypad"}</div>
+                <div className="mb-1 h-5 text-sm tabular-nums text-muted-foreground" aria-live="polite"><T>{dialed || "Keypad"}</T></div>
                 <div className="grid w-44 grid-cols-3 gap-1">
                   {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map((k) => (
                     <button key={k} type="button" onClick={() => pressKey(k)} className="rounded-lg border border-border py-1.5 text-sm font-medium hover:bg-muted" aria-label={`Key ${k}`}>{k}</button>
@@ -294,14 +295,14 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
             </Field>
             <Field label="Who should it listen to?" hint={listen === "close" ? "Ignores voices that are quieter than yours, such as people further from the microphone. Speak at your normal volume near the mic." : listen === "push" ? "Hears nothing until you hold the Talk button or the Space bar. The most reliable choice in a noisy room." : "Hears every voice it can pick up. Use only in a quiet room."}>
               <Select value={listen} onChange={(e) => setListen(e.target.value as typeof listen)} disabled={live} aria-label="Who should it listen to">
-                <option value="close">Only me, close to the microphone</option>
-                <option value="push">Hold to talk (Space bar)</option>
-                <option value="anyone">Anyone nearby</option>
+                <option value="close"><T>Only me, close to the microphone</T></option>
+                <option value="push"><T>Hold to talk (Space bar)</T></option>
+                <option value="anyone"><T>Anyone nearby</T></option>
               </Select>
             </Field>
             <Field label="Caller language" hint="The AI replies in whatever language you speak: English, Hindi, or a mix of both (Hinglish). The recommended setting detects it as you talk.">
               <Select value={language} onChange={(e) => setLanguage(e.target.value as typeof language)} disabled={live} aria-label="Caller language">
-                <option value="en-hi">English, Hindi or Hinglish (recommended)</option><option value="en">English only</option><option value="hi">Hindi only</option>
+                <option value="en-hi"><T>English, Hindi or Hinglish (recommended)</T></option><option value="en"><T>English only</T></option><option value="hi"><T>Hindi only</T></option>
               </Select>
             </Field>
           </CardBody>
@@ -310,18 +311,18 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
         <Card>
           <CardHeader title="Response time" description="From when you stop talking to the first sound." />
           <CardBody className="grid gap-3 text-sm">
-            {!timings.length && <p className="text-muted-foreground">Each answer shows its timings here.</p>}
+            {!timings.length && <p className="text-muted-foreground"><T>Each answer shows its timings here.</T></p>}
             {[...timings].reverse().map((t) => (
               <div key={t.turn} className="rounded-lg border border-border p-3">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-muted-foreground">Turn {t.turn}</span>
+                  <span className="text-muted-foreground"><T>Turn</T> {t.turn}</span>
                   <span className="text-lg font-semibold">{t.heardToSound !== null ? `${(t.heardToSound / 1000).toFixed(2)} s` : `${(t.totalMs / 1000).toFixed(2)} s`}</span>
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <dt>AI starts writing</dt><dd className="text-end">{t.llmFirstTokenMs} ms</dd>
-                  <dt>First sentence ready</dt><dd className="text-end">{t.firstSentenceMs} ms</dd>
-                  <dt>Voice starts</dt><dd className="text-end">{t.ttsFirstAudioMs} ms</dd>
-                  <dt>After transcript</dt><dd className="text-end">{t.totalMs} ms</dd>
+                  <dt><T>AI starts writing</T></dt><dd className="text-end">{t.llmFirstTokenMs} <T>ms</T></dd>
+                  <dt><T>First sentence ready</T></dt><dd className="text-end">{t.firstSentenceMs} <T>ms</T></dd>
+                  <dt><T>Voice starts</T></dt><dd className="text-end">{t.ttsFirstAudioMs} <T>ms</T></dd>
+                  <dt><T>After transcript</T></dt><dd className="text-end">{t.totalMs} <T>ms</T></dd>
                 </dl>
               </div>
             ))}

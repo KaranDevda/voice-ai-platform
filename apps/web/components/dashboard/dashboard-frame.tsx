@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { T } from "../t";
 
 /**
  * The dashboard's title row and date-range switch. Changing the range keeps the page where it is and dims it while the new numbers
@@ -16,8 +17,8 @@ export function DashboardFrame({ title, description, days, ranges, children }: {
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          <h1 className="text-2xl font-semibold tracking-tight"><T>{title}</T></h1>
+          <p className="mt-1 text-sm text-muted-foreground"><T>{description}</T></p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => start(() => router.refresh())} aria-label="Refresh the numbers" title="Refresh"

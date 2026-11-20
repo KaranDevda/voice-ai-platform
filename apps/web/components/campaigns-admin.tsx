@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Select, Textarea } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
 import { formatDateTime, titleCase } from "@/lib/utils";
+import { T, Tf, useLang } from "./t";
 
 interface Counts { pending: number; calling: number; done: number; failed: number; skipped: number }
 interface Campaign { id: string; name: string; status: string; language: string; callerId: string | null; aiModel: "default" | "openrouter" | null; openrouterModel: string | null; agentProfileId: string | null; startAt: string | null; maxConcurrent: number; maxAttempts: number; retryDelayMin: number; counts: Counts; total: number; connected: number; mode: "ai" | "audio"; audioName: string | null; detectMachines: boolean; variants: { variant: number; text: string; people: number; reached: number }[] }
@@ -29,6 +30,7 @@ function nextAtIst(hourIst: number): string {
 }
 
 export function CampaignsAdmin({ campaigns, timing, templates, callerIds, agentProfiles }: { campaigns: Campaign[]; timing: Timing | null; templates: CampaignTemplate[]; callerIds: string[]; agentProfiles: AgentProfile[] }) {
+  const lang = useLang();
   const router = useRouter();
   const [name, setName] = useState("");
   const [tags, setTags] = useState("");
@@ -166,31 +168,31 @@ export function CampaignsAdmin({ campaigns, timing, templates, callerIds, agentP
         <CardHeader title="New campaign" description="Calls everyone who has one of these tags (add tags when you import contacts on the Leads page). Nobody is called until you press Start, or the start time arrives." />
         <CardBody>
           <form onSubmit={create} className="grid gap-3 md:grid-cols-3">
-            {templates.length > 0 && <Field label="Use a saved template"><Select defaultValue="" onChange={(e) => applyTemplate(e.target.value)}><option value="">Start from scratch…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>}
+            {templates.length > 0 && <Field label="Use a saved template"><Select defaultValue="" onChange={(e) => applyTemplate(e.target.value)}><option value=""><T>Start from scratch…</T></option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>}
             <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required /></Field>
             <Field label="Tags" hint="Comma separated, e.g. diwali, vip"><Input value={tags} onChange={(e) => setTags(e.target.value)} required /></Field>
-            <Field label="What it does" hint={mode === "audio" ? "Plays your recording, then hangs up" : "An AI conversation"}><Select value={mode} onChange={(e) => setMode(e.target.value as "ai" | "audio")}><option value="ai">AI conversation</option><option value="audio">Play a recording</option></Select></Field>
+            <Field label="What it does" hint={mode === "audio" ? "Plays your recording, then hangs up" : "An AI conversation"}><Select value={mode} onChange={(e) => setMode(e.target.value as "ai" | "audio")}><option value="ai"><T>AI conversation</T></option><option value="audio"><T>Play a recording</T></option></Select></Field>
             {mode === "audio" && <Field label="Recording (MP3 or WAV, up to 5 MB)"><input type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="Recording file" /></Field>}
-            <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="en-hi">Hindi + English</option><option value="hi">Hindi</option><option value="en">English</option></Select></Field>
-            {mode === "ai" && <Field label="AI model" hint={aiModel === "inherit" ? "Uses the model selected in AI settings." : aiModel === "default" ? "Uses the configured AskG1 service." : "Requires OPENROUTER_API_KEY on the voice server."}><Select value={aiModel} onChange={(e) => setAiModel(e.target.value as typeof aiModel)}><option value="inherit">Use AI settings</option><option value="default">AskG1</option><option value="openrouter">OpenRouter</option></Select></Field>}
+            <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="en-hi"><T>Hindi + English</T></option><option value="hi"><T>Hindi</T></option><option value="en"><T>English</T></option></Select></Field>
+            {mode === "ai" && <Field label="AI model" hint={aiModel === "inherit" ? "Uses the model selected in AI settings." : aiModel === "default" ? "Uses the configured AskG1 service." : "Requires OPENROUTER_API_KEY on the voice server."}><Select value={aiModel} onChange={(e) => setAiModel(e.target.value as typeof aiModel)}><option value="inherit"><T>Use AI settings</T></option><option value="default"><T>AskG1</T></option><option value="openrouter"><T>OpenRouter</T></option></Select></Field>}
             {mode === "ai" && aiModel === "openrouter" && <Field label="OpenRouter model ID" hint="Example: openai/gpt-4o-mini"><Input value={openrouterModel} onChange={(e) => setOpenrouterModel(e.target.value)} maxLength={100} required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*/[a-zA-Z0-9][a-zA-Z0-9._:-]*" /></Field>}
-            {mode === "ai" && <Field label="AI agent profile" hint="Choose this agent’s own instructions and knowledge, or inherit organisation settings."><Select value={agentProfileId} onChange={(e) => setAgentProfileId(e.target.value)}><option value="">Use organisation settings</option>{agentProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>}
-            <Field label="Caller ID" hint={callerIds.length ? "Choose an assigned voice number, or use the server default." : "No voice numbers are assigned yet; using the server default."}><Select value={callerId} onChange={(e) => setCallerId(e.target.value)}><option value="">Default caller ID</option>{callerIds.map((number) => <option key={number} value={number}>{number}</option>)}</Select></Field>
-            <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={autoSchedule} disabled={!timing?.best[0]} onChange={(e) => { setAutoSchedule(e.target.checked); if (e.target.checked) setStartAt(""); }} /> Schedule automatically at the best historical answer hour{timing?.best[0] ? ` (${hourText(timing.best[0].hourIst)} India time)` : ""}</label>
-            {!timing?.best[0] && <p className="text-xs text-muted-foreground md:col-span-3">Automatic scheduling unlocks after at least {timing?.minAttempts ?? 8} outbound calls have been made in one calling hour.</p>}
+            {mode === "ai" && <Field label="AI agent profile" hint="Choose this agent’s own instructions and knowledge, or inherit organisation settings."><Select value={agentProfileId} onChange={(e) => setAgentProfileId(e.target.value)}><option value=""><T>Use organisation settings</T></option>{agentProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>}
+            <Field label="Caller ID" hint={callerIds.length ? "Choose an assigned voice number, or use the server default." : "No voice numbers are assigned yet; using the server default."}><Select value={callerId} onChange={(e) => setCallerId(e.target.value)}><option value=""><T>Default caller ID</T></option>{callerIds.map((number) => <option key={number} value={number}>{number}</option>)}</Select></Field>
+            <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={autoSchedule} disabled={!timing?.best[0]} onChange={(e) => { setAutoSchedule(e.target.checked); if (e.target.checked) setStartAt(""); }} /> <T>Schedule automatically at the best historical answer hour</T>{timing?.best[0] ? ` (${hourText(timing.best[0].hourIst)} India time)` : ""}</label>
+            {!timing?.best[0] && <p className="text-xs text-muted-foreground md:col-span-3"><Tf text="Automatic scheduling unlocks after at least {n} outbound calls have been made in one calling hour." vars={{ n: timing?.minAttempts ?? 8 }} /></p>}
             {autoSchedule && timing?.best[0] ? (
-              <Field label="Automatic start" hint="The campaign will be scheduled for the next occurrence of this hour, at least five minutes from now."><p className="rounded-md bg-muted px-3 py-2 text-sm">{hourText(timing.best[0].hourIst)} India time · {Math.round(timing.best[0].rate * 100)}% answered from {timing.best[0].attempts} past calls</p></Field>
+              <Field label="Automatic start" hint="The campaign will be scheduled for the next occurrence of this hour, at least five minutes from now."><p className="rounded-md bg-muted px-3 py-2 text-sm">{hourText(timing.best[0].hourIst)} <T>India time ·</T> {Math.round(timing.best[0].rate * 100)}<T>% answered from</T> {timing.best[0].attempts} <T>past calls</T></p></Field>
             ) : (
               <Field label="Start at (optional)" hint="Leave empty to start it yourself"><Input type="datetime-local" value={startAt} onChange={(e) => { setStartAt(e.target.value); setAutoSchedule(false); }} />
-                {timing?.best[0] && <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setStartAt(nextAtIst(timing.best[0]!.hourIst))}>Use the best time: {hourText(timing.best[0].hourIst)} India time</button>}
+                {timing?.best[0] && <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setStartAt(nextAtIst(timing.best[0]!.hourIst))}><T>Use the best time:</T> {hourText(timing.best[0].hourIst)} <T>India time</T></button>}
               </Field>
             )}
             <Field label="Calls at once" hint="1 to 20"><Input type="number" min={1} max={20} value={concurrent} onChange={(e) => setConcurrent(Number(e.target.value))} /></Field>
             <Field label="Tries per person" hint="1 to 5"><Input type="number" min={1} max={5} value={attempts} onChange={(e) => setAttempts(Number(e.target.value))} /></Field>
             <Field label="Minutes between tries" hint="5 to 1440"><Input type="number" min={5} max={1440} value={retry} onChange={(e) => setRetry(Number(e.target.value))} /></Field>
-            <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={machines} onChange={(e) => setMachines(e.target.checked)} /> Hang up when an answering machine picks up, and try again later</label>
+            <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={machines} onChange={(e) => setMachines(e.target.checked)} /> <T>Hang up when an answering machine picks up, and try again later</T></label>
             {mode === "ai" && <div className="md:col-span-3 grid gap-2">
-              <p className="text-sm font-medium">A/B test (optional): up to 3 opening lines <span className="font-normal text-muted-foreground">— each person hears one; the AI and recording notice is always said first. Use at least two.</span></p>
+              <p className="text-sm font-medium"><T>A/B test (optional): up to 3 opening lines</T> <span className="font-normal text-muted-foreground"><T>— each person hears one; the AI and recording notice is always said first. Use at least two.</T></span></p>
               {variants.map((v, i) => <Input key={i} value={v} maxLength={300} placeholder={`Opening line ${"ABC"[i]}`} onChange={(e) => setVariants((all) => all.map((x, j) => (j === i ? e.target.value : x)))} />)}
             </div>}
             <div className="flex items-end"><Button type="submit" disabled={busy || !name.trim() || !tags.trim() || (mode === "audio" && !file)}>{busy ? "Creating…" : "Create campaign"}</Button></div>
@@ -199,7 +201,7 @@ export function CampaignsAdmin({ campaigns, timing, templates, callerIds, agentP
               <Button type="button" variant="outline" disabled={templateBusy || !templateName.trim() || !tags.trim()} onClick={() => void saveTemplate()}>{templateBusy ? "Saving…" : "Save settings as template"}</Button>
             </div>
           </form>
-          {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+          {error && <p role="alert" className="mt-3 text-sm text-danger"><T>{error}</T></p>}
           {templateMessage && <p role="status" className="mt-3 text-sm text-success">{templateMessage}</p>}
         </CardBody>
       </Card>
@@ -240,7 +242,7 @@ export function CampaignsAdmin({ campaigns, timing, templates, callerIds, agentP
 
       {templates.length > 0 && <Card>
         <CardHeader title="Saved campaign templates" description="Templates reuse tags and call settings; each campaign gets a fresh audience snapshot and schedule." />
-        <CardBody className="grid gap-2 text-sm">{templates.map((t) => <div key={t.id} className="flex flex-wrap items-center justify-between gap-2"><span><span className="font-medium">{t.name}</span> <span className="text-muted-foreground">{t.tags.join(", ")} · {t.mode === "audio" ? "audio" : t.language} · {t.aiModel === "openrouter" ? `OpenRouter ${t.openrouterModel}` : t.aiModel === "default" ? "AskG1" : "AI settings model"} · {t.callerId ?? "default caller ID"} · {t.autoSchedule ? "auto best time" : "manual start"} · {t.maxConcurrent} at once</span></span><Button size="sm" variant="outline" onClick={() => void deleteTemplate(t.id)}>Delete</Button></div>)}</CardBody>
+        <CardBody className="grid gap-2 text-sm">{templates.map((t) => <div key={t.id} className="flex flex-wrap items-center justify-between gap-2"><span><span className="font-medium">{t.name}</span> <span className="text-muted-foreground">{t.tags.join(", ")} · <T>{t.mode === "audio" ? "audio" : t.language}</T> · <T>{t.aiModel === "openrouter" ? `OpenRouter ${t.openrouterModel}` : t.aiModel === "default" ? "AskG1" : "AI settings model"}</T> · <T>{t.callerId ?? "default caller ID"}</T> · <T>{t.autoSchedule ? "auto best time" : "manual start"}</T> · {t.maxConcurrent} <T>at once</T></span></span><Button size="sm" variant="outline" onClick={() => void deleteTemplate(t.id)}>Delete</Button></div>)}</CardBody>
       </Card>}
 
       {timing && (
@@ -248,15 +250,15 @@ export function CampaignsAdmin({ campaigns, timing, templates, callerIds, agentP
           <CardHeader title="Best time to call" description={timing.totalAttempts === 0 ? "No outbound calls in the last 90 days yet." : `Share of outbound calls that were answered, by hour (India time), from ${timing.totalAttempts} calls in the last ${timing.days} days.`} />
           <CardBody className="grid gap-3">
             {timing.best.length > 0
-              ? <p className="text-sm">Best hours: {timing.best.map((h) => `${hourText(h.hourIst)} (${Math.round(h.rate * 100)}% answered, ${h.attempts} calls)`).join(" · ")}</p>
-              : <p className="text-sm text-muted-foreground">Not enough calls yet to say (at least {timing.minAttempts} in an hour).</p>}
+              ? <p className="text-sm"><T>Best hours:</T> {timing.best.map((h) => `${hourText(h.hourIst)} (${Math.round(h.rate * 100)}% answered, ${h.attempts} calls)`).join(" · ")}</p>
+              : <p className="text-sm text-muted-foreground"><Tf text="Not enough calls yet to say (at least {n} in an hour)." vars={{ n: timing.minAttempts }} /></p>}
             {timing.hours.length > 0 && (
               <div className="grid gap-1" role="img" aria-label="Answer rate by hour of the day">
                 {timing.hours.map((h) => (
                   <div key={h.hourIst} className="grid grid-cols-[3rem_1fr_9rem] items-center gap-2 text-xs">
                     <span className="tabular-nums text-muted-foreground">{hourText(h.hourIst)}</span>
                     <span className="h-2 rounded bg-muted"><span className="block h-2 rounded bg-primary" style={{ width: `${Math.round(h.rate * 100)}%` }} /></span>
-                    <span className="tabular-nums text-muted-foreground">{Math.round(h.rate * 100)}% of {h.attempts}</span>
+                    <span className="tabular-nums text-muted-foreground">{Math.round(h.rate * 100)}<T>% of</T> {h.attempts}</span>
                   </div>
                 ))}
               </div>
@@ -267,15 +269,15 @@ export function CampaignsAdmin({ campaigns, timing, templates, callerIds, agentP
 
       <Card>
         <CardHeader title="Your campaigns" description={live ? "Updating every few seconds" : undefined} />
-        {campaigns.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No campaigns yet.</p></CardBody> : (
+        {campaigns.length === 0 ? <CardBody><p className="text-sm text-muted-foreground"><T>No campaigns yet.</T></p></CardBody> : (
           <Table>
             <thead><tr><Th>Campaign</Th><Th>Status</Th><Th>People</Th><Th>Waiting</Th><Th>Ringing</Th><Th>Done</Th><Th>Connected</Th><Th>Failed</Th><Th>Skipped</Th><Th> </Th></tr></thead>
             <tbody>
               {campaigns.map((c) => (
                 <Tr key={c.id}>
-                  <Td className="font-medium">{c.name}<div className="text-xs font-normal text-muted-foreground">{titleCase(c.language)} · {c.mode === "audio" ? "recorded audio" : c.aiModel === "openrouter" ? `OpenRouter ${c.openrouterModel}` : c.aiModel === "default" ? "AskG1" : "AI settings model"}{c.agentProfileId ? ` · agent: ${agentProfiles.find((p) => p.id === c.agentProfileId)?.name ?? "saved profile"}` : ""} · {c.callerId ?? "default caller ID"} · {c.maxConcurrent} at once · {c.maxAttempts} tries{c.startAt ? ` · starts ${formatDateTime(c.startAt)}` : ""}{c.mode === "audio" ? " · plays a recording" : ""}{c.detectMachines ? " · hangs up on answering machines" : ""}</div>
-                    {c.mode === "audio" && <div className="mt-1 text-xs font-normal text-muted-foreground">{c.audioName ? `Recording: ${c.audioName}` : "No recording yet: upload one before starting."}{["draft", "scheduled", "paused"].includes(c.status) && <> <label className="cursor-pointer text-primary underline">{c.audioName ? "Replace" : "Upload"}<input type="file" className="sr-only" accept=".mp3,.wav,audio/mpeg,audio/wav" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; setError(""); const up = await fetch(`/api/campaigns/${c.id}/audio`, { method: "POST", headers: { "x-file-name": encodeURIComponent(f.name) }, body: f }); if (!up.ok) setError(((await up.json().catch(() => ({}))) as { message?: string }).message ?? "Could not save the recording"); router.refresh(); }} /></label></>}</div>}
-                    {c.variants.length > 0 && <ul className="mt-1 text-xs font-normal text-muted-foreground">{c.variants.map((v) => <li key={v.variant}>{"ABC"[v.variant - 1]}: {v.reached} of {v.people} reached ({v.people ? Math.round((100 * v.reached) / v.people) : 0}%) — “{v.text.slice(0, 50)}{v.text.length > 50 ? "…" : ""}”</li>)}</ul>}</Td>
+                  <Td className="font-medium">{c.name}<div className="text-xs font-normal text-muted-foreground">{titleCase(c.language)} · <T>{c.mode === "audio" ? "recorded audio" : c.aiModel === "openrouter" ? `OpenRouter ${c.openrouterModel}` : c.aiModel === "default" ? "AskG1" : "AI settings model"}</T>{c.agentProfileId ? ` · agent: ${agentProfiles.find((p) => p.id === c.agentProfileId)?.name ?? "saved profile"}` : ""} · <T>{c.callerId ?? "default caller ID"}</T> · {c.maxConcurrent} <T>at once ·</T> {c.maxAttempts} <T>tries</T>{c.startAt ? ` · starts ${formatDateTime(c.startAt, lang)}` : ""}<T>{c.mode === "audio" ? " · plays a recording" : ""}</T><T>{c.detectMachines ? " · hangs up on answering machines" : ""}</T></div>
+                    {c.mode === "audio" && <div className="mt-1 text-xs font-normal text-muted-foreground"><T>{c.audioName ? `Recording: ${c.audioName}` : "No recording yet: upload one before starting."}</T>{["draft", "scheduled", "paused"].includes(c.status) && <> <label className="cursor-pointer text-primary underline"><T>{c.audioName ? "Replace" : "Upload"}</T><input type="file" className="sr-only" accept=".mp3,.wav,audio/mpeg,audio/wav" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; setError(""); const up = await fetch(`/api/campaigns/${c.id}/audio`, { method: "POST", headers: { "x-file-name": encodeURIComponent(f.name) }, body: f }); if (!up.ok) setError(((await up.json().catch(() => ({}))) as { message?: string }).message ?? "Could not save the recording"); router.refresh(); }} /></label></>}</div>}
+                    {c.variants.length > 0 && <ul className="mt-1 text-xs font-normal text-muted-foreground">{c.variants.map((v) => <li key={v.variant}>{"ABC"[v.variant - 1]}: {v.reached} <T>of</T> {v.people} <T>reached (</T>{v.people ? Math.round((100 * v.reached) / v.people) : 0}%) — “{v.text.slice(0, 50)}{v.text.length > 50 ? "…" : ""}”</li>)}</ul>}</Td>
                   <Td><Badge tone={TONE[c.status] ?? "neutral"}>{titleCase(c.status)}</Badge></Td>
                   <Td>{c.total}</Td><Td>{c.counts.pending}</Td><Td>{c.counts.calling}</Td><Td>{c.counts.done}</Td><Td>{c.connected}</Td><Td>{c.counts.failed}</Td><Td>{c.counts.skipped}</Td>
                   <Td className="text-end whitespace-nowrap">

@@ -39,6 +39,11 @@ describe("unknownPlanReply", () => {
     expect(unknownPlanReply("Tell me about the business plan", [PRICING], "en")).toBeNull();
     expect(unknownPlanReply("Tell me about your plan", [PRICING], "en")).toBeNull();
     expect(unknownPlanReply("Tell me about the premium plan", [], "en")).toContain("reliable details");
+    // Not a plan name: "pricing plans" is a general question and must go to the model.
+    expect(unknownPlanReply("Can you walk me through the pricing plans", [PRICING], "en")).toBeNull();
+    expect(unknownPlanReply("What are your monthly plans?", [PRICING], "en")).toBeNull();
+    // Without a person to hand over to, do not offer one.
+    expect(unknownPlanReply("Tell me about the premium plan", [PRICING], "en", undefined, false)).not.toContain("connect you");
   });
 
   it("uses the caller's selected language for the missing-plan response", () => {

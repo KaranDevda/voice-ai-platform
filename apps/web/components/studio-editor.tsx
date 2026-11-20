@@ -3,7 +3,7 @@ import { Download, FolderOpen, Loader2, Sparkles, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { apiError } from "@/lib/api-client";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, formatNumber } from "@/lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
@@ -11,6 +11,7 @@ import { Field } from "./ui/form";
 import { Notice } from "./ui/page";
 import { VoicePicker, type VoiceChoice } from "./voice-picker";
 import { WaveformPlayer } from "./waveform-player";
+import { T, Tf } from "./t";
 
 const MAX = 10_000;
 type Lang = "en" | "hi" | "hinglish";
@@ -88,9 +89,9 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2">
-        <CardHeader title="Script" description="Type or paste what the voice should say" action={<span className={over ? "text-xs text-danger" : "text-xs text-muted-foreground"}>{text.length.toLocaleString()} / {MAX.toLocaleString()}</span>} />
+        <CardHeader title="Script" description="Type or paste what the voice should say" action={<span className={over ? "text-xs text-danger" : "text-xs text-muted-foreground"}>{formatNumber(text.length, lang)} / {formatNumber(MAX, lang)}</span>} />
         <CardBody className="grid gap-4">
-          <label className="sr-only" htmlFor="script">Script</label>
+          <label className="sr-only" htmlFor="script"><T>Script</T></label>
           <textarea
             id="script"
             value={text}
@@ -101,7 +102,7 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
             className="w-full resize-y rounded-xl border border-border bg-background px-4 py-3 text-[15px] leading-relaxed placeholder:text-muted-foreground focus:border-primary"
           />
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Language">
-            <span className="text-xs text-muted-foreground">Language:</span>
+            <span className="text-xs text-muted-foreground"><T>Language:</T></span>
             {LANGS.map(([key, label]) => (
               <button key={key} type="button" aria-pressed={lang === key} onClick={() => { setLang(key); if (!text.trim() || Object.values(SAMPLES).some((l) => l.some(([, t]) => t === text))) setText(SAMPLES[key][0]![1]); }}
                 className={`rounded-full px-3 py-1 text-xs font-medium ${lang === key ? "bg-primary-soft text-primary" : "border border-border text-muted-foreground hover:bg-muted"}`}>{label}</button>
@@ -109,26 +110,26 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
           </div>
           {HINTS[lang] && <p className="-mt-2 text-xs text-muted-foreground">{HINTS[lang]}</p>}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Try:</span>
+            <span className="text-xs text-muted-foreground"><T>Try:</T></span>
             {SAMPLES[lang].map(([label, t]) => (
               <button key={label} type="button" onClick={() => setText(t)} className="rounded-full border border-border px-3 py-1 text-xs hover:bg-muted">{label}</button>
             ))}
           </div>
-          {hindi && picked?.group === "stock" && <Notice tone="warning">Stock voices speak English only. For Hindi or Hinglish, choose a cloned voice marked &ldquo;Hindi&rdquo;.</Notice>}
+          {hindi && picked?.group === "stock" && <Notice tone="warning"><T>Stock voices speak English only. For Hindi or Hinglish, choose a cloned voice marked &ldquo;Hindi&rdquo;.</T></Notice>}
           {hindi && picked?.group === "cloned" && picked.hindi !== false && (picked.hindiOwn || directClone
-            ? <Notice tone="info">Hindi and Hinglish are spoken in {picked.name}&apos;s own voice.</Notice>
-            : <Notice tone="info">Hindi and Hinglish are spoken by a built-in {picked.gender} Hindi voice, not {picked.name}&apos;s own voice. To use their own voice, open Voice clone, Add Hindi to an existing voice. If {picked.name} is the wrong gender, fix it under Voices &amp; consent, Edit.</Notice>)}
-          {hindi && picked?.group === "cloned" && picked.hindi === false && <Notice tone="warning">{picked.name} has no Hindi version yet, so Hindi will be spoken in a default Hindi voice. Add one under Voice clone, &ldquo;Add Hindi to an existing voice&rdquo;.</Notice>}
-          <p className="text-xs text-muted-foreground">Emotion tags: put <code>[excited]</code>, <code>[calm]</code>, <code>[sad]</code>, <code>[serious]</code>, <code>[angry]</code>, <code>[slow]</code>, <code>[fast]</code> or <code>[pause]</code> before a sentence (Hindi: <code>[खुश]</code>, <code>[शांत]</code>, <code>[उदास]</code>). It applies until the next tag; <code>[neutral]</code> resets. Tags are never spoken. This changes speed, pitch and pauses a little; it is not acting.</p>
-          {needsCloning && <Notice tone="warning">Voice cloning is not set up yet. Pick a stock voice for now.</Notice>}
+            ? <Notice tone="info"><Tf text="Hindi and Hinglish are spoken in {name}'s own voice." vars={{ name: picked.name }} /></Notice>
+            : <Notice tone="info"><Tf text="Hindi and Hinglish are spoken by a built-in {gender} Hindi voice, not {name}'s own voice. To use their own voice, open Voice clone, Add Hindi to an existing voice. If {name} is the wrong gender, fix it under Voices & consent, Edit." vars={{ gender: picked.gender, name: picked.name }} /></Notice>)}
+          {hindi && picked?.group === "cloned" && picked.hindi === false && <Notice tone="warning"><Tf text="{name} has no Hindi version yet, so Hindi will be spoken in a default Hindi voice. Add one under Voice clone, “Add Hindi to an existing voice”." vars={{ name: picked.name }} /></Notice>}
+          <p className="text-xs text-muted-foreground"><T>Emotion tags: put</T> <code>[excited]</code>, <code>[calm]</code>, <code>[sad]</code>, <code>[serious]</code>, <code>[angry]</code>, <code>[slow]</code>, <code>[fast]</code> <T>or</T> <code>[pause]</code> <T>before a sentence (Hindi:</T> <code>[खुश]</code>, <code>[शांत]</code>, <code>[उदास]</code><T>). It applies until the next tag;</T> <code>[neutral]</code> <T>resets. Tags are never spoken. This changes speed, pitch and pauses a little; it is not acting.</T></p>
+          {needsCloning && <Notice tone="warning"><T>Voice cloning is not set up yet. Pick a stock voice for now.</T></Notice>}
           {error && (
             <div role="alert" className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
               {error.message}{error.hint && <div className="mt-1 text-xs opacity-90">{error.hint}</div>}
             </div>
           )}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> Save to Projects</label>
-            {highQualityReady && picked?.group === "cloned" && picked.provider === "pocket_tts" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={directClone} onChange={(e) => setHighQuality(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> Direct voice clone (closer match; can take minutes)</label>}
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> <T>Save to Projects</T></label>
+            {highQualityReady && picked?.group === "cloned" && picked.provider === "pocket_tts" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={directClone} onChange={(e) => setHighQuality(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> <T>Direct voice clone (closer match; can take minutes)</T></label>}
             <Button size="lg" disabled={!text.trim() || over || busy || needsCloning} onClick={() => void generate()}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Wand2 className="h-4 w-4" aria-hidden />}
               {busy ? "Generating…" : "Generate speech"}
@@ -147,34 +148,34 @@ export function StudioEditor({ voices, initialVoice, cloningReady, highQualityRe
           <CardHeader title="Voice settings" description={picked?.group === "cloned" ? (tuned ? "Custom for this audio" : "Using the voice's saved settings") : "Available for cloned voices"} />
           <CardBody className="grid gap-5">
             <label className="grid gap-1 text-sm">
-              <span className="flex justify-between font-medium">Speed <span className="font-normal text-muted-foreground">{speed.toFixed(2)}×</span></span>
+              <span className="flex justify-between font-medium"><T>Speed</T> <span className="font-normal text-muted-foreground">{speed.toFixed(2)}×</span></span>
               <input type="range" min={0.8} max={1.25} step={0.01} value={speed} disabled={picked?.group !== "cloned"} onChange={(e) => { setSpeed(Number(e.target.value)); setTuned(true); }} aria-label="Speed" />
-              <span className="flex justify-between text-xs text-muted-foreground"><span>Slower</span><span>Faster</span></span>
+              <span className="flex justify-between text-xs text-muted-foreground"><span><T>Slower</T></span><span><T>Faster</T></span></span>
             </label>
             <label className="grid gap-1 text-sm">
-              <span className="flex justify-between font-medium">Pitch <span className="font-normal text-muted-foreground">{pitch > 0 ? "+" : ""}{pitch.toFixed(1)} st</span></span>
+              <span className="flex justify-between font-medium"><T>Pitch</T> <span className="font-normal text-muted-foreground">{pitch > 0 ? "+" : ""}{pitch.toFixed(1)} <T>st</T></span></span>
               <input type="range" min={-3} max={3} step={0.1} value={pitch} disabled={picked?.group !== "cloned"} onChange={(e) => { setPitch(Number(e.target.value)); setTuned(true); }} aria-label="Pitch" />
-              <span className="flex justify-between text-xs text-muted-foreground"><span>Lower</span><span>Higher</span></span>
+              <span className="flex justify-between text-xs text-muted-foreground"><span><T>Lower</T></span><span><T>Higher</T></span></span>
             </label>
-            <button type="button" className="justify-self-start text-xs font-medium text-primary disabled:opacity-40" disabled={!tuned} onClick={() => { setSpeed(1); setPitch(0); setTuned(false); }}>Reset to the voice&apos;s saved settings</button>
-            <p className="text-xs text-muted-foreground">Small changes sound natural; large ones make words harder to understand. Set a voice&apos;s permanent values on Voices &amp; consent.</p>
+            <button type="button" className="justify-self-start text-xs font-medium text-primary disabled:opacity-40" disabled={!tuned} onClick={() => { setSpeed(1); setPitch(0); setTuned(false); }}><T>Reset to the voice&apos;s saved settings</T></button>
+            <p className="text-xs text-muted-foreground"><T>Small changes sound natural; large ones make words harder to understand. Set a voice&apos;s permanent values on Voices &amp; consent.</T></p>
           </CardBody>
         </Card>
         {result ? (
           <Card>
-            <CardHeader title="Result" description={`${result.voice} · ${result.chars.toLocaleString()} characters`} />
+            <CardHeader title="Result" description={`${result.voice} · ${formatNumber(result.chars, lang)} characters`} />
             <CardBody className="grid gap-3">
               <WaveformPlayer src={result.url} />
               {result.note && <p role="status" className="text-xs text-muted-foreground">{result.note}</p>}
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Badge>{formatBytes(result.bytes)}</Badge><Badge>{(result.ms / 1000).toFixed(1)}s to generate</Badge>
-                {result.assetId && <Link href={`/projects/${result.assetId}`} className="inline-flex items-center gap-1 text-primary hover:underline"><FolderOpen className="h-3.5 w-3.5" aria-hidden />Saved to Projects</Link>}
+                {result.assetId && <Link href={`/projects/${result.assetId}`} className="inline-flex items-center gap-1 text-primary hover:underline"><FolderOpen className="h-3.5 w-3.5" aria-hidden /><T>Saved to Projects</T></Link>}
               </div>
-              <a href={result.url} download={`speech.${result.ext}`} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border text-sm font-medium hover:bg-muted"><Download className="h-4 w-4" aria-hidden />Download {result.ext.toUpperCase()}</a>
+              <a href={result.url} download={`speech.${result.ext}`} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border text-sm font-medium hover:bg-muted"><Download className="h-4 w-4" aria-hidden /><T>Download</T> {result.ext.toUpperCase()}</a>
             </CardBody>
           </Card>
         ) : (
-          <Card><CardBody className="flex items-start gap-3 text-sm text-muted-foreground"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />Your generated audio will appear here, ready to play and download.</CardBody></Card>
+          <Card><CardBody className="flex items-start gap-3 text-sm text-muted-foreground"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden /><T>Your generated audio will appear here, ready to play and download.</T></CardBody></Card>
         )}
       </div>
     </div>

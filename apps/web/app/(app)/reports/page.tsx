@@ -8,6 +8,7 @@ import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { cn, formatDuration, pct } from "@/lib/utils";
+import { T } from "@/components/t";
 
 const RANGES = [7, 14, 30];
 
@@ -42,7 +43,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <Card className="mt-6">
         <CardHeader title="Per agent" description="Definitions follow the SOP: connect rate = connected outgoing ÷ outgoing attempts" />
         {aggregateOnly ? (
-          <div className="p-5"><Notice>Your role sees totals only. Per-agent figures are hidden.</Notice></div>
+          <div className="p-5"><Notice><T>Your role sees totals only. Per-agent figures are hidden.</T></Notice></div>
         ) : rows.length === 0 ? (
           <EmptyState title="No agent calls in this period" />
         ) : (

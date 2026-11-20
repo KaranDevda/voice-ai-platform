@@ -6,6 +6,7 @@ import { Badge, CallStatusBadge, SentimentBadge, SourceBadge } from "@/component
 import { Button } from "@/components/ui/button";
 import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { formatDateTime, formatDuration, titleCase } from "@/lib/utils";
+import { T, useLang } from "@/components/t";
 
 interface CallRow {
   id: string;
@@ -46,6 +47,7 @@ function Segment({ s }: { s: { speaker: string; startMs: number; endMs: number; 
 }
 
 function MonitorRow({ c, open, setOpen }: { c: CallRow; open: Set<string>; setOpen: (s: Set<string>) => void }) {
+  const lang = useLang();
   const isOpen = open.has(c.id);
   const segments = c.transcript?.segments ?? [];
   const toggle = () => {
@@ -57,11 +59,11 @@ function MonitorRow({ c, open, setOpen }: { c: CallRow; open: Set<string>; setOp
     <Tr key={c.id} className={isOpen ? "bg-muted/50" : ""} onClick={toggle}>
       <Td>
         <Link className="text-primary hover:underline" href={`/calls/${c.id}`}>
-          {formatDateTime(c.startedAt)}
+          {formatDateTime(c.startedAt, lang)}
         </Link>
       </Td>
       <Td>
-        {c.leadName ?? <span className="text-muted-foreground">Unknown caller</span>}
+        {c.leadName ?? <span className="text-muted-foreground"><T>Unknown caller</T></span>}
         <div className="text-xs text-muted-foreground">{c.leadPhone}</div>
       </Td>
       <Td>
@@ -73,7 +75,7 @@ function MonitorRow({ c, open, setOpen }: { c: CallRow; open: Set<string>; setOp
       <Td>{titleCase(c.direction)}</Td>
       <Td><CallStatusBadge status={c.status} /></Td>
       <Td className="tabular-nums">{c.durationS ? formatDuration(c.durationS) : "—"}</Td>
-      <Td>{c.agentEmail ?? <span className="text-muted-foreground">AI</span>}</Td>
+      <Td>{c.agentEmail ?? <span className="text-muted-foreground"><T>AI</T></span>}</Td>
       <Td><SentimentBadge label={c.sentimentLabel} /></Td>
       <Td className="text-end">
         <Button size="sm" variant="outline" onClick={(e) => {
@@ -87,7 +89,7 @@ function MonitorRow({ c, open, setOpen }: { c: CallRow; open: Set<string>; setOp
         <Td colSpan={999}>
           <div className="pt-2 border-t border-border rounded-b-lg bg-muted/50">
             {segments.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No transcript saved yet.</p>
+              <p className="text-xs text-muted-foreground"><T>No transcript saved yet.</T></p>
             ) : (
               segments.map((s) => <Segment key={`${c.id}-${s.startMs}`} s={s} />)
             )}
@@ -106,14 +108,14 @@ export function MonitorTable({ rows, aggregateOnly }: { rows: CallRow[]; aggrega
   if (aggregateOnly) {
     return (
       <div className="p-4">
-        <p className="text-sm text-muted-foreground">You have a summary-only view. Individual calls are not shown for your role.</p>
+        <p className="text-sm text-muted-foreground"><T>You have a summary-only view. Individual calls are not shown for your role.</T></p>
       </div>
     );
   }
   if (rows.length === 0) {
     return (
       <div className="py-8 text-center text-muted-foreground">
-        No calls yet. Start a live conversation, place a call from the dialer, or wait for a carrier call.
+        <T>No calls yet. Start a live conversation, place a call from the dialer, or wait for a carrier call.</T>
       </div>
     );
   }

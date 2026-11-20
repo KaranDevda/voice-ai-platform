@@ -3,6 +3,7 @@ import { BarChart3, Table2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { T } from "../t";
 
 export interface DayRow { label: string; day: string; ai: number; web: number; mobile: number }
 
@@ -48,7 +49,7 @@ export function CallsChart({ data, height = 220 }: { data: DayRow[]; height?: nu
                 className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary",
                   on ? "border-border bg-card text-foreground hover:bg-muted" : "border-dashed border-border text-muted-foreground line-through hover:bg-muted")}>
                 <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: on ? s.color : "transparent", boxShadow: on ? undefined : `inset 0 0 0 1.5px ${s.color}` }} aria-hidden />
-                {s.label}
+                <T>{s.label}</T>
                 <span className="tabular-nums text-muted-foreground">{sums[i]}</span>
               </button>
             );
@@ -67,7 +68,7 @@ export function CallsChart({ data, height = 220 }: { data: DayRow[]; height?: nu
       {view === "table" ? (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-start text-xs text-muted-foreground"><th className="py-2 pe-4 font-medium">Day</th>{SERIES.map((s) => <th key={s.key} className="py-2 pe-4 text-end font-medium">{s.label}</th>)}<th className="py-2 text-end font-medium">Total</th></tr></thead>
+            <thead><tr className="border-b border-border text-start text-xs text-muted-foreground"><th className="py-2 pe-4 font-medium"><T>Day</T></th>{SERIES.map((s) => <th key={s.key} className="py-2 pe-4 text-end font-medium"><T>{s.label}</T></th>)}<th className="py-2 text-end font-medium"><T>Total</T></th></tr></thead>
             <tbody>
               {data.map((d) => (
                 <tr key={d.day} className="border-b border-border/60 last:border-0 hover:bg-muted/50">
@@ -109,14 +110,14 @@ export function CallsChart({ data, height = 220 }: { data: DayRow[]; height?: nu
                       {active === i && (
                         <div role="status" className={cn("pointer-events-none absolute z-10 w-44 rounded-lg border border-border bg-card p-3 text-xs shadow-lg", tipRight ? "end-0" : "start-0")} style={{ bottom: `calc(${Math.min(95, (total / max) * 100)}% + 8px)` }}>
                           <div className="text-muted-foreground">{d.label}</div>
-                          <div className="mb-1.5 text-lg font-semibold leading-tight tabular-nums">{total}<span className="ms-1 text-xs font-normal text-muted-foreground">calls</span></div>
+                          <div className="mb-1.5 text-lg font-semibold leading-tight tabular-nums">{total}<span className="ms-1 text-xs font-normal text-muted-foreground"><T>calls</T></span></div>
                           {SERIES.map((s) => (
                             <div key={s.key} className={cn("flex items-center justify-between gap-2 py-0.5", hidden.has(s.key) && "opacity-40")}>
                               <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="h-[3px] w-3 rounded-full" style={{ background: s.color }} aria-hidden />{s.label}</span>
                               <span className="font-semibold tabular-nums text-foreground">{d[s.key]}</span>
                             </div>
                           ))}
-                          <div className="mt-1.5 border-t border-border pt-1.5 text-[10px] text-muted-foreground">Click to open these calls</div>
+                          <div className="mt-1.5 border-t border-border pt-1.5 text-[10px] text-muted-foreground"><T>Click to open these calls</T></div>
                         </div>
                       )}
                     </div>
@@ -130,7 +131,7 @@ export function CallsChart({ data, height = 220 }: { data: DayRow[]; height?: nu
               {data.map((d, i) => <div key={d.day} className={cn("mt-2 flex justify-center whitespace-nowrap", active === i && "font-medium text-foreground")}>{(data.length - 1 - i) % step === 0 ? d.label : null}</div>)}
             </div>
           </div>
-          <p className="mt-5 text-xs text-muted-foreground">Click a day to open its calls, or a coloured part to open just that source. Click a name above to hide it.</p>
+          <p className="mt-5 text-xs text-muted-foreground"><T>Click a day to open its calls, or a coloured part to open just that source. Click a name above to hide it.</T></p>
         </>
       )}
     </div>

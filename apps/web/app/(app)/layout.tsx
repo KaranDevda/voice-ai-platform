@@ -5,7 +5,7 @@ import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks } from "@/components/nav-links";
 import { LanguageSelect } from "@/components/language-select";
-import { I18nProvider } from "@/components/t";
+import { I18nProvider, T } from "@/components/t";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { navFor, profileOf, requirePageUser } from "@/lib/page-auth";
@@ -39,14 +39,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const impersonating = !!(await verifyToken<SessionClaims>(jar.get(SESSION_COOKIE)?.value, "session"))?.impBy;
 
   return (
-    <I18nProvider dict={dict}>
+    <I18nProvider dict={dict} lang={lang}>
     <div className="min-h-screen md:flex md:flex-wrap" style={brandStyle}>
       {impersonating && <div className="w-full print:hidden"><ImpersonationBanner email={profile.email} /></div>}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-border bg-card md:flex print:!hidden">
         <div className="flex items-center gap-2.5 px-5 py-4">
           <BizfyMark className="h-9 w-9" />
           <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight">{brand.name || "Bizfy Voice AI"}</div>
+            <div className="text-sm font-semibold tracking-tight"><T>{brand.name || "Bizfy Voice AI"}</T></div>
             <div className="text-xs text-muted-foreground">{brand.tagline || t("Calls · voices · agents")}</div>
           </div>
         </div>

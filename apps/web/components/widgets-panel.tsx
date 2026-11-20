@@ -5,6 +5,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Select, Textarea } from "./ui/form";
+import { T } from "./t";
 
 interface Widget { id: string; name: string; key: string; origins: string[]; language: string; active: boolean }
 
@@ -44,17 +45,17 @@ export function WidgetsPanel({ canEdit, widgets }: { canEdit: boolean; widgets: 
           <CardBody>
             <form onSubmit={create} className="grid gap-3 md:grid-cols-2">
               <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} required /></Field>
-              <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="en-hi">Hindi + English</option><option value="hi">Hindi</option><option value="en">English</option></Select></Field>
+              <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="en-hi"><T>Hindi + English</T></option><option value="hi"><T>Hindi</T></option><option value="en"><T>English</T></option></Select></Field>
               <div className="md:col-span-2"><Field label="Sites allowed to show it" hint="One per line, like https://www.example.com (https only, no page path). Use https://localhost:3000 style only for testing."><Textarea rows={3} value={sites} onChange={(e) => setSites(e.target.value)} required /></Field></div>
               <div><Button type="submit" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create widget"}</Button></div>
             </form>
-            {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+            {error && <p role="alert" className="mt-3 text-sm text-danger"><T>{error}</T></p>}
           </CardBody>
         </Card>
       )}
       <Card>
         <CardHeader title="Your widgets" description="Calls through a widget use your agent's settings and are saved in the call logs. Visitors need no account." />
-        {widgets.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No widgets yet.</p></CardBody> : (
+        {widgets.length === 0 ? <CardBody><p className="text-sm text-muted-foreground"><T>No widgets yet.</T></p></CardBody> : (
           <CardBody className="grid gap-5">
             {widgets.map((w) => (
               <div key={w.id} className="grid gap-2 border-b border-border pb-5 last:border-0 last:pb-0">

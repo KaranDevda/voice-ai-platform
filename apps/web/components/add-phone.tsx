@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiError } from "@/lib/api-client";
 import { Button } from "./ui/button";
 import { Notice } from "./ui/page";
+import { T } from "./t";
 
 /** Makes a one-time code to type into the Bizfy Voice AI phone app (Android or iPhone). Valid for 10 minutes, once. */
 export function AddPhone() {
@@ -32,12 +33,12 @@ export function AddPhone() {
   return (
     <div className="flex flex-col items-end gap-2">
       <Button size="sm" onClick={make} disabled={busy}><Smartphone className="h-4 w-4" aria-hidden /> {busy ? "Working…" : code ? "New code" : "Add a phone"}</Button>
-      {error && <span role="alert" className="text-xs text-danger">{error}</span>}
+      {error && <span role="alert" className="text-xs text-danger"><T>{error}</T></span>}
       {code && (
         <Notice tone="info">
-          <div className="text-xs">In the Bizfy Voice AI app on your phone, choose “Link this phone” and type:</div>
+          <div className="text-xs"><T>In the Bizfy Voice AI app on your phone, choose “Link this phone” and type:</T></div>
           <div className="my-1 font-mono text-2xl font-semibold tracking-[0.25em]" aria-live="polite">{code.code}</div>
-          <div className="text-xs">Works once, for {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} more. Never share it.</div>
+          <div className="text-xs"><T>Works once, for</T> {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} <T>more. Never share it.</T></div>
         </Notice>
       )}
     </div>

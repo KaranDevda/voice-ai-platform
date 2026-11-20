@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input } from "./ui/form";
+import { T } from "./t";
 
 /** Change your own password. */
 export function AccountPanel() {
@@ -30,8 +31,8 @@ export function AccountPanel() {
           <Field label="Current password"><Input name="current" type="password" autoComplete="current-password" required /></Field>
           <Field label="New password"><Input name="next" type="password" autoComplete="new-password" minLength={12} required /></Field>
           <Field label="New password again"><Input name="again" type="password" autoComplete="new-password" minLength={12} required /></Field>
-          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-          {done && <p role="status" className="text-sm text-success">Password changed.</p>}
+          {error && <p role="alert" className="text-sm text-danger"><T>{error}</T></p>}
+          {done && <p role="status" className="text-sm text-success"><T>Password changed.</T></p>}
           <div><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Change password"}</Button></div>
         </form>
       </CardBody>

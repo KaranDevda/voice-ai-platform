@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Select } from "./ui/form";
+import { T } from "./t";
 
 interface SequenceOption { id: string; name: string; status: string }
 
@@ -32,14 +33,14 @@ export function LeadSequenceEnrollment({ leadId, sequences }: { leadId: string; 
     <Card>
       <CardHeader title="Follow-up sequence" description="Enrol this lead in one active sequence." />
       <CardBody className="grid gap-3">
-        {!active.length ? <p className="text-sm text-muted-foreground">No active sequences are available.</p> : (
+        {!active.length ? <p className="text-sm text-muted-foreground"><T>No active sequences are available.</T></p> : (
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-48 flex-1"><Field label="Sequence"><Select value={sequenceId} onChange={(e) => setSequenceId(e.target.value)}>{active.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field></div>
             <Button onClick={() => void enroll()} disabled={busy || !sequenceId}>{busy ? "Enrolling…" : "Enrol lead"}</Button>
           </div>
         )}
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-        {message && <p role="status" className="text-sm text-success">{message}</p>}
+        {error && <p role="alert" className="text-sm text-danger"><T>{error}</T></p>}
+        {message && <p role="status" className="text-sm text-success"><T>{message}</T></p>}
       </CardBody>
     </Card>
   );

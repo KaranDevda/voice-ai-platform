@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
+import { T } from "@/components/t";
 
 export default function LoginPage() {
   const [needTotp, setNeedTotp] = useState(false);
@@ -30,7 +31,7 @@ export default function LoginPage() {
   // method=post: if the form is submitted before this page's script has loaded, the browser must never put the password in the address (GET would).
   return (
     <form onSubmit={submit} method="post" action="/login" className="grid gap-4">
-      <h1 className="text-lg font-semibold">{needTotp ? "Two-factor authentication" : "Welcome back"}</h1>
+      <h1 className="text-lg font-semibold"><T>{needTotp ? "Two-factor authentication" : "Welcome back"}</T></h1>
       <div className={needTotp ? "hidden" : "grid gap-4"}>
         <Field label="Email"><Input name="email" type="email" autoComplete="username" placeholder="you@company.com" required /></Field>
         <Field label="Password"><Input name="password" type="password" autoComplete="current-password" required /></Field>
@@ -40,9 +41,9 @@ export default function LoginPage() {
           <Input name="totp" autoComplete="one-time-code" autoFocus required />
         </Field>
       )}
-      {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+      {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"><T>{error}</T></p>}
       <Button type="submit" disabled={busy}>{busy ? "Checking…" : needTotp ? "Verify and sign in" : "Continue"}</Button>
-      {!needTotp && <Link href="/forgot-password" className="text-center text-sm text-muted-foreground underline">Forgot your password?</Link>}
+      {!needTotp && <Link href="/forgot-password" className="text-center text-sm text-muted-foreground underline"><T>Forgot your password?</T></Link>}
     </form>
   );
 }

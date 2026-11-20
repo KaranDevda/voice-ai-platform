@@ -10,6 +10,7 @@ import { Input } from "./ui/form";
 import { Notice } from "./ui/page";
 import { apiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { T, Tf } from "./t";
 
 interface LeadOption { id: string; name: string | null; phone: string; dnd: boolean }
 interface Voice { id: string; label: string; gender: string }
@@ -94,8 +95,8 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
         <CardBody className="grid gap-5">
           <Field label="Lead">
             <Select value={leadId} onChange={(e) => { setLeadId(e.target.value); const l = leads.find((x) => x.id === e.target.value); if (l) setNumber(l.phone); }}>
-              <option value="">Choose a lead or type a number…</option>
-              {leads.map((l) => <option key={l.id} value={l.id}>{l.name ?? "Unknown caller"} · {l.phone}{l.dnd ? " · DND" : ""}</option>)}
+              <option value=""><T>Choose a lead or type a number…</T></option>
+              {leads.map((l) => <option key={l.id} value={l.id}><T>{l.name ?? "Unknown caller"}</T> · {l.phone}<T>{l.dnd ? " · DND" : ""}</T></option>)}
             </Select>
           </Field>
           <div className="relative">
@@ -137,23 +138,23 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
                 <span className={cn(c.ok === false && "text-danger")}>{c.label}</span>
               </div>
             ))}
-            {aiNeedsLead && <p className="text-xs text-muted-foreground">Choose a lead on the left: the AI call follows that lead's Do Not Disturb and consent.</p>}
+            {aiNeedsLead && <p className="text-xs text-muted-foreground"><T>Choose a lead on the left: the AI call follows that lead's Do Not Disturb and consent.</T></p>}
             {phase === "idle" || phase === "checking" ? (
               <Button className="mt-3" size="lg" disabled={blocked || phase === "checking" || !number || aiNeedsLead || (mode === "ai" && !voiceId)} onClick={press}>
                 <Phone className="h-4 w-4" aria-hidden /> {phase === "checking" ? "Checking…" : blocked ? "Cannot call" : mode === "ai" ? "Start AI practice call" : "Call"}
               </Button>
             ) : phase === "dialling" ? (
               <div className="mt-3 grid gap-3 rounded-xl border border-primary bg-primary-soft p-4">
-                <div className="text-sm font-semibold">Cleared to call {e164 ?? number}</div>
-                <a href={`tel:${e164 ?? number}`} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"><Phone className="h-4 w-4" aria-hidden /> Open in my phone app</a>
-                <div className="text-xs text-muted-foreground">Time since cleared: {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}. Press Finish when the call ends, then log how it went.</div>
+                <div className="text-sm font-semibold"><T>Cleared to call</T> {e164 ?? number}</div>
+                <a href={`tel:${e164 ?? number}`} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"><Phone className="h-4 w-4" aria-hidden /> <T>Open in my phone app</T></a>
+                <div className="text-xs text-muted-foreground"><Tf text="Time since cleared: {time}. Press Finish when the call ends, then log how it went." vars={{ time: `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}` }} /></div>
                 <Button variant="outline" onClick={finish}>Finish call</Button>
               </div>
             ) : phase === "finishing" ? (
               <div className="mt-3 grid gap-3 rounded-xl border border-border p-4">
-                <div className="text-sm font-semibold">How did the call go?</div>
+                <div className="text-sm font-semibold"><T>How did the call go?</T></div>
                 <Select value={outcome} onChange={(e) => setOutcome(e.target.value as typeof outcome)} aria-label="Outcome">
-                  <option value="connected">Connected, we spoke</option><option value="missed">No answer</option><option value="rejected">Declined</option><option value="failed">Could not connect</option>
+                  <option value="connected"><T>Connected, we spoke</T></option><option value="missed"><T>No answer</T></option><option value="rejected"><T>Declined</T></option><option value="failed"><T>Could not connect</T></option>
                 </Select>
                 {outcome === "connected" && (
                   <div className="grid grid-cols-2 gap-2">
@@ -165,14 +166,14 @@ export function Dialer({ leads, voices, window: win }: { leads: LeadOption[]; vo
               </div>
             ) : (
               <div className="mt-3 grid gap-3 rounded-xl border border-success p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold"><Check className="h-4 w-4 text-success" aria-hidden /> Saved to the call logs</div>
+                <div className="flex items-center gap-2 text-sm font-semibold"><Check className="h-4 w-4 text-success" aria-hidden /> <T>Saved to the call logs</T></div>
                 <Button variant="outline" onClick={() => { reset(); setNumber(""); setLeadId(""); }}>Make another call</Button>
               </div>
             )}
-            {problem && <Notice tone="warning">{problem}</Notice>}
-            <Notice tone="info">{mode === "ai"
+            {problem && <Notice tone="warning"><T>{problem}</T></Notice>}
+            <Notice tone="info"><T>{mode === "ai"
               ? "AI calls run as practice calls in this browser: you play the lead. Calling real numbers needs the company phone line, which is waiting on the carrier's KYC."
-              : "Your call goes out from your own phone or this computer, because the company phone line is not connected yet. It is checked first and logged after, so it shows on the lead."}</Notice>
+              : "Your call goes out from your own phone or this computer, because the company phone line is not connected yet. It is checked first and logged after, so it shows on the lead."}</T></Notice>
           </CardBody>
         </Card>
       </div>

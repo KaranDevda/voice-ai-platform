@@ -8,6 +8,7 @@ import { Badge } from "./ui/badge";
 import { buttonClass } from "./ui/button";
 import { Input, Select } from "./ui/form";
 import type { VoiceChoice } from "./voice-picker";
+import { T } from "./t";
 
 const SAMPLE = "Hello, thanks for calling. How can I help you today?";
 
@@ -57,12 +58,12 @@ export function LibraryGrid({ voices }: { voices: VoiceChoice[] }) {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center gap-2">
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search voices" aria-label="Search voices" className="w-full sm:w-60" />
-        <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Source" className="w-auto"><option value="">All sources</option><option value="cloned">Cloned staff voices</option><option value="stock">Stock voices</option></Select>
-        <Select value={gender} onChange={(e) => setGender(e.target.value)} aria-label="Gender" className="w-auto"><option value="">Any gender</option><option value="female">Female</option><option value="male">Male</option></Select>
-        <Select value={accent} onChange={(e) => setAccent(e.target.value)} aria-label="Accent" className="w-auto"><option value="">Any accent</option>{accents.map((a) => <option key={a}>{a}</option>)}</Select>
-        <span className="ms-auto text-sm text-muted-foreground">{shown.length} of {voices.length} voices</span>
+        <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Source" className="w-auto"><option value=""><T>All sources</T></option><option value="cloned"><T>Cloned staff voices</T></option><option value="stock"><T>Stock voices</T></option></Select>
+        <Select value={gender} onChange={(e) => setGender(e.target.value)} aria-label="Gender" className="w-auto"><option value=""><T>Any gender</T></option><option value="female"><T>Female</T></option><option value="male"><T>Male</T></option></Select>
+        <Select value={accent} onChange={(e) => setAccent(e.target.value)} aria-label="Accent" className="w-auto"><option value=""><T>Any accent</T></option>{accents.map((a) => <option key={a}>{a}</option>)}</Select>
+        <span className="ms-auto text-sm text-muted-foreground">{shown.length} <T>of</T> {voices.length} <T>voices</T></span>
       </div>
-      {shown.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">No voices match these filters.</p> : (
+      {shown.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground"><T>No voices match these filters.</T></p> : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((v) => {
             const s = state[v.ref];
@@ -72,16 +73,16 @@ export function LibraryGrid({ voices }: { voices: VoiceChoice[] }) {
                   <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-full text-base font-semibold", v.gender === "female" ? "bg-primary-soft text-primary" : "bg-info-soft text-info")}>{v.name[0]}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5"><span className="font-medium">{v.name}</span>{v.group === "cloned" && <Badge tone="primary"><ShieldCheck className="me-1 h-3 w-3" aria-hidden />Consent on file</Badge>}</div>
-                    <div className="mt-0.5 text-xs text-muted-foreground"><span className="capitalize">{v.gender}</span> · {v.group === "cloned" ? "Cloned staff voice" : v.detail}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground"><span className="capitalize">{v.gender}</span> · <T>{v.group === "cloned" ? "Cloned staff voice" : v.detail}</T></div>
                   </div>
                 </div>
                 {errors[v.ref] && <p role="alert" className="text-xs text-danger">{errors[v.ref]}</p>}
                 <div className="mt-auto flex items-center gap-2">
                   <button type="button" onClick={() => void preview(v)} className={buttonClass({ variant: "soft", size: "sm" })} aria-label={`Preview ${v.name}`}>
                     {s === "loading" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : s === "playing" ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
-                    {s === "playing" ? "Stop" : "Preview"}
+                    <T>{s === "playing" ? "Stop" : "Preview"}</T>
                   </button>
-                  <Link href={`/studio?voice=${encodeURIComponent(v.ref)}`} className={buttonClass({ variant: "outline", size: "sm" })}><Mic2 className="h-4 w-4" aria-hidden />Use in Studio</Link>
+                  <Link href={`/studio?voice=${encodeURIComponent(v.ref)}`} className={buttonClass({ variant: "outline", size: "sm" })}><Mic2 className="h-4 w-4" aria-hidden /><T>Use in Studio</T></Link>
                 </div>
               </div>
             );

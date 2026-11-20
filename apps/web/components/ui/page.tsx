@@ -10,11 +10,11 @@ export function Stat({ label, value, hint, icon: Icon }: { label: string; value:
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>{label}</span>
+        <span><T>{label}</T></span>
         {Icon && <Icon className="h-4 w-4" aria-hidden />}
       </div>
       <div className="mt-2 text-3xl font-semibold tracking-tight">{value}</div>
-      {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
+      {hint && <div className="mt-1 text-xs text-muted-foreground"><T>{hint}</T></div>}
     </Card>
   );
 }

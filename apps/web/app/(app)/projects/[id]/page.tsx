@@ -1,4 +1,5 @@
 import { Mic2 } from "lucide-react";
+import { currentLang } from "@/lib/i18n-server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAsset } from "@voiceai/db";
@@ -11,11 +12,13 @@ import { WaveformPlayer } from "@/components/waveform-player";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { clockMs, formatDateTime } from "@/lib/utils";
+import { T } from "@/components/t";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 interface Seg { speaker: number; startMs: number; endMs: number; text: string }
 
 export default async function ProjectDetail({ params }: { params: Promise<{ id: string }> }) {
+  const lang = await currentLang();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const user = await requirePageUser();
@@ -26,11 +29,11 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
 
   return (
     <>
-      <p className="mb-2 text-sm"><Link href="/projects" className="text-muted-foreground hover:text-foreground">← Projects</Link></p>
+      <p className="mb-2 text-sm"><Link href="/projects" className="text-muted-foreground hover:text-foreground"><T>← Projects</T></Link></p>
       <PageHeader
         title={asset.title}
-        description={`${asset.kind === "speech" ? "Speech" : "Transcript"} · ${formatDateTime(asset.createdAt)} · ${asset.ownerEmail}`}
-        actions={<PostButton url={`/api/projects/${asset.id}`} method="DELETE" redirectTo="/projects" variant="outline" size="sm" confirm={`Delete "${asset.title}"?`}>Delete</PostButton>}
+        description={`${asset.kind === "speech" ? "Speech" : "Transcript"} · ${formatDateTime(asset.createdAt, lang)} · ${asset.ownerEmail}`}
+        actions={<PostButton url={`/api/projects/${asset.id}`} method="DELETE" redirectTo="/projects" variant="outline" size="sm" confirm={`Delete "${asset.title}"?`}><T>Delete</T></PostButton>}
       />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="grid content-start gap-6 lg:col-span-2">
@@ -41,7 +44,7 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
               {asset.kind === "transcript" && segments.length > 0 ? (
                 <ol className="grid gap-3">
                   {segments.map((s, i) => (
-                    <li key={i} className="flex gap-3 text-sm"><span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">{clockMs(s.startMs)}</span><div><span className="me-2 text-xs font-medium text-primary">Speaker {s.speaker + 1}</span>{s.text}</div></li>
+                    <li key={i} className="flex gap-3 text-sm"><span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">{clockMs(s.startMs)}</span><div><span className="me-2 text-xs font-medium text-primary"><T>Speaker</T> {s.speaker + 1}</span>{s.text}</div></li>
                   ))}
                 </ol>
               ) : <p className="whitespace-pre-wrap text-sm leading-relaxed">{asset.text}</p>}
@@ -51,10 +54,10 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
         <Card className="content-start">
           <CardHeader title="Details" />
           <dl className="grid divide-y divide-border text-sm">
-            <div className="flex justify-between gap-4 px-5 py-3"><dt className="text-muted-foreground">Provider</dt><dd className="font-medium capitalize">{asset.provider}</dd></div>
-            {asset.voiceRef && <div className="flex justify-between gap-4 px-5 py-3"><dt className="text-muted-foreground">Voice</dt><dd className="font-medium">{asset.voiceRef.replace(/^dg:aura-2-/, "").replace(/-en$/, "").replace(/^profile:.*/, "Cloned voice")}</dd></div>}
-            {typeof asset.meta.language === "string" && <div className="flex justify-between gap-4 px-5 py-3"><dt className="text-muted-foreground">Language</dt><dd><Badge>{asset.meta.language}</Badge></dd></div>}
-            {asset.kind === "speech" && asset.voiceRef && <div className="px-5 py-3"><Link href={`/studio?voice=${encodeURIComponent(asset.voiceRef)}`} className="inline-flex items-center gap-2 text-sm text-primary hover:underline"><Mic2 className="h-4 w-4" aria-hidden />Open this voice in Studio</Link></div>}
+            <div className="flex justify-between gap-4 px-5 py-3"><dt className="text-muted-foreground"><T>Provider</T></dt><dd className="font-medium capitalize">{asset.provider}</dd></div>
+            {asset.voiceRef && <div className="flex justify-between gap-4 px-5 py-3"><dt className="text-muted-foreground"><T>Voice</T></dt><dd className="font-medium">{asset.voiceRef.replace(/^dg:aura-2-/, "").replace(/-en$/, "").replace(/^profile:.*/, "Cloned voice")}</dd></div>}
+            {typeof asset.meta.language === "string" && <div className="flex justify-between gap-4 px-5 py-3"><dt className="text-muted-foreground"><T>Language</T></dt><dd><Badge>{asset.meta.language}</Badge></dd></div>}
+            {asset.kind === "speech" && asset.voiceRef && <div className="px-5 py-3"><Link href={`/studio?voice=${encodeURIComponent(asset.voiceRef)}`} className="inline-flex items-center gap-2 text-sm text-primary hover:underline"><Mic2 className="h-4 w-4" aria-hidden /><T>Open this voice in Studio</T></Link></div>}
           </dl>
         </Card>
       </div>

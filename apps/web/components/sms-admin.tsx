@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Textarea } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
 import { formatDateTime, titleCase } from "@/lib/utils";
+import { T, useLang } from "./t";
 
 interface Row { id: string; direction: string; body: string; status: string; error: string | null; createdAt: string; name: string | null; phone: string | null }
 const TONE: Record<string, "success" | "danger" | "neutral" | "warning"> = { sent: "success", received: "neutral", queued: "warning", sending: "warning", failed: "danger" };
@@ -15,6 +16,7 @@ const TONE: Record<string, "success" | "danger" | "neutral" | "warning"> = { sen
 interface Template { id: string; name: string; body: string }
 
 export function SmsAdmin({ counts, rows, templates }: { counts: Record<string, number>; rows: Row[]; templates: Template[] }) {
+  const lang = useLang();
   const router = useRouter();
   const [tags, setTags] = useState("");
   const [text, setText] = useState("");
@@ -60,10 +62,10 @@ export function SmsAdmin({ counts, rows, templates }: { counts: Record<string, n
         <CardBody>
           <form onSubmit={send} className="grid gap-3">
             <Field label="Tags" hint="Use tags already on your imported leads, e.g. diwali or vip. Commas select people matching any listed tag."><Input value={tags} onChange={(e) => setTags(e.target.value)} required /></Field>
-            {templates.length > 0 && <Field label="Start from a template"><select defaultValue="" onChange={(e) => pickTemplate(e.target.value)} className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"><option value="">Choose…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>}
+            {templates.length > 0 && <Field label="Start from a template"><select defaultValue="" onChange={(e) => pickTemplate(e.target.value)} className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"><option value=""><T>Choose…</T></option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>}
             <Field label="Message" hint={`${text.length} / 1000. Use {{name}}, {{first_name}} or an imported column like {{city}}; {{name|there}} gives a fallback. Plivo currently routes India SMS over international (ILDO) routes; its DLT fields are deprecated.`}><Textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} required /></Field>
-            {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-            {note && <p role="status" className="text-sm text-success">{note}</p>}
+            {error && <p role="alert" className="text-sm text-danger"><T>{error}</T></p>}
+            {note && <p role="status" className="text-sm text-success"><T>{note}</T></p>}
             <div className="flex flex-wrap items-end gap-2">
               <Button type="submit" disabled={busy || !text.trim() || !tags.trim()}>{busy ? "Queuing…" : "Send"}</Button>
               <div className="min-w-48"><Input placeholder="Template name" value={tplName} onChange={(e) => setTplName(e.target.value)} maxLength={80} aria-label="Template name" /></div>
@@ -82,12 +84,12 @@ export function SmsAdmin({ counts, rows, templates }: { counts: Record<string, n
       )}
       <Card>
         <CardHeader title="Recent messages" description={`Queued ${counts.queued ?? 0} · sent ${counts.sent ?? 0} · failed ${counts.failed ?? 0} · received ${counts.received ?? 0}`} />
-        {rows.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No messages yet.</p></CardBody> : (
+        {rows.length === 0 ? <CardBody><p className="text-sm text-muted-foreground"><T>No messages yet.</T></p></CardBody> : (
           <Table>
             <thead><tr><Th>When</Th><Th>Person</Th><Th>Direction</Th><Th>Message</Th><Th>Status</Th></tr></thead>
             <tbody>{rows.map((r) => (
               <Tr key={r.id}>
-                <Td className="whitespace-nowrap">{formatDateTime(r.createdAt)}</Td>
+                <Td className="whitespace-nowrap">{formatDateTime(r.createdAt, lang)}</Td>
                 <Td>{r.name ?? "-"}<div className="text-xs text-muted-foreground">{r.phone}</div></Td>
                 <Td>{titleCase(r.direction)}</Td>
                 <Td className="max-w-md">{r.body}</Td>

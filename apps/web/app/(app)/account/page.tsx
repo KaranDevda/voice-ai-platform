@@ -7,6 +7,7 @@ import { API_TOKEN_PERMISSIONS, getMfaStatus } from "@voiceai/db";
 import { getDb } from "@/lib/server";
 import { profileOf, requirePageUser } from "@/lib/page-auth";
 import { titleCase } from "@/lib/utils";
+import { T } from "@/components/t";
 
 export default async function AccountPage() {
   const user = await requirePageUser();
@@ -19,9 +20,9 @@ export default async function AccountPage() {
         <Card>
           <CardHeader title="Who you are" />
           <CardBody className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
-            <span className="text-muted-foreground">E-mail</span><span>{p.email}</span>
-            <span className="text-muted-foreground">Organisation</span><span>{p.orgName}</span>
-            <span className="text-muted-foreground">Role</span><span>{p.roles.map(titleCase).join(", ")}</span>
+            <span className="text-muted-foreground"><T>E-mail</T></span><span>{p.email}</span>
+            <span className="text-muted-foreground"><T>Organisation</T></span><span>{p.orgName}</span>
+            <span className="text-muted-foreground"><T>Role</T></span><span>{p.roles.map(titleCase).join(", ")}</span>
           </CardBody>
         </Card>
         <div id="password" className="scroll-mt-20"><AccountPanel /></div>

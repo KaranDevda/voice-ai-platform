@@ -6,6 +6,7 @@ import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { formatDateTime } from "@/lib/utils";
+import { T } from "@/components/t";
 
 const REPORTS: Array<{ key: string; name: string; description: string; href: string; permission: string }> = [
   { key: "contacts", name: "Contacts", description: "All leads you can see, with tags, consent, DND and custom fields.", href: "/api/contacts/export", permission: "leads.export" },
@@ -19,8 +20,8 @@ export default async function ReportsExportPage() {
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold">Export reports</h1>
-        <p className="text-sm text-muted-foreground">Download CSV extracts of your organisation's data. Each export is audited.</p>
+        <h1 className="text-2xl font-semibold"><T>Export reports</T></h1>
+        <p className="text-sm text-muted-foreground"><T>Download CSV extracts of your organisation's data. Each export is audited.</T></p>
       </div>
       <Card>
         <CardHeader title="Available exports" />

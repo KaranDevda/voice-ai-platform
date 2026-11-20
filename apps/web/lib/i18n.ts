@@ -4,6 +4,16 @@
  * Page bodies are still English: only the menu and the shell are translated so far.
  */
 import { BODY } from "./i18n-body";
+import { PAGES_1 } from "./i18n-pages-1";
+import { PAGES_2 } from "./i18n-pages-2";
+import { PAGES_3 } from "./i18n-pages-3";
+import { PAGES_4 } from "./i18n-pages-4";
+import { PAGES_5 } from "./i18n-pages-5";
+import { PAGES_6 } from "./i18n-pages-6";
+import { PAGES_7 } from "./i18n-pages-7";
+import { PAGES_8 } from "./i18n-pages-8";
+import { EXTRA, extraTranslation } from "./i18n-extra";
+import { NUMBERS } from "./i18n-numbers";
 export const LANGUAGES = [
   { code: "en", name: "English" }, { code: "es", name: "Español" }, { code: "fr", name: "Français" }, { code: "ar", name: "العربية" }, { code: "zh", name: "中文" },
   { code: "hi", name: "हिन्दी" }, { code: "pt", name: "Português" }, { code: "ru", name: "Русский" }, { code: "ja", name: "日本語" }, { code: "de", name: "Deutsch" },
@@ -54,15 +64,25 @@ const ROWS: Record<string, string[]> = {
 };
 
 for (const [k, v] of Object.entries(BODY)) ROWS[k] ??= v; // words used inside pages (see i18n-body.ts)
+for (const part of [PAGES_1, PAGES_2, PAGES_3, PAGES_4, PAGES_5, PAGES_6, PAGES_7, PAGES_8]) for (const [k, v] of Object.entries(part)) ROWS[k] ??= v; // page sentences, labels and hints (see i18n-pages-*.ts)
+for (const [k, v] of Object.entries(NUMBERS)) ROWS[k] ??= v; // phone-numbers pages (see i18n-numbers.ts)
 
 /** `text` in the language, or in English when there is no translation. */
 /** Every text the interface can translate (the editor lists these). */
-export const TRANSLATABLE: readonly string[] = Object.keys(ROWS);
+export const TRANSLATABLE: readonly string[] = [...new Set([...Object.keys(ROWS), ...Object.keys(EXTRA)])];
 /** The built-in translation of `text`, or "" when there is none. */
-export const builtInTranslation = (lang: string, text: string): string => (lang === "en" ? text : ROWS[text]?.[ORDER.indexOf(lang as Lang)] ?? "");
+export const builtInTranslation = (lang: string, text: string): string => (lang === "en" ? text : extraTranslation(lang, text) || (ROWS[text]?.[ORDER.indexOf(lang as Lang)] ?? ""));
 
 export function tr(lang: string, text: string): string {
   if (lang === "en") return text;
+  const added = extraTranslation(lang, text);
+  if (added) return added;
   const row = ROWS[text];
-  return row?.[ORDER.indexOf(lang as Lang)] ?? text;
+  const i = ORDER.indexOf(lang as Lang);
+  return i < 0 ? text : row?.[i] ?? text;
+}
+
+/** Fills `{name}` in a text with values: translate the whole sentence first, then put the values in, so word order can differ per language. */
+export function fmt(text: string, vars?: Record<string, string | number>): string {
+  return vars ? text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : text;
 }

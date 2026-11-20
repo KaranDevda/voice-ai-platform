@@ -3,12 +3,12 @@ import { assertAuthorized, type AuthUser } from "@voiceai/auth";
 import { orgSettingsSchema } from "@voiceai/shared";
 import { writeAudit, type AuditEntry } from "./audit";
 import { withOrg, type Db, type DbTx } from "./client";
-import { jobHeartbeats, kycSubmissions, numberRequests, organizations, phoneNumbers } from "./schema";
+import { createHash } from "node:crypto";
+import { checkGstin, checkPan, KYC_DOC_MAX_BYTES, sniffDocument, type KycDocKind } from "./kyc-checks";
+import { jobHeartbeats, kycDocuments, kycSubmissions, numberRequests, organizations, phoneNumbers } from "./schema";
 
 export class AdminError extends Error {}
 
-const PAN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
-const GSTIN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const E164 = /^\+[1-9][0-9]{7,14}$/;
 const text = (v: unknown, what: string, max: number) => { const t = typeof v === "string" ? v.normalize("NFC").replace(/\s+/g, " ").trim() : ""; if (!t) throw new AdminError(`enter ${what}`); if (t.length > max) throw new AdminError(`${what} is too long`); return t; };
 
@@ -29,17 +29,30 @@ export async function assertKyc(tx: DbTx, orgId: string) {
   if (org && orgSettingsSchema.parse(org.s).compliance.requireKyc && org.tier === "unverified") throw new AdminError("Complete KYC on the KYC page before running campaigns, texts or follow-ups.");
 }
 
-export interface KycInput { tier: "basic" | "business"; legalName: string; pan: string; gstin?: string; contactName: string; contactPhone: string; address: string }
+export interface KycDocument { kind: KycDocKind; fileName: string; data: Uint8Array }
+export interface KycInput { tier: "basic" | "business"; legalName: string; pan: string; gstin?: string; contactName: string; contactPhone: string; address: string; documents?: KycDocument[] }
 
 export async function submitKyc(db: Db, actor: AuthUser, input: KycInput) {
   assertAuthorized(actor, "org_settings.write");
   if (input.tier !== "basic" && input.tier !== "business") throw new AdminError("choose basic or business");
   const legalName = text(input.legalName, "the legal name", 120), contactName = text(input.contactName, "a contact name", 80), address = text(input.address, "the address", 300);
   const pan = text(input.pan, "the PAN", 10).toUpperCase();
-  if (!PAN.test(pan)) throw new AdminError("the PAN looks wrong (5 letters, 4 digits, 1 letter)");
+  const panProblem = checkPan(pan);
+  if (panProblem) throw new AdminError(panProblem);
   const gstin = input.gstin?.trim() ? input.gstin.trim().toUpperCase() : null;
   if (input.tier === "business" && !gstin) throw new AdminError("business verification needs the GSTIN");
-  if (gstin && !GSTIN.test(gstin)) throw new AdminError("the GSTIN looks wrong (15 characters)");
+  const gstinProblem = gstin ? checkGstin(gstin, pan) : null;
+  if (gstinProblem) throw new AdminError(gstinProblem);
+  // Proof is attached: the PAN card always, and the GST certificate for a business.
+  const docs = input.documents ?? [];
+  const need: KycDocKind[] = input.tier === "business" ? ["pan", "gst"] : ["pan"];
+  for (const kind of need) if (!docs.some((d) => d.kind === kind)) throw new AdminError(kind === "pan" ? "attach a copy of the PAN card (PDF, PNG or JPEG, up to 2 MB)" : "attach a copy of the GST registration certificate (PDF, PNG or JPEG, up to 2 MB)");
+  const checked = docs.filter((d) => need.includes(d.kind)).map((d) => {
+    if (d.data.length === 0 || d.data.length > KYC_DOC_MAX_BYTES) throw new AdminError("each document must be between 1 byte and 2 MB");
+    const type = sniffDocument(d.data);
+    if (!type) throw new AdminError("documents must be a PDF, PNG or JPEG file");
+    return { kind: d.kind, mime: type.mime, fileName: `${d.kind === "pan" ? "pan" : "gst-certificate"}.${type.ext}`, data: Buffer.from(d.data), sha256: createHash("sha256").update(d.data).digest("hex") };
+  });
   const contactPhone = text(input.contactPhone, "a contact phone", 20).replace(/[\s-]/g, "");
   if (!E164.test(contactPhone)) throw new AdminError("the contact phone must be like +919876543210");
   return withOrg(db, actor.orgId, async (tx) => {
@@ -48,7 +61,8 @@ export async function submitKyc(db: Db, actor: AuthUser, input: KycInput) {
     const open = await tx.select({ id: kycSubmissions.id }).from(kycSubmissions).where(sql`${kycSubmissions.status} = 'pending'`).limit(1);
     if (open.length) throw new AdminError("a verification request is already waiting for review");
     const [row] = await tx.insert(kycSubmissions).values({ orgId: actor.orgId, tier: input.tier, legalName, pan, gstin, contactName, contactPhone, address, submittedBy: actor.id }).returning({ id: kycSubmissions.id });
-    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "kyc.submit", entity: "kyc_submissions", entityId: row!.id, after: { tier: input.tier } });
+    for (const d of checked) await tx.insert(kycDocuments).values({ orgId: actor.orgId, submissionId: row!.id, kind: d.kind, fileName: d.fileName, mime: d.mime, sizeBytes: d.data.length, sha256: d.sha256, data: d.data });
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "kyc.submit", entity: "kyc_submissions", entityId: row!.id, after: { tier: input.tier, documents: checked.map((d) => d.kind) } });
     return row!;
   });
 }
@@ -65,6 +79,20 @@ export async function getKyc(db: Db, actor: AuthUser) {
 export async function platformListKyc(db: Db, actor: AuthUser) {
   return asPlatform(db, actor, (tx) => tx.select({ id: kycSubmissions.id, orgName: organizations.name, tier: kycSubmissions.tier, legalName: kycSubmissions.legalName, pan: kycSubmissions.pan, gstin: kycSubmissions.gstin, contactName: kycSubmissions.contactName, contactPhone: kycSubmissions.contactPhone, address: kycSubmissions.address, createdAt: kycSubmissions.createdAt })
     .from(kycSubmissions).innerJoin(organizations, eq(organizations.id, kycSubmissions.orgId)).where(sql`${kycSubmissions.status} = 'pending'`).orderBy(kycSubmissions.createdAt).limit(100));
+}
+
+/** The documents attached to a request (no file contents), for the person reviewing it. */
+export async function platformKycDocuments(db: Db, actor: AuthUser, submissionIds: string[]) {
+  if (!submissionIds.length) return [];
+  return asPlatform(db, actor, (tx) => tx.select({ id: kycDocuments.id, submissionId: kycDocuments.submissionId, kind: kycDocuments.kind, fileName: kycDocuments.fileName, sizeBytes: kycDocuments.sizeBytes }).from(kycDocuments).where(sql`${kycDocuments.submissionId} in (${sql.join(submissionIds.map((i) => sql`${i}::uuid`), sql`, `)})`));
+}
+
+/** One stored document: platform staff can open any, an organisation only its own (needs org_settings.read). */
+export async function getKycDocument(db: Db, actor: AuthUser, id: string) {
+  const pick = (tx: DbTx) => tx.select({ mime: kycDocuments.mime, fileName: kycDocuments.fileName, data: kycDocuments.data }).from(kycDocuments).where(eq(kycDocuments.id, id)).limit(1);
+  if (actor.permissions.includes("platform.admin")) return (await asPlatform(db, actor, pick))[0] ?? null;
+  assertAuthorized(actor, "org_settings.read");
+  return (await withOrg(db, actor.orgId, pick))[0] ?? null;
 }
 
 export async function reviewKyc(db: Db, actor: AuthUser, id: string, approve: boolean, note?: string) {
@@ -88,7 +116,7 @@ export async function reviewKyc(db: Db, actor: AuthUser, id: string, approve: bo
 export async function listMyNumbers(db: Db, actor: AuthUser) {
   assertAuthorized(actor, "org_settings.read");
   return withOrg(db, actor.orgId, async (tx) => ({
-    numbers: await tx.select({ id: phoneNumbers.id, e164: phoneNumbers.e164, label: phoneNumbers.label, capabilities: phoneNumbers.capabilities, assignedAt: phoneNumbers.assignedAt }).from(phoneNumbers).where(sql`${phoneNumbers.status} = 'assigned'`),
+    numbers: await tx.select({ id: phoneNumbers.id, e164: phoneNumbers.e164, label: phoneNumbers.label, capabilities: phoneNumbers.capabilities, carrier: phoneNumbers.carrier, trunkId: phoneNumbers.trunkId, assignedAt: phoneNumbers.assignedAt }).from(phoneNumbers).where(sql`${phoneNumbers.status} = 'assigned'`),
     requests: await tx.select({ id: numberRequests.id, kind: numberRequests.kind, country: numberRequests.country, purpose: numberRequests.purpose, status: numberRequests.status, reviewNote: numberRequests.reviewNote, createdAt: numberRequests.createdAt }).from(numberRequests).orderBy(desc(numberRequests.createdAt)).limit(20),
   }));
 }
@@ -109,19 +137,20 @@ export async function requestNumber(db: Db, actor: AuthUser, input: { kind: "loc
 
 export async function platformNumbers(db: Db, actor: AuthUser) {
   return asPlatform(db, actor, async (tx) => ({
-    numbers: await tx.select({ id: phoneNumbers.id, e164: phoneNumbers.e164, label: phoneNumbers.label, capabilities: phoneNumbers.capabilities, status: phoneNumbers.status, orgId: phoneNumbers.orgId, orgName: organizations.name }).from(phoneNumbers).leftJoin(organizations, eq(organizations.id, phoneNumbers.orgId)).orderBy(phoneNumbers.e164).limit(500),
+    numbers: await tx.select({ id: phoneNumbers.id, e164: phoneNumbers.e164, label: phoneNumbers.label, capabilities: phoneNumbers.capabilities, carrier: phoneNumbers.carrier, status: phoneNumbers.status, orgId: phoneNumbers.orgId, orgName: organizations.name }).from(phoneNumbers).leftJoin(organizations, eq(organizations.id, phoneNumbers.orgId)).orderBy(phoneNumbers.e164).limit(500),
     requests: await tx.select({ id: numberRequests.id, orgName: organizations.name, kind: numberRequests.kind, country: numberRequests.country, purpose: numberRequests.purpose, createdAt: numberRequests.createdAt }).from(numberRequests).innerJoin(organizations, eq(organizations.id, numberRequests.orgId)).where(sql`${numberRequests.status} = 'pending'`).orderBy(numberRequests.createdAt).limit(100),
     orgs: await tx.select({ id: organizations.id, name: organizations.name }).from(organizations).orderBy(organizations.name).limit(500),
   }));
 }
 
-export async function platformAddNumber(db: Db, actor: AuthUser, input: { e164: string; label?: string; capabilities?: string[]; status?: "available" | "pending" }) {
+export async function platformAddNumber(db: Db, actor: AuthUser, input: { e164: string; label?: string; capabilities?: string[]; status?: "available" | "pending"; carrier?: "plivo" | "twilio" }) {
+  if (input.carrier !== undefined && input.carrier !== "plivo" && input.carrier !== "twilio") throw new AdminError("the carrier must be plivo or twilio");
   const e164 = input.e164.replace(/[\s-]/g, "");
   if (!E164.test(e164)) throw new AdminError("the number must be like +919876543210");
   const capabilities = input.capabilities ?? ["voice", "sms"];
   if (capabilities.some((c) => c !== "voice" && c !== "sms")) throw new AdminError("number capabilities must be voice or sms");
   return asPlatform(db, actor, async (tx) => {
-    const [row] = await tx.insert(phoneNumbers).values({ e164, label: input.label?.trim().slice(0, 80) || null, capabilities, status: input.status ?? "available" }).onConflictDoNothing().returning({ id: phoneNumbers.id });
+    const [row] = await tx.insert(phoneNumbers).values({ e164, label: input.label?.trim().slice(0, 80) || null, capabilities, status: input.status ?? "available", carrier: input.carrier ?? "plivo" }).onConflictDoNothing().returning({ id: phoneNumbers.id });
     if (!row) throw new AdminError("that number is already in the list");
     return row;
   });

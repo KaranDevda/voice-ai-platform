@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
+import { T } from "@/components/t";
 
 function ResetForm() {
   const token = useSearchParams().get("token") ?? "";
@@ -25,23 +26,23 @@ function ResetForm() {
 
   if (done) return (
     <div className="grid gap-4">
-      <h1 className="text-lg font-semibold">Password changed</h1>
-      <p className="text-sm text-muted-foreground">You can now sign in with your new password.</p>
-      <Link href="/login" className="rounded-md bg-primary px-4 py-2 text-center text-sm font-medium text-primary-foreground">Sign in</Link>
+      <h1 className="text-lg font-semibold"><T>Password changed</T></h1>
+      <p className="text-sm text-muted-foreground"><T>You can now sign in with your new password.</T></p>
+      <Link href="/login" className="rounded-md bg-primary px-4 py-2 text-center text-sm font-medium text-primary-foreground"><T>Sign in</T></Link>
     </div>
   );
   if (!token) return (
     <div className="grid gap-4">
-      <h1 className="text-lg font-semibold">This link is not complete</h1>
-      <Link href="/forgot-password" className="text-sm underline">Ask for a new link</Link>
+      <h1 className="text-lg font-semibold"><T>This link is not complete</T></h1>
+      <Link href="/forgot-password" className="text-sm underline"><T>Ask for a new link</T></Link>
     </div>
   );
   return (
     <form onSubmit={submit} method="post" action="/reset-password" className="grid gap-4">
-      <h1 className="text-lg font-semibold">Choose a new password</h1>
+      <h1 className="text-lg font-semibold"><T>Choose a new password</T></h1>
       <Field label="New password" hint="At least 12 characters. A few random words work well."><Input name="password" type="password" autoComplete="new-password" minLength={12} required /></Field>
       <Field label="New password again"><Input name="again" type="password" autoComplete="new-password" minLength={12} required /></Field>
-      {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}{error.includes("link") && <> <Link href="/forgot-password" className="underline">Ask for a new link</Link>.</>}</p>}
+      {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"><T>{error}</T>{error.includes("link") && <> <Link href="/forgot-password" className="underline"><T>Ask for a new link</T></Link>.</>}</p>}
       <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save the new password"}</Button>
     </form>
   );

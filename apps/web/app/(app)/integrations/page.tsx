@@ -5,6 +5,7 @@ import { WidgetsPanel } from "@/components/widgets-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
+import { T } from "@/components/t";
 
 export default async function IntegrationsPage() {
   const user = await requirePageUser();
@@ -19,7 +20,7 @@ export default async function IntegrationsPage() {
         endpoints={data.endpoints.map((e) => ({ ...e, createdAt: e.createdAt.toISOString(), lastDeliveredAt: e.lastDeliveredAt ? new Date(e.lastDeliveredAt).toISOString() : null, test: e.test ? { ...e.test, createdAt: e.test.createdAt.toISOString() } : null }))}
         deliveries={data.deliveries.map((d) => ({ ...d, nextAttemptAt: d.nextAttemptAt.toISOString(), createdAt: d.createdAt.toISOString() }))}
       />
-      <h2 className="mb-3 mt-10 text-lg font-semibold tracking-tight">Website voice widget</h2>
+      <h2 className="mb-3 mt-10 text-lg font-semibold tracking-tight"><T>Website voice widget</T></h2>
       <WidgetsPanel canEdit={user.permissions.includes("org_settings.write") && user.permissions.includes("studio.use")} widgets={widgets.map((w) => ({ ...w, createdAt: undefined }))} />
     </>
   );

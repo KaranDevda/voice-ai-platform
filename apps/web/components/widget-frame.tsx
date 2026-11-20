@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T } from "./t";
 
 type Phase = "waiting" | "ready" | "connecting" | "live" | "error";
 interface Start { token: string; url: string; language: "en" | "hi" | "en-hi"; voice: string }
@@ -102,15 +103,15 @@ export function WidgetFrame() {
   return (
     <main style={{ font: "14px system-ui, sans-serif", color: "#e6edfb", background: "#0d1426", minHeight: "100vh", display: "flex", flexDirection: "column", padding: 14, gap: 10 }}>
       <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }} aria-live="polite">
-        {phase === "waiting" && <p style={{ opacity: 0.7 }}>Loading…</p>}
-        {phase === "ready" && <p style={{ opacity: 0.85 }}>Press the button, allow the microphone, and talk. The call may be recorded and you will be speaking with an AI assistant.</p>}
-        {phase === "connecting" && <p style={{ opacity: 0.7 }}>Connecting…</p>}
-        {message && <p role="alert" style={{ color: "#ffb4b4" }}>{message}</p>}
-        {lines.slice(-8).map((l, i) => <p key={i} style={{ margin: 0, textAlign: l.who === "you" ? "right" : "left" }}><span style={{ display: "inline-block", padding: "6px 10px", borderRadius: 12, background: l.who === "you" ? "#2563eb" : "#1f2c4d", maxWidth: "85%" }}>{l.text}</span></p>)}
+        {phase === "waiting" && <p style={{ opacity: 0.7 }}><T>Loading…</T></p>}
+        {phase === "ready" && <p style={{ opacity: 0.85 }}><T>Press the button, allow the microphone, and talk. The call may be recorded and you will be speaking with an AI assistant.</T></p>}
+        {phase === "connecting" && <p style={{ opacity: 0.7 }}><T>Connecting…</T></p>}
+        {message && <p role="alert" style={{ color: "#ffb4b4" }}><T>{message}</T></p>}
+        {lines.slice(-8).map((l, i) => <p key={i} style={{ margin: 0, textAlign: l.who === "you" ? "end" : "start" }}><span style={{ display: "inline-block", padding: "6px 10px", borderRadius: 12, background: l.who === "you" ? "#2563eb" : "#1f2c4d", maxWidth: "85%" }}>{l.text}</span></p>)}
       </div>
-      {phase === "live" && <p style={{ margin: 0, opacity: 0.7, fontSize: 12 }}>{speaking ? "Assistant speaking…" : "Listening… wear headphones for the best result."}</p>}
-      {(phase === "ready") && <button onClick={() => void begin()} style={btn("#2563eb")}>Start talking</button>}
-      {(phase === "live" || phase === "connecting") && <button onClick={() => { stop(); setPhase("error"); setMessage("The call ended."); }} style={btn("#c0392b")}>End call</button>}
+      {phase === "live" && <p style={{ margin: 0, opacity: 0.7, fontSize: 12 }}><T>{speaking ? "Assistant speaking…" : "Listening… wear headphones for the best result."}</T></p>}
+      {(phase === "ready") && <button onClick={() => void begin()} style={btn("#2563eb")}><T>Start talking</T></button>}
+      {(phase === "live" || phase === "connecting") && <button onClick={() => { stop(); setPhase("error"); setMessage("The call ended."); }} style={btn("#c0392b")}><T>End call</T></button>}
     </main>
   );
 }

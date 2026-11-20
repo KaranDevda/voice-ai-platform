@@ -1,4 +1,5 @@
 import { listAppErrors } from "@voiceai/db";
+import { currentLang } from "@/lib/i18n-server";
 import { ResolveButton } from "@/components/resolve-button";
 import { CopyButton } from "@/components/copy-button";
 import { Forbidden } from "@/components/forbidden";
@@ -10,8 +11,10 @@ import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { formatDateTime, titleCase } from "@/lib/utils";
+import { T } from "@/components/t";
 
 export default async function ErrorsPage({ searchParams }: { searchParams: Promise<{ page?: string; route?: string; status?: string }> }) {
+  const lang = await currentLang();
   const user = await requirePageUser();
   const sp = await searchParams;
   const status = sp.status === "resolved" || sp.status === "all" ? sp.status : "open";
@@ -32,7 +35,7 @@ export default async function ErrorsPage({ searchParams }: { searchParams: Promi
             <input type="hidden" name="status" value={status} />
             <input name="route" defaultValue={sp.route ?? ""} placeholder="Filter by route (e.g. /api/calls)" className="h-9 rounded-md border border-border px-3 text-sm w-full sm:w-64" aria-label="Route filter" />
             <Button type="submit" size="sm">Filter</Button>
-            {sp.route && <a href="/errors" className="text-sm text-muted-foreground hover:underline">Clear</a>}
+            {sp.route && <a href="/errors" className="text-sm text-muted-foreground hover:underline"><T>Clear</T></a>}
           </form>
           {data.rows.length === 0 ? (
             <EmptyState title={status === "open" ? "No open errors" : "No errors"} description="Errors from API routes and the client will appear here." />
@@ -42,7 +45,7 @@ export default async function ErrorsPage({ searchParams }: { searchParams: Promi
               <tbody>
                 {data.rows.map((e) => (
                   <Tr key={e.id}>
-                    <Td>{formatDateTime(e.at)}</Td>
+                    <Td>{formatDateTime(e.at, lang)}</Td>
                     <Td className="font-mono text-sm">{e.route}</Td>
                     <Td className="text-xs uppercase">{e.method ?? "—"}</Td>
                     <Td className="max-w-[300px] truncate" title={e.errorMessage}>{e.errorMessage}</Td>

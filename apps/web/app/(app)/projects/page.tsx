@@ -1,4 +1,5 @@
 import { FileText, FolderOpen, Mic2 } from "lucide-react";
+import { currentLang } from "@/lib/i18n-server";
 import Link from "next/link";
 import { listAssets } from "@voiceai/db";
 import { AudioButton } from "@/components/audio-button";
@@ -12,8 +13,10 @@ import { EmptyState, Pager } from "@/components/ui/page";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { formatDateTime } from "@/lib/utils";
+import { T } from "@/components/t";
 
 export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string; page?: string }> }) {
+  const lang = await currentLang();
   const user = await requirePageUser();
   const sp = await searchParams;
   const kind = sp.kind === "speech" || sp.kind === "transcript" ? sp.kind : undefined;
@@ -37,10 +40,10 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                   <Link href={`/projects/${a.id}`} className="block truncate font-medium hover:text-primary">{a.title}</Link>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <Badge tone={a.kind === "speech" ? "primary" : "info"}>{a.kind === "speech" ? "Speech" : "Transcript"}</Badge>
-                    <span>{formatDateTime(a.createdAt)}</span>{showOwner && <span>· {a.ownerEmail}</span>}
+                    <span>{formatDateTime(a.createdAt, lang)}</span>{showOwner && <span>· {a.ownerEmail}</span>}
                   </div>
                 </div>
-                <PostButton url={`/api/projects/${a.id}`} method="DELETE" variant="ghost" size="sm" confirm={`Delete "${a.title}"? This cannot be undone.`}>Delete</PostButton>
+                <PostButton url={`/api/projects/${a.id}`} method="DELETE" variant="ghost" size="sm" confirm={`Delete "${a.title}"? This cannot be undone.`}><T>Delete</T></PostButton>
               </li>
             ))}
           </ul>

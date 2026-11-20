@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Button, buttonClass } from "./ui/button";
 import { Input, Select } from "./ui/form";
-import { useT } from "./t";
+import { useT, T } from "./t";
 
 /** Server-rendered GET form: filters live in the URL, so they are shareable and need no client JS. */
 export function FilterBar({ action, q, selects, textFilters, extra }: {
@@ -33,7 +33,7 @@ export function FilterBar({ action, q, selects, textFilters, extra }: {
       ))}
       {extra}
       <Button type="submit" variant="soft">Apply</Button>
-      {active && <Link href={action} className={buttonClass({ variant: "ghost" })}>Clear</Link>}
+      {active && <Link href={action} className={buttonClass({ variant: "ghost" })}><T>Clear</T></Link>}
     </form>
   );
 }

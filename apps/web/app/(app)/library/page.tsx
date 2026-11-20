@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Notice } from "@/components/ui/page";
 import { requirePageUser } from "@/lib/page-auth";
 import { voiceOptionsFor } from "@/lib/voices";
+import { T } from "@/components/t";
 
 export default async function LibraryPage() {
   const user = await requirePageUser();
@@ -12,7 +13,7 @@ export default async function LibraryPage() {
   return (
     <>
       <PageHeader title="Voice library" description="Audition every voice before you use it in a script or on a call." />
-      <div className="mb-6"><Notice>Stock voices are English only. Cloned staff voices carry a consent record and can be revoked at any time.</Notice></div>
+      <div className="mb-6"><Notice><T>Stock voices are English only. Cloned staff voices carry a consent record and can be revoked at any time.</T></Notice></div>
       <LibraryGrid voices={voices} />
     </>
   );

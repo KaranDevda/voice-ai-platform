@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Td, Tr } from "@/components/ui/table";
 import { Select } from "@/components/ui/form";
+import { T } from "./t";
 
 type Role = { key: string; name: string; permissions: string[] };
 
@@ -33,11 +34,11 @@ export function PermissionRow({ role, bases, allowed }: { role: Role; bases: rea
 
   return (
     <Tr>
-      <Td className="font-medium">{role.name}{error && <span role="alert" className="block text-xs font-normal text-danger">{error}</span>}</Td>
+      <Td className="font-medium">{role.name}{error && <span role="alert" className="block text-xs font-normal text-danger"><T>{error}</T></span>}</Td>
       {bases.map((base) => (
         <Td key={base} className="text-center">
           <Select value={local[base]} onChange={(e) => void change(base, e.target.value)} disabled={busy === base} aria-label={`${role.name}: ${base}`}>
-            <option value="none">none</option>
+            <option value="none"><T>none</T></option>
             {(allowed[base] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
         </Td>
@@ -65,7 +66,7 @@ export function FlagRow({ role, flags }: { role: Role; flags: readonly string[] 
 
   return (
     <Tr>
-      <Td className="font-medium">{role.name}{error && <span role="alert" className="block text-xs font-normal text-danger">{error}</span>}</Td>
+      <Td className="font-medium">{role.name}{error && <span role="alert" className="block text-xs font-normal text-danger"><T>{error}</T></span>}</Td>
       {flags.map((flag) => (
         <Td key={flag} className="text-center">
           <Button size="sm" variant={on.has(flag) ? "default" : "outline"} onClick={() => void toggle(flag)} disabled={busy === flag} aria-pressed={on.has(flag)}>

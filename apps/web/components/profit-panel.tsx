@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Select } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
 import { priceWithMargin, marginOfRevenuePct } from "@voiceai/shared";
+import { T } from "./t";
 
 interface Bucket { revenuePaise: number; callMinutes: number; texts: number; costPaise: number; profitPaise: number }
 interface Report {
@@ -67,8 +68,8 @@ export function ProfitPanel({ report: r, carrierCosts, defaultMarginPct }: { rep
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        {[7, 30, 90].map((d) => <Link key={d} href={`/profit?days=${d}`} className={buttonClass({ size: "sm", variant: d === r.days ? "default" : "outline" })}>Last {d} days</Link>)}
-        <a href={`/api/platform/profit?days=${r.days}`} className={buttonClass({ size: "sm", variant: "outline" })}>Download CSV</a>
+        {[7, 30, 90].map((d) => <Link key={d} href={`/profit?days=${d}`} className={buttonClass({ size: "sm", variant: d === r.days ? "default" : "outline" })}><T>Last</T> {d} <T>days</T></Link>)}
+        <a href={`/api/platform/profit?days=${r.days}`} className={buttonClass({ size: "sm", variant: "outline" })}><T>Download CSV</T></a>
       </div>
 
       <Card>
@@ -88,9 +89,9 @@ export function ProfitPanel({ report: r, carrierCosts, defaultMarginPct }: { rep
             <Field label="Per text (paise)"><Input type="number" min={0} max={100000} value={sms} onChange={(e) => setSms(Math.round(Number(e.target.value)))} /></Field>
             <div className="flex items-end"><Button type="submit">Save</Button></div>
           </form>
-          {noCosts && <p className="mt-2 text-sm text-warning">No carrier costs set yet, so the profit shown is not real.</p>}
-          {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
-          {saved && <p role="status" className="mt-2 text-sm text-success">Saved.</p>}
+          {noCosts && <p className="mt-2 text-sm text-warning"><T>No carrier costs set yet, so the profit shown is not real.</T></p>}
+          {error && <p role="alert" className="mt-2 text-sm text-danger"><T>{error}</T></p>}
+          {saved && <p role="status" className="mt-2 text-sm text-success"><T>Saved.</T></p>}
         </CardBody>
       </Card>
 
@@ -104,7 +105,7 @@ export function ProfitPanel({ report: r, carrierCosts, defaultMarginPct }: { rep
             <Field label="Margin on top (%)"><Input type="number" min={0} max={1000} step="0.5" value={rule.margin} onChange={(e) => setRule((x) => ({ ...x, margin: Number(e.target.value) }))} /></Field>
             <div className="flex items-end gap-2"><Button type="submit">Save rule</Button><Button type="button" variant="outline" onClick={() => void saveDefault()}>Keep as default</Button></div>
           </form>
-          {rule.call + rule.sms > 0 && <p className="text-sm text-muted-foreground">Preview: calls sell at {rs(priceWithMargin(rule.call, Math.min(1000, Math.max(0, rule.margin || 0))))}/min, texts at {rs(priceWithMargin(rule.sms, Math.min(1000, Math.max(0, rule.margin || 0))))}.</p>}
+          {rule.call + rule.sms > 0 && <p className="text-sm text-muted-foreground"><T>Preview: calls sell at</T> {rs(priceWithMargin(rule.call, Math.min(1000, Math.max(0, rule.margin || 0))))}<T>/min, texts at</T> {rs(priceWithMargin(rule.sms, Math.min(1000, Math.max(0, rule.margin || 0))))}.</p>}
           {carrierCosts.length > 0 && (
             <Table><thead><tr><Th>Country</Th><Th>Carrier cost / min</Th><Th>Carrier cost / text</Th><Th>Margin</Th><Th>Sells at / min</Th><Th>Sells at / text</Th><Th>{""}</Th></tr></thead>
               <tbody>{carrierCosts.map((c) => <Tr key={c.country}><Td className="font-medium">{c.country}</Td><Td>{rs(c.callCostPerMinPaise)}</Td><Td>{rs(c.smsCostPaise)}</Td><Td>{c.marginPct}%</Td><Td>{rs(c.callPricePaise)}</Td><Td>{rs(c.smsPricePaise)}</Td>
@@ -129,14 +130,14 @@ export function ProfitPanel({ report: r, carrierCosts, defaultMarginPct }: { rep
 
       <Card>
         <CardHeader title="By country" description="From the dialling code of the number that was called or texted, worked out when it was charged" />
-        {r.byCountry.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No usage in this period.</p></CardBody> : (
+        {r.byCountry.length === 0 ? <CardBody><p className="text-sm text-muted-foreground"><T>No usage in this period.</T></p></CardBody> : (
           <Table><thead><tr><Th>Country</Th>{cols}</tr></thead><tbody>{r.byCountry.map((c) => <Tr key={c.country}><Td className="font-medium">{c.country}</Td>{nums(c)}</Tr>)}</tbody></Table>
         )}
       </Card>
 
       <Card>
         <CardHeader title="By day" description="India time" />
-        {r.byDay.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No usage in this period.</p></CardBody> : (
+        {r.byDay.length === 0 ? <CardBody><p className="text-sm text-muted-foreground"><T>No usage in this period.</T></p></CardBody> : (
           <Table><thead><tr><Th>Day</Th>{cols}</tr></thead><tbody>{r.byDay.slice(0, 31).map((d) => <Tr key={d.day}><Td className="font-medium">{d.day}</Td>{nums(d)}</Tr>)}</tbody></Table>
         )}
       </Card>

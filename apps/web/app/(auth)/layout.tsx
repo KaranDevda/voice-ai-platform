@@ -2,6 +2,7 @@ import { getLandingText } from "@voiceai/db";
 import type { ReactNode } from "react";
 import { BizfyMark } from "@/components/brand";
 import { getDb } from "@/lib/server";
+import { T } from "@/components/t";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,8 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
         <div className="mb-7 flex items-center justify-center gap-3">
           <BizfyMark className="h-11 w-11" />
           <div className="leading-tight">
-            <div className="text-lg font-semibold tracking-tight">{landing.headline || "Bizfy Voice AI"}</div>
-            <div className="text-xs text-muted-foreground">{landing.text || "Calls, voices and AI agents in one place"}</div>
+            <div className="text-lg font-semibold tracking-tight"><T>{landing.headline || "Bizfy Voice AI"}</T></div>
+            <div className="text-xs text-muted-foreground"><T>{landing.text || "Calls, voices and AI agents in one place"}</T></div>
           </div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-6 shadow-lg shadow-black/10">{children}</div>

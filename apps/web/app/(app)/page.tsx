@@ -1,4 +1,5 @@
 import { AudioLines, ArrowUpRight, BarChart3, Bot, FileText, FolderOpen, Fingerprint, Library, LayoutDashboard, Mic2, Phone, PhoneCall, Users, type LucideIcon } from "lucide-react";
+import { currentLang } from "@/lib/i18n-server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { dashboardStats, listAssets, usageToday } from "@voiceai/db";
@@ -10,6 +11,7 @@ import { checkProviders } from "@/lib/providers";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { cn, formatDateTime } from "@/lib/utils";
+import { T } from "@/components/t";
 
 interface Tile { href: string; title: string; text: string; icon: LucideIcon; tone: string; show: boolean }
 
@@ -28,6 +30,7 @@ async function Connections() {
 }
 
 export default async function Launchpad() {
+  const lang = await currentLang();
   const user = await requirePageUser();
   const has = (p: string) => user.permissions.includes(p);
   const studio = has("studio.use");
@@ -62,20 +65,20 @@ export default async function Launchpad() {
         </div>
         <div className="relative max-w-xl">
           <p className="text-sm font-medium text-primary">{greeting()}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">What are we making today?</h1>
-          <p className="mt-2 text-sm text-muted-foreground md:text-base">Create voices, transcribe calls and test your AI agent, then run the call centre from the same place.</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl"><T>What are we making today?</T></h1>
+          <p className="mt-2 text-sm text-muted-foreground md:text-base"><T>Create voices, transcribe calls and test your AI agent, then run the call centre from the same place.</T></p>
         </div>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
-          <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Workflows</h2>
+          <h2 className="mb-3 text-sm font-semibold text-muted-foreground"><T>Workflows</T></h2>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {tiles.filter((t) => t.show).map(({ href, title, text, icon: Icon, tone }) => (
               <Link key={href} href={href} className="group flex flex-col gap-3 rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/60 hover:bg-muted/40">
                 <div className="flex items-center justify-between">
                   <span className={cn("grid h-10 w-10 place-items-center rounded-lg", tone)}><Icon className="h-5 w-5" aria-hidden /></span>
-                  <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                  <ArrowUpRight className="rtl-flip h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
                 </div>
                 <div><div className="font-medium">{title}</div><div className="mt-0.5 text-sm text-muted-foreground">{text}</div></div>
               </Link>
@@ -84,7 +87,7 @@ export default async function Launchpad() {
 
           {recent && recent.rows.length > 0 && (
             <Card className="mt-6">
-              <CardHeader title="Recent projects" action={<Link href="/projects" className="text-sm text-primary hover:underline">View all</Link>} />
+              <CardHeader title="Recent projects" action={<Link href="/projects" className="text-sm text-primary hover:underline"><T>View all</T></Link>} />
               <ul className="divide-y divide-border">
                 {recent.rows.map((a) => (
                   <li key={a.id}>
@@ -92,7 +95,7 @@ export default async function Launchpad() {
                       <span className="grid h-8 w-8 place-items-center rounded-full bg-muted text-muted-foreground">{a.kind === "speech" ? <Mic2 className="h-4 w-4" aria-hidden /> : <FileText className="h-4 w-4" aria-hidden />}</span>
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.title}</span>
                       <Badge tone={a.kind === "speech" ? "primary" : "info"}>{a.kind === "speech" ? "Speech" : "Transcript"}</Badge>
-                      <span className="hidden text-xs text-muted-foreground sm:block">{formatDateTime(a.createdAt)}</span>
+                      <span className="hidden text-xs text-muted-foreground sm:block">{formatDateTime(a.createdAt, lang)}</span>
                     </Link>
                   </li>
                 ))}
@@ -110,9 +113,9 @@ export default async function Launchpad() {
           <Card>
             <CardHeader title="Last 24 hours" />
             <CardBody className="grid grid-cols-2 gap-4">
-              {today && <div><div className="text-3xl font-semibold tabular-nums">{today.totals.total}</div><div className="text-xs text-muted-foreground">calls handled</div></div>}
-              {usage && <div><div className="text-3xl font-semibold tabular-nums">{usage.calls}</div><div className="text-xs text-muted-foreground">studio requests{usage.errors ? `, ${usage.errors} failed` : ""}</div></div>}
-              {!today && !usage && <p className="col-span-2 text-sm text-muted-foreground">Nothing to show for your role.</p>}
+              {today && <div><div className="text-3xl font-semibold tabular-nums">{today.totals.total}</div><div className="text-xs text-muted-foreground"><T>calls handled</T></div></div>}
+              {usage && <div><div className="text-3xl font-semibold tabular-nums">{usage.calls}</div><div className="text-xs text-muted-foreground"><T>studio requests</T>{usage.errors ? `, ${usage.errors} failed` : ""}</div></div>}
+              {!today && !usage && <p className="col-span-2 text-sm text-muted-foreground"><T>Nothing to show for your role.</T></p>}
             </CardBody>
           </Card>
         </div>

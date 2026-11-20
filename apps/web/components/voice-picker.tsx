@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Select } from "./ui/form";
+import { T } from "./t";
 
 export interface VoiceChoice { ref: string; name: string; gender: string; group: "cloned" | "stock"; provider: string; detail: string; hindi?: boolean; hindiOwn?: boolean }
 
@@ -22,10 +23,10 @@ export function VoicePicker({ voices, value, onChange, id, language = "en" }: { 
         ))}
       </div>
       <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} aria-label="Voice">
-        {cloned.length > 0 && <optgroup label="Cloned staff voices">{cloned.map((v) => <option key={v.ref} value={v.ref}>{v.name} · {v.gender}{needsHindi && !v.hindi ? " · no Hindi yet" : ""}</option>)}</optgroup>}
+        {cloned.length > 0 && <optgroup label="Cloned staff voices">{cloned.map((v) => <option key={v.ref} value={v.ref}>{v.name} · {v.gender}<T>{needsHindi && !v.hindi ? " · no Hindi yet" : ""}</T></option>)}</optgroup>}
         <optgroup label={needsHindi ? "Stock voices (English only)" : "Stock voices (Deepgram)"}>{stock.map((v) => <option key={v.ref} value={v.ref}>{v.name} · {v.gender} · {v.detail}</option>)}</optgroup>
       </Select>
-      {current && <p className="text-xs text-muted-foreground">{current.group === "cloned" ? "Cloned staff voice (consent on file)" : current.detail}</p>}
+      {current && <p className="text-xs text-muted-foreground"><T>{current.group === "cloned" ? "Cloned staff voice (consent on file)" : current.detail}</T></p>}
     </div>
   );
 }

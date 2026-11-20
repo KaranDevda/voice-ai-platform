@@ -8,6 +8,7 @@ import { Field, Input, Select } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
 import { PostButton } from "./post-button";
 import { formatDate, titleCase } from "@/lib/utils";
+import { T, useLang } from "./t";
 
 interface Profile { id: string; label: string; gender: string; provider: string; status: string; speed: number; pitch: number; hasSample: boolean; donorFirst?: string | null; donorLast?: string | null; donorEmail: string; consentGrantedAt: string; consentPurpose: string; consentWithdrawn: string | null }
 const PREVIEW_TEXT = "Hello! Kafi time se baat nahi hui, sab badhiya? Is weekend scene banayein? Batana kab free ho, milte hain!";
@@ -41,6 +42,7 @@ function useAction() {
 
 /** Name and gender of a voice, editable in place. Gender decides which built-in Hindi voice is used, so it must be right. */
 function VoiceRow({ p }: { p: Profile }) {
+  const lang = useLang();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(p.label);
@@ -86,12 +88,12 @@ function VoiceRow({ p }: { p: Profile }) {
     return (
       <Tr>
         <Td><Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} aria-label="Voice name" /></Td>
-        <Td><Select value={gender} onChange={(e) => setGender(e.target.value)} aria-label="Gender"><option value="female">Female</option><option value="male">Male</option></Select></Td>
+        <Td><Select value={gender} onChange={(e) => setGender(e.target.value)} aria-label="Gender"><option value="female"><T>Female</T></option><option value="male"><T>Male</T></option></Select></Td>
         <Td>{donor}</Td>
         <Td colSpan={2} className="text-xs text-muted-foreground">
-          <label className="grid gap-1">Speed {speed.toFixed(2)}×<input type="range" min={0.8} max={1.25} step={0.01} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="Speed" /></label>
-          <label className="mt-2 grid gap-1">Pitch {pitch > 0 ? "+" : ""}{pitch.toFixed(1)} semitones<input type="range" min={-3} max={3} step={0.1} value={pitch} onChange={(e) => setPitch(Number(e.target.value))} aria-label="Pitch" /></label>
-          <p className="mt-2">{error ? <span role="alert" className="text-danger">{error}</span> : "Small changes sound natural; large ones make words harder to understand. Gender picks the built-in Hindi voice, so set it to the speaker's."}</p>
+          <label className="grid gap-1"><T>Speed</T> {speed.toFixed(2)}×<input type="range" min={0.8} max={1.25} step={0.01} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="Speed" /></label>
+          <label className="mt-2 grid gap-1"><T>Pitch</T> {pitch > 0 ? "+" : ""}{pitch.toFixed(1)} <T>semitones</T><input type="range" min={-3} max={3} step={0.1} value={pitch} onChange={(e) => setPitch(Number(e.target.value))} aria-label="Pitch" /></label>
+          <p className="mt-2"><T>{error ? <span role="alert" className="text-danger">{error}</span> : "Small changes sound natural; large ones make words harder to understand. Gender picks the built-in Hindi voice, so set it to the speaker's."}</T></p>
         </Td>
         <Td className="text-end whitespace-nowrap">
           <Button size="sm" variant="outline" onClick={() => { setSpeed(1); setPitch(0); }} disabled={speed === 1 && pitch === 0}>Reset</Button>{" "}
@@ -104,19 +106,20 @@ function VoiceRow({ p }: { p: Profile }) {
   }
   return (
     <Tr>
-      <Td className="font-medium">{p.label}{p.hasSample ? "" : <span className="ms-2 text-xs font-normal text-muted-foreground" title="This voice was cloned before recordings were kept. Clone it again to use it with the realistic open-source engine.">no recording saved</span>}{p.speed !== 1 || p.pitch !== 0 ? <span className="ms-2 text-xs font-normal text-muted-foreground" title="Speed and pitch applied to this voice">{p.speed.toFixed(2)}× · {p.pitch > 0 ? "+" : ""}{p.pitch.toFixed(1)} st</span> : null}</Td><Td>{titleCase(p.gender)}</Td><Td>{donor}</Td>
-      <Td className="text-muted-foreground">{formatDate(p.consentGrantedAt)}{p.consentWithdrawn ? " · withdrawn" : ""}</Td>
+      <Td className="font-medium">{p.label}{p.hasSample ? "" : <span className="ms-2 text-xs font-normal text-muted-foreground" title="This voice was cloned before recordings were kept. Clone it again to use it with the realistic open-source engine."><T>no recording saved</T></span>}{p.speed !== 1 || p.pitch !== 0 ? <span className="ms-2 text-xs font-normal text-muted-foreground" title="Speed and pitch applied to this voice">{p.speed.toFixed(2)}× · {p.pitch > 0 ? "+" : ""}{p.pitch.toFixed(1)} <T>st</T></span> : null}</Td><Td>{titleCase(p.gender)}</Td><Td>{donor}</Td>
+      <Td className="text-muted-foreground">{formatDate(p.consentGrantedAt, lang)}<T>{p.consentWithdrawn ? " · withdrawn" : ""}</T></Td>
       <Td><Badge tone={p.status === "active" ? "success" : "danger"}>{titleCase(p.status)}</Badge></Td>
       <Td className="text-end whitespace-nowrap">
         {p.status === "active" && p.hasSample && <Button size="sm" variant="outline" onClick={() => void playOriginal()}>Original</Button>}{" "}
         {p.status === "active" && <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>}{" "}
-        {p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}>Revoke</PostButton>}
+        {p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}><T>Revoke</T></PostButton>}
       </Td>
     </Tr>
   );
 }
 
 export function VoiceAdmin({ profiles, consents, staff }: { profiles: Profile[]; consents: Consent[]; staff: Staff[] }) {
+  const lang = useLang();
   const consentForm = useAction();
   const voiceForm = useAction();
   const usable = consents.filter((c) => !c.revokedAt && !c.inUse);
@@ -142,10 +145,10 @@ export function VoiceAdmin({ profiles, consents, staff }: { profiles: Profile[];
               subjectType: "staff", subjectId: f.get("staff"), purpose: f.get("purpose"), method: f.get("method"),
               documentUrl: f.get("documentUrl"), grantedAt: new Date(`${f.get("grantedAt")}T00:00:00+05:30`).toISOString(),
             }))}>
-              <Field label="Staff member"><Select name="staff" required defaultValue=""><option value="" disabled>Choose…</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.email}</option>)}</Select></Field>
+              <Field label="Staff member"><Select name="staff" required defaultValue=""><option value="" disabled><T>Choose…</T></option>{staff.map((s) => <option key={s.id} value={s.id}>{s.email}</option>)}</Select></Field>
               <Field label="Purpose and scope"><Input name="purpose" required placeholder="AI voice for inbound and outbound calls" /></Field>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Method"><Select name="method" defaultValue="written_signed"><option value="written_signed">Written, signed</option><option value="verbal_recorded">Verbal, recorded</option></Select></Field>
+                <Field label="Method"><Select name="method" defaultValue="written_signed"><option value="written_signed"><T>Written, signed</T></option><option value="verbal_recorded"><T>Verbal, recorded</T></option></Select></Field>
                 <Field label="Date given"><Input name="grantedAt" type="date" required defaultValue={today} max={today} /></Field>
               </div>
               <Field label="Signed document location"><Input name="documentUrl" required placeholder="s3://bucket/consents/name.pdf" /></Field>
@@ -163,12 +166,12 @@ export function VoiceAdmin({ profiles, consents, staff }: { profiles: Profile[];
             }))}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Name"><Input name="label" required placeholder="Priya (female)" /></Field>
-                <Field label="Gender"><Select name="gender" defaultValue="female"><option value="female">Female</option><option value="male">Male</option></Select></Field>
+                <Field label="Gender"><Select name="gender" defaultValue="female"><option value="female"><T>Female</T></option><option value="male"><T>Male</T></option></Select></Field>
               </div>
               <Field label="ElevenLabs voice ID"><Input name="providerVoiceId" required /></Field>
-              <Field label="Donor"><Select name="donor" required defaultValue=""><option value="" disabled>Choose…</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.email}</option>)}</Select></Field>
+              <Field label="Donor"><Select name="donor" required defaultValue=""><option value="" disabled><T>Choose…</T></option>{staff.map((s) => <option key={s.id} value={s.id}>{s.email}</option>)}</Select></Field>
               <Field label="Consent record" hint={usable.length ? "Only valid, unused consents are listed." : "No unused consent available. Record one first."}>
-                <Select name="consent" required defaultValue="" disabled={!usable.length}><option value="" disabled>Choose…</option>{usable.map((c) => <option key={c.id} value={c.id}>{c.email} · {formatDate(c.grantedAt)}</option>)}</Select>
+                <Select name="consent" required defaultValue="" disabled={!usable.length}><option value="" disabled><T>Choose…</T></option>{usable.map((c) => <option key={c.id} value={c.id}>{c.email} · {formatDate(c.grantedAt, lang)}</option>)}</Select>
               </Field>
               {voiceForm.error && <p role="alert" className="text-sm text-danger">{voiceForm.error.replace(/_/g, " ")}</p>}
               <Button type="submit" disabled={voiceForm.busy || !usable.length}>Register voice</Button>
@@ -184,8 +187,8 @@ export function VoiceAdmin({ profiles, consents, staff }: { profiles: Profile[];
           <tbody>
             {consents.map((c) => (
               <Tr key={c.id}>
-                <Td className="font-medium">{c.email ?? "—"}</Td><Td>{c.purpose}</Td><Td>{titleCase(c.method)}</Td><Td>{formatDate(c.grantedAt)}</Td>
-                <Td>{c.revokedAt ? <Badge tone="danger">Withdrawn {formatDate(c.revokedAt)}</Badge> : c.inUse ? <Badge tone="success">In use</Badge> : <Badge>Unused</Badge>}</Td>
+                <Td className="font-medium">{c.email ?? "—"}</Td><Td>{c.purpose}</Td><Td>{titleCase(c.method)}</Td><Td>{formatDate(c.grantedAt, lang)}</Td>
+                <Td>{c.revokedAt ? <Badge tone="danger">Withdrawn {formatDate(c.revokedAt, lang)}</Badge> : c.inUse ? <Badge tone="success">In use</Badge> : <Badge>Unused</Badge>}</Td>
               </Tr>
             ))}
           </tbody>

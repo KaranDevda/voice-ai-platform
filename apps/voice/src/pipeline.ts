@@ -9,7 +9,7 @@ import { dropFiller } from "./filler";
 import { askAgainSlow, greetingFix, sorryAgain, stillWorking, strictNote, wrongLanguage } from "./language";
 import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
-import { replyToGreeting, replyToIdentityQuestion, replyToOrphanedPlanFragment } from "./small-talk";
+import { replyToGreeting, replyToIdentityQuestion, replyToOrphanedPlanFragment, completeOrphanedPlanFragment } from "./small-talk";
 import type { TranscriptSegment } from "@voiceai/shared";
 
 /** Speaks text as audio chunks in the engine's native format. Abort the signal to stop mid-sentence. */
@@ -363,9 +363,12 @@ export class Conversation {
       if (!reason && this.o.handoff?.enabled.person && isAgreement(userText) && offeredHandoff(this.history.slice(0, -1).reverse().find((m) => m.role === "assistant")?.content)) reason = "person";
       if (reason) scripted = this.markHandoff(reason, userText);
       else if (userText) {
+        // A clipped "through the Business plan" becomes a real question for the model, not a request to repeat.
+        const completed = completeOrphanedPlanFragment(userText, this.o.language);
+        if (completed) { const lastMsg = this.history.at(-1); if (lastMsg?.role === "user") lastMsg.content = completed; }
         scripted = replyToGreeting(userText, this.o.language, this.history.filter((m) => m.role === "user").at(-2)?.content)
           ?? replyToIdentityQuestion(userText, this.o.language)
-          ?? replyToOrphanedPlanFragment(userText, this.o.language)
+          ?? (completed ? undefined : replyToOrphanedPlanFragment(userText, this.o.language))
           ?? scripted;
       }
     }
@@ -442,7 +445,7 @@ export class Conversation {
         const passages = this.o.ground ? await this.o.ground(lastUser, earlierUser).catch(() => []) : [];
         groundMs = this.now() - tGround;
         if (signal.aborted) return;
-        const missingPlan = this.o.ground ? unknownPlanReply(lastUser, passages, this.o.language, earlierUser) : null;
+        const missingPlan = this.o.ground ? unknownPlanReply(lastUser, passages, this.o.language, earlierUser, !!this.o.handoff?.enabled.person) : null;
         if (missingPlan) {
           scripted = missingPlan;
           await say(missingPlan);

@@ -39,7 +39,7 @@ export class Vad {
   private utter: Int16Array[] = [];
 
   constructor(opts: VadOptions = {}) {
-    this.o = { sampleRate: 16_000, endSilenceMs: 400, startMs: 100, preRollMs: 300, maxUtteranceMs: 25_000, minSpeechMs: 250, floor: 0.012, ...opts };
+    this.o = { sampleRate: 16_000, endSilenceMs: 400, startMs: 100, preRollMs: 800, maxUtteranceMs: 25_000, minSpeechMs: 250, floor: 0.012, ...opts };
     this.frameSamples = Math.round((this.o.sampleRate * FRAME_MS) / 1000);
   }
 

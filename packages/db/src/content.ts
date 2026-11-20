@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { assertAuthorized, type AuthUser } from "@voiceai/auth";
 import { writeAudit } from "./audit";
-import type { Db } from "./client";
+import { withOrg, type Db } from "./client";
 
 export class ContentError extends Error {}
 
@@ -30,6 +30,16 @@ export async function setLandingText(db: Db, actor: AuthUser, input: { headline:
 export interface ExtraLanguage { code: string; name: string; rtl: boolean }
 export const listExtraLanguages = async (db: Db): Promise<ExtraLanguage[]> =>
   (await db.execute<{ code: string; name: string; rtl: boolean }>(sql`select code, name, rtl from extra_languages order by name`)).rows;
+
+/** The organisation's enabled extra languages, for the language selector. Reads inside the organisation so row-level security allows them. */
+export const listEnabledExtraLanguages = async (db: Db, orgId: string): Promise<ExtraLanguage[]> =>
+  withOrg(db, orgId, async (tx) => (await tx.execute<{ code: string; name: string; rtl: boolean }>(sql`select code, name, rtl from extra_languages where enabled order by name`)).rows);
+
+/** The organisation's own wording for one language: key -> text. */
+export async function translationOverridesFor(db: Db, orgId: string, lang: string): Promise<Record<string, string>> {
+  if (!/^[a-z]{2,3}(-[A-Z]{2})?$/.test(lang)) return {};
+  return withOrg(db, orgId, async (tx) => Object.fromEntries((await tx.execute<{ key: string; value: string }>(sql`select key, value from translations where lang = ${lang}`)).rows.map((r) => [r.key, r.value])));
+}
 
 /** Staff-written translations for one language: English text -> text. */
 export async function translationOverrides(db: Db, lang: string): Promise<Record<string, string>> {
@@ -117,6 +127,7 @@ export async function updateExtraLanguage(db: Db, actor: AuthUser, code: string,
 export async function deleteExtraLanguage(db: Db, actor: AuthUser, code: string) {
   assertAuthorized(actor, "platform.admin");
   await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.org_id', ${actor.orgId}, true)`);
     await tx.execute(sql`delete from extra_languages where org_id = ${actor.orgId} and code = ${code}`);
     await tx.execute(sql`delete from translations where org_id = ${actor.orgId} and lang = ${code}`);
   });

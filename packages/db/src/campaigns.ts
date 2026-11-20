@@ -178,12 +178,12 @@ export async function getCampaignAgentProfile(db: Db, orgId: string, profileId: 
   });
 }
 
-/** Organisation-owned Plivo numbers available as outbound campaign caller IDs. */
+/** Organisation-owned Plivo numbers available as outbound campaign caller IDs. (The voice service dials through Plivo only, so Twilio numbers are not offered.) */
 export async function listCampaignCallerIds(db: Db, actor: AuthUser) {
   assertAuthorized(actor, "calls.place");
   return withOrg(db, actor.orgId, async (tx) => {
     const rows = await tx.select({ e164: phoneNumbers.e164, capabilities: phoneNumbers.capabilities })
-      .from(phoneNumbers).where(and(eq(phoneNumbers.orgId, actor.orgId), eq(phoneNumbers.status, "assigned")))
+      .from(phoneNumbers).where(and(eq(phoneNumbers.orgId, actor.orgId), eq(phoneNumbers.status, "assigned"), eq(phoneNumbers.carrier, "plivo")))
       .orderBy(phoneNumbers.e164);
     return rows.filter((r) => r.capabilities.includes("voice")).map((r) => r.e164);
   });
@@ -193,7 +193,7 @@ export async function listCampaignCallerIds(db: Db, actor: AuthUser) {
 export async function isCampaignCallerId(db: Db, orgId: string, e164: string) {
   return withOrg(db, orgId, async (tx) => {
     const [row] = await tx.select({ capabilities: phoneNumbers.capabilities }).from(phoneNumbers)
-      .where(and(eq(phoneNumbers.orgId, orgId), eq(phoneNumbers.e164, e164), eq(phoneNumbers.status, "assigned")));
+      .where(and(eq(phoneNumbers.orgId, orgId), eq(phoneNumbers.e164, e164), eq(phoneNumbers.status, "assigned"), eq(phoneNumbers.carrier, "plivo")));
     return row?.capabilities.includes("voice") ?? false;
   });
 }
@@ -202,8 +202,8 @@ async function validateCallerId(tx: Parameters<Parameters<Db["transaction"]>[0]>
   const callerId = value?.trim() || null;
   if (!callerId) return null;
   const [row] = await tx.select({ capabilities: phoneNumbers.capabilities }).from(phoneNumbers)
-    .where(and(eq(phoneNumbers.orgId, orgId), eq(phoneNumbers.e164, callerId), eq(phoneNumbers.status, "assigned")));
-  if (!row || !row.capabilities.includes("voice")) throw new CampaignError("choose a voice-enabled number assigned to your organisation");
+    .where(and(eq(phoneNumbers.orgId, orgId), eq(phoneNumbers.e164, callerId), eq(phoneNumbers.status, "assigned"), eq(phoneNumbers.carrier, "plivo")));
+  if (!row || !row.capabilities.includes("voice")) throw new CampaignError("choose a voice-enabled Plivo number assigned to your organisation");
   return callerId;
 }
 

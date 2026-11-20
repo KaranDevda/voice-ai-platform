@@ -9,6 +9,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Notice } from "./ui/page";
 import { Recorder } from "./recorder";
 import { VoicePicker, type VoiceChoice } from "./voice-picker";
+import { T } from "./t";
 
 interface Timing { sttMs?: number; firstTokenMs?: number; totalMs?: number; ttsMs?: number }
 interface Source { title: string; snippet: string }
@@ -134,7 +135,7 @@ export function AgentConsole({ greeting, disclosure, voices, askg1Reachable, has
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="flex flex-col lg:col-span-2">
         <CardHeader title="Conversation" description={`The AI opens every call with: “${disclosure}”`} action={<Button variant="ghost" size="sm" onClick={() => { aborter.current?.abort(); stopSpeaking(); setMsgs(fresh()); setLast(null); setBusy(false); }}><RotateCcw className="h-4 w-4" aria-hidden />Reset</Button>} />
-        {askg1Reachable === false && <div className="px-5 pt-4"><Notice tone="warning">AskG1 is not reachable from here. Connect the company VPN, then send a message.</Notice></div>}
+        {askg1Reachable === false && <div className="px-5 pt-4"><Notice tone="warning"><T>AskG1 is not reachable from here. Connect the company VPN, then send a message.</T></Notice></div>}
         <div className="flex max-h-[28rem] min-h-[18rem] flex-1 flex-col gap-4 overflow-y-auto p-5" aria-live="polite">
           {msgs.map((m, i) => (
             <div key={i} className={cn("flex gap-3", m.role === "user" && "flex-row-reverse")}>
@@ -151,7 +152,7 @@ export function AgentConsole({ greeting, disclosure, voices, askg1Reachable, has
         </div>
         <div className="grid gap-3 border-t border-border p-4">
           <Recorder label="Speak" maxSeconds={60} disabled={busy || transcribing} onStart={stopSpeaking} onRecorded={(f) => void onVoice(f)} />
-          {transcribing && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />Transcribing what you said…</p>}
+          {transcribing && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /><T>Transcribing what you said…</T></p>}
           <div className="flex items-end gap-2">
             <textarea
               value={input} rows={2} placeholder="Type a message as the caller…" aria-label="Message"
@@ -168,8 +169,8 @@ export function AgentConsole({ greeting, disclosure, voices, askg1Reachable, has
         <Card>
           <CardHeader title="Test settings" />
           <CardBody className="grid gap-4">
-            <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={useKb} disabled={!hasKb} onChange={(e) => setUseKb(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" /><span>Answer from the knowledge base{!hasKb && <span className="block text-xs text-muted-foreground">No documents yet. Add some in Knowledge base.</span>}</span></label>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={speak} onChange={(e) => { setSpeak(e.target.checked); if (!e.target.checked) stopSpeaking(); }} className="h-4 w-4 accent-[var(--primary)]" /><Volume2 className="h-4 w-4 text-muted-foreground" aria-hidden />Speak the replies</label>
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={useKb} disabled={!hasKb} onChange={(e) => setUseKb(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" /><span><T>Answer from the knowledge base</T>{!hasKb && <span className="block text-xs text-muted-foreground"><T>No documents yet. Add some in Knowledge base.</T></span>}</span></label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={speak} onChange={(e) => { setSpeak(e.target.checked); if (!e.target.checked) stopSpeaking(); }} className="h-4 w-4 accent-[var(--primary)]" /><Volume2 className="h-4 w-4 text-muted-foreground" aria-hidden /><T>Speak the replies</T></label>
             {speak && <VoicePicker voices={voices} value={voice} onChange={setVoice} language="hinglish" />}
             {speak && speakNote && <p role="status" className="text-xs text-muted-foreground">{speakNote}</p>}
           </CardBody>
@@ -177,12 +178,12 @@ export function AgentConsole({ greeting, disclosure, voices, askg1Reachable, has
         <Card>
           <CardHeader title="Last turn speed" description="Live calls stream audio, so they will be faster than this" />
           <CardBody className="grid gap-3">
-            {!last ? <p className="text-sm text-muted-foreground">Send a message to see how long each step takes.</p> : (
+            {!last ? <p className="text-sm text-muted-foreground"><T>Send a message to see how long each step takes.</T></p> : (
               <>
                 {parts.map(([label, ms]) => (
-                  <div key={label}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span className="tabular-nums">{ms} ms</span></div><div className="h-1.5 rounded-full bg-muted"><div className="h-full rounded-full bg-wave" style={{ width: `${Math.min(100, ((ms ?? 0) / Math.max(first, TARGET_MS)) * 100)}%` }} /></div></div>
+                  <div key={label}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span className="tabular-nums">{ms} <T>ms</T></span></div><div className="h-1.5 rounded-full bg-muted"><div className="h-full rounded-full bg-wave" style={{ width: `${Math.min(100, ((ms ?? 0) / Math.max(first, TARGET_MS)) * 100)}%` }} /></div></div>
                 ))}
-                <div className="flex items-center justify-between border-t border-border pt-3 text-sm"><span className="font-medium">To first audio</span><Badge tone={first <= TARGET_MS ? "success" : first <= 1500 ? "warning" : "danger"}>{first} ms · target {TARGET_MS}</Badge></div>
+                <div className="flex items-center justify-between border-t border-border pt-3 text-sm"><span className="font-medium"><T>To first audio</T></span><Badge tone={first <= TARGET_MS ? "success" : first <= 1500 ? "warning" : "danger"}>{first} ms · target {TARGET_MS}</Badge></div>
               </>
             )}
           </CardBody>

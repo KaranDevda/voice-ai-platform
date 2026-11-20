@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Select, Textarea } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
 import { formatDateTime, titleCase } from "@/lib/utils";
+import { T, Tf, useLang } from "./t";
 
 type Gateway = "razorpay" | "stripe" | "paypal" | "paystack" | "flutterwave" | "cryptomus";
 const GATEWAYS: { id: Gateway; label: string; currencies: string[] }[] = [
@@ -33,6 +34,7 @@ const REASON: Record<string, string> = { topup: "Top-up", usage_call: "AI call",
 
 /** Balance, adding credit (six gateways), prices by country, exchange rates (staff), the ledger, and a staff adjustment. */
 export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, gateways, rates, exchange, ledger, payments, usage, balances, gatewayStatus }: Props) {
+  const lang = useLang();
   const router = useRouter();
   const available = GATEWAYS.filter((g) => gateways[g.id]);
   const [gateway, setGateway] = useState<Gateway>(available[0]?.id ?? "razorpay");
@@ -118,23 +120,23 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
 
   return (
     <div className="grid gap-6">
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger"><T>{error}</T></p>}
       <Card>
         <CardHeader title="Balance" description={billing.enabled ? `Standard prices: AI calls ${rupees(billing.callPerMinPaise)} per minute · texts ${rupees(billing.smsPaise)} each${billing.enforce ? " · calls and texts stop at zero" : ""}` : "Billing is off: nothing is charged. Turn it on in Settings."} />
-        <CardBody><p className={`text-3xl font-semibold ${balancePaise <= 0 && billing.enabled ? "text-danger" : ""}`}>{rupees(balancePaise)}</p>{usdRate ? <p className="mt-1 text-sm text-muted-foreground">≈ ${(balancePaise / usdRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD at today's rate</p> : null}</CardBody>
+        <CardBody><p className={`text-3xl font-semibold ${balancePaise <= 0 && billing.enabled ? "text-danger" : ""}`}>{rupees(balancePaise)}</p>{usdRate ? <p className="mt-1 text-sm text-muted-foreground">≈ ${(balancePaise / usdRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <T>USD at today's rate</T></p> : null}</CardBody>
       </Card>
 
-      {low && <p role="status" className="rounded-lg border border-warning bg-warning-soft px-4 py-3 text-sm">Your balance is under the {rupees(billing.lowBalancePaise)} limit you set in Settings. Add credit below{billing.enforce ? ", or calls and texts stop at zero" : ""}.</p>}
+      {low && <p role="status" className="rounded-lg border border-warning bg-warning-soft px-4 py-3 text-sm"><Tf text={billing.enforce ? "Your balance is under the {amount} limit you set in Settings. Add credit below, or calls and texts stop at zero." : "Your balance is under the {amount} limit you set in Settings. Add credit below."} vars={{ amount: rupees(billing.lowBalancePaise) }} /></p>}
 
       <Card>
         <CardHeader title={`Spending, last ${usage.days} days`} description="From your credit history" />
         <CardBody className="grid gap-4">
           <div className="grid gap-3 sm:grid-cols-3">
-            <div><div className="text-sm text-muted-foreground">Total spent</div><div className="text-xl font-semibold">{rupees(usage.totalPaise)}</div></div>
-            <div><div className="text-sm text-muted-foreground">AI calls</div><div className="text-xl font-semibold">{rupees(usage.calls.paise)}</div><div className="text-xs text-muted-foreground">{usage.calls.count} charged calls</div></div>
-            <div><div className="text-sm text-muted-foreground">Texts</div><div className="text-xl font-semibold">{rupees(usage.texts.paise)}</div><div className="text-xs text-muted-foreground">{usage.texts.count} charged texts</div></div>
+            <div><div className="text-sm text-muted-foreground"><T>Total spent</T></div><div className="text-xl font-semibold">{rupees(usage.totalPaise)}</div></div>
+            <div><div className="text-sm text-muted-foreground"><T>AI calls</T></div><div className="text-xl font-semibold">{rupees(usage.calls.paise)}</div><div className="text-xs text-muted-foreground">{usage.calls.count} <T>charged calls</T></div></div>
+            <div><div className="text-sm text-muted-foreground"><T>Texts</T></div><div className="text-xl font-semibold">{rupees(usage.texts.paise)}</div><div className="text-xs text-muted-foreground">{usage.texts.count} <T>charged texts</T></div></div>
           </div>
-          {usage.byCountry.length > 0 && <p className="text-sm text-muted-foreground">By country: {usage.byCountry.slice(0, 6).map((c) => `${c.country} ${rupees(c.paise)}`).join(" · ")}</p>}
+          {usage.byCountry.length > 0 && <p className="text-sm text-muted-foreground"><T>By country:</T> {usage.byCountry.slice(0, 6).map((c) => `${c.country} ${rupees(c.paise)}`).join(" · ")}</p>}
         </CardBody>
       </Card>
 
@@ -142,9 +144,9 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
         <Card>
           <CardHeader title="Add credit" description="You are taken to the payment page. Credit arrives a few seconds after the payment succeeds." />
           <CardBody>
-            {available.length === 0 ? <p className="text-sm text-muted-foreground">No payment gateway is set up yet. Add the gateway&apos;s keys to the website&apos;s settings file (RAZORPAY_*, STRIPE_*, PAYPAL_*, PAYSTACK_*, FLUTTERWAVE_*, CRYPTOMUS_*).</p> : (
+            {available.length === 0 ? <p className="text-sm text-muted-foreground"><T>No payment gateway is set up yet. Add the gateway&apos;s keys to the website&apos;s settings file (RAZORPAY_*, STRIPE_*, PAYPAL_*, PAYSTACK_*, FLUTTERWAVE_*, CRYPTOMUS_*).</T></p> : (
               <form onSubmit={topUp} className="grid gap-3 sm:grid-cols-4">
-                <Field label="Pay with"><Select value={gateway} onChange={(e) => pickGateway(e.target.value as Gateway)}>{available.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</Select></Field>
+                <Field label="Pay with"><Select value={gateway} onChange={(e) => pickGateway(e.target.value as Gateway)}>{available.map((x) => <option key={x.id} value={x.id}><T>{x.label}</T></option>)}</Select></Field>
                 <Field label="Currency"><Select value={currency} onChange={(e) => setCurrency(e.target.value)}>{g.currencies.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
                 <Field label={`Amount (${currency})`} hint={credit === null ? `No exchange rate for ${currency} yet. Ask platform staff.` : `You will be credited ${rupees(credit)}${currency === "INR" ? " (Rs 100 to Rs 1,00,000)" : ""}`}><Input type="number" min={1} step="0.01" value={amount} onChange={(e) => setAmount(Number(e.target.value))} /></Field>
                 <div className="flex items-end"><Button type="submit" disabled={busy || credit === null || credit < 10_000 || credit > 10_000_000}>{busy ? "Opening…" : "Pay"}</Button></div>
@@ -173,7 +175,7 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
                 <Field label="Import many at once" hint="A CSV with a first row of column names: country, call_per_min_paise, sms_paise. Existing countries are updated."><Textarea rows={4} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={"country,call_per_min_paise,sms_paise\nIN,150,25\nUS,400,90"} /></Field>
                 <input type="file" accept=".csv,.txt" aria-label="Price list file" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setCsv(await f.text()); }} />
                 <div><Button type="button" variant="outline" disabled={!csv.trim()} onClick={() => void importRates()}>Import prices</Button></div>
-                {imported && <div role="status" className="text-sm"><p>Saved {imported.saved} {imported.saved === 1 ? "country" : "countries"}.</p>{imported.problems.length > 0 && <ul className="mt-1 list-disc ps-5 text-muted-foreground">{imported.problems.slice(0, 10).map((p) => <li key={p.row}>Row {p.row}: {p.reason}</li>)}</ul>}</div>}
+                {imported && <div role="status" className="text-sm"><p><T>Saved</T> {imported.saved} <T>{imported.saved === 1 ? "country" : "countries"}</T>.</p>{imported.problems.length > 0 && <ul className="mt-1 list-disc ps-5 text-muted-foreground">{imported.problems.slice(0, 10).map((p) => <li key={p.row}><T>Row</T> {p.row}: {p.reason}</li>)}</ul>}</div>}
               </div>
             </>
           )}
@@ -184,7 +186,7 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
         <Card>
           <CardHeader title="Exchange rates (platform staff)" description="How many rupees one unit of a currency is worth. Used to credit payments made in that currency; fixed when a payment starts. Press the button for today's market rates (a rate that jumps more than 25 percent is skipped for you to check), or set one by hand." />
           <CardBody className="grid gap-4">
-            {exchange.length > 0 && <ul className="grid gap-1 text-sm">{exchange.map((e) => <li key={e.currency} className="flex flex-wrap items-center gap-2">1 {e.currency} = {rupees(e.paisePerUnit)}<span className="text-xs text-muted-foreground">updated {formatDateTime(e.updatedAt)}</span>{stale(e.updatedAt) && <Badge tone="warning">Over a day old</Badge>}<button type="button" className="text-xs text-muted-foreground underline" onClick={() => void removeFx(e.currency)}>Remove</button></li>)}</ul>}
+            {exchange.length > 0 && <ul className="grid gap-1 text-sm">{exchange.map((e) => <li key={e.currency} className="flex flex-wrap items-center gap-2">1 {e.currency} = {rupees(e.paisePerUnit)}<span className="text-xs text-muted-foreground"><T>updated</T> {formatDateTime(e.updatedAt, lang)}</span>{stale(e.updatedAt) && <Badge tone="warning">Over a day old</Badge>}<button type="button" className="text-xs text-muted-foreground underline" onClick={() => void removeFx(e.currency)}><T>Remove</T></button></li>)}</ul>}
             <div><Button type="button" size="sm" variant="outline" disabled={refreshing} onClick={() => void refreshFx()}>{refreshing ? "Fetching…" : "Update all from today's market rates"}</Button></div>
             <form onSubmit={saveFx} className="grid gap-3 sm:grid-cols-3">
               <Field label="Currency"><Input value={fx.currency} onChange={(e) => setFx((x) => ({ ...x, currency: e.target.value.toUpperCase() }))} maxLength={3} required /></Field>
@@ -200,13 +202,13 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
           <CardHeader title="Manual adjustment (platform staff)" description="Add or remove credit by hand, with a note. It is recorded in the audit log." />
           <CardBody>
             <form onSubmit={adjust} className="grid gap-3 sm:grid-cols-4">
-              {balances && balances.length > 0 && <div className="sm:col-span-4"><Field label="Organisation"><Select value={adj.orgId} onChange={(e) => setAdj((a) => ({ ...a, orgId: e.target.value }))}><option value="">This organisation</option>{balances.map((o) => <option key={o.orgId} value={o.orgId}>{o.orgName} ({rupees(o.balancePaise)})</option>)}</Select></Field></div>}
+              {balances && balances.length > 0 && <div className="sm:col-span-4"><Field label="Organisation"><Select value={adj.orgId} onChange={(e) => setAdj((a) => ({ ...a, orgId: e.target.value }))}><option value=""><T>This organisation</T></option>{balances.map((o) => <option key={o.orgId} value={o.orgId}>{o.orgName} ({rupees(o.balancePaise)})</option>)}</Select></Field></div>}
               <Field label="Amount (Rs, negative removes)"><Input type="number" step="0.01" value={adj.rupees} onChange={(e) => setAdj((a) => ({ ...a, rupees: Number(e.target.value) }))} /></Field>
               <div className="sm:col-span-2"><Field label="Why"><Input value={adj.note} onChange={(e) => setAdj((a) => ({ ...a, note: e.target.value }))} maxLength={300} required /></Field></div>
-              <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={adj.refund} onChange={(e) => setAdj((a) => ({ ...a, refund: e.target.checked }))} /> It is a refund</label>
+              <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={adj.refund} onChange={(e) => setAdj((a) => ({ ...a, refund: e.target.checked }))} /> <T>It is a refund</T></label>
               <div><Button type="submit" size="sm" disabled={!adj.rupees || !adj.note.trim()}>Apply</Button></div>
             </form>
-            {note && <p role="status" className="mt-3 text-sm text-success">{note}</p>}
+            {note && <p role="status" className="mt-3 text-sm text-success"><T>{note}</T></p>}
           </CardBody>
         </Card>
       )}
@@ -224,29 +226,29 @@ export function BillingPanel({ balancePaise, billing, canEdit, isPlatformAdmin, 
           <CardBody className="grid gap-4">
             {gatewayStatus.map((g) => (
               <div key={g.id} className="grid gap-1 border-b border-border pb-3 text-sm last:border-0 last:pb-0">
-                <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{g.label}</span><Badge tone={g.configured ? "success" : "neutral"}>{g.configured ? "Keys set" : "Keys missing"}</Badge></div>
-                <div className="text-muted-foreground">Notice address: <code className="break-all">{g.webhookUrl}</code> · {g.note}</div>
-                {g.missing.length > 0 && <div className="text-muted-foreground">Still to set in the website's settings file: {g.missing.join(", ")}</div>}
+                <div className="flex flex-wrap items-center gap-2"><span className="font-medium"><T>{g.label}</T></span><Badge tone={g.configured ? "success" : "neutral"}>{g.configured ? "Keys set" : "Keys missing"}</Badge></div>
+                <div className="text-muted-foreground"><T>Notice address:</T> <code className="break-all">{g.webhookUrl}</code> · {g.note}</div>
+                {g.missing.length > 0 && <div className="text-muted-foreground"><Tf text="Still to set in the website's settings file: {list}" vars={{ list: g.missing.join(", ") }} /></div>}
               </div>
             ))}
           </CardBody>
         </Card>
       )}
-      {!isPlatformAdmin && note && <p role="status" className="text-sm text-success">{note}</p>}
+      {!isPlatformAdmin && note && <p role="status" className="text-sm text-success"><T>{note}</T></p>}
 
       <Card>
-        <CardHeader title="Recent payments" action={<a href="/api/billing/export?kind=payments" className="text-sm text-primary underline">Download CSV</a>} />
-        {payments.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">No payments yet.</p></CardBody> : (
+        <CardHeader title="Recent payments" action={<a href="/api/billing/export?kind=payments" className="text-sm text-primary underline"><T>Download CSV</T></a>} />
+        {payments.length === 0 ? <CardBody><p className="text-sm text-muted-foreground"><T>No payments yet.</T></p></CardBody> : (
           <Table><thead><tr><Th>When</Th><Th>Gateway</Th><Th>Paid</Th><Th>Credited</Th><Th>Status</Th><Th> </Th></tr></thead>
-            <tbody>{payments.map((p) => <Tr key={p.id}><Td>{formatDateTime(p.createdAt)}</Td><Td>{titleCase(p.gateway)}</Td><Td>{p.currency === "INR" ? rupees(p.amountPaise) : `${((p.amountMinor ?? 0) / 100).toFixed(2)} ${p.currency}`}</Td><Td>{rupees(p.amountPaise)}</Td><Td><Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : "warning"}>{titleCase(p.status)}</Badge></Td><Td className="text-end">{p.status === "paid" && <a href={`/billing/receipt/${p.id}`} className="text-sm text-primary underline">Receipt</a>}</Td></Tr>)}</tbody></Table>
+            <tbody>{payments.map((p) => <Tr key={p.id}><Td>{formatDateTime(p.createdAt, lang)}</Td><Td>{titleCase(p.gateway)}</Td><Td>{p.currency === "INR" ? rupees(p.amountPaise) : `${((p.amountMinor ?? 0) / 100).toFixed(2)} ${p.currency}`}</Td><Td>{rupees(p.amountPaise)}</Td><Td><Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : "warning"}>{titleCase(p.status)}</Badge></Td><Td className="text-end">{p.status === "paid" && <a href={`/billing/receipt/${p.id}`} className="text-sm text-primary underline"><T>Receipt</T></a>}</Td></Tr>)}</tbody></Table>
         )}
       </Card>
 
       <Card>
-        <CardHeader title="Credit history" description="The latest 50 changes to the balance" action={<span className="flex gap-3 text-sm"><a href="/billing/history" className="text-primary underline">See all, filter</a><a href="/api/billing/export" className="text-primary underline">Download CSV</a></span>} />
-        {ledger.length === 0 ? <CardBody><p className="text-sm text-muted-foreground">Nothing yet.</p></CardBody> : (
+        <CardHeader title="Credit history" description="The latest 50 changes to the balance" action={<span className="flex gap-3 text-sm"><a href="/billing/history" className="text-primary underline"><T>See all, filter</T></a><a href="/api/billing/export" className="text-primary underline"><T>Download CSV</T></a></span>} />
+        {ledger.length === 0 ? <CardBody><p className="text-sm text-muted-foreground"><T>Nothing yet.</T></p></CardBody> : (
           <Table><thead><tr><Th>When</Th><Th>What</Th><Th>Change</Th><Th>Note</Th></tr></thead>
-            <tbody>{ledger.map((l) => <Tr key={l.id}><Td>{formatDateTime(l.createdAt)}</Td><Td>{REASON[l.reason] ?? l.reason}</Td><Td className={l.deltaPaise < 0 ? "text-danger" : "text-success"}>{l.deltaPaise > 0 ? "+" : ""}{rupees(l.deltaPaise)}</Td><Td className="text-muted-foreground">{l.note ?? ""}</Td></Tr>)}</tbody></Table>
+            <tbody>{ledger.map((l) => <Tr key={l.id}><Td>{formatDateTime(l.createdAt, lang)}</Td><Td>{REASON[l.reason] ?? l.reason}</Td><Td className={l.deltaPaise < 0 ? "text-danger" : "text-success"}>{l.deltaPaise > 0 ? "+" : ""}{rupees(l.deltaPaise)}</Td><Td className="text-muted-foreground">{l.note ?? ""}</Td></Tr>)}</tbody></Table>
         )}
       </Card>
     </div>

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Textarea } from "./ui/form";
+import { T } from "./t";
 
 interface Result { created: number; updated: number; skippedExisting: number; duplicatesInFile: number; problems: { row: number; reason: string }[] }
 interface ContactExportFilters { q?: string; status?: string; heat?: string; sort?: string; tag?: string; consent?: string; dnd?: string }
@@ -82,7 +83,7 @@ export function ContactsImport({ canExport, exportFilters = {} }: { canExport: b
     finally { setBusy(false); setImportProgress(null); }
   }
 
-  if (!open) return <div className="flex flex-wrap gap-2">{canExport && <Button size="sm" variant="outline" onClick={() => void exportContacts()} disabled={exporting}>{exporting ? `Exporting… ${Math.ceil(exportBytes / 1024)} KB` : hasExportFilters ? "Export matching contacts" : "Export contacts"}</Button>}<Button size="sm" onClick={() => setOpen(true)}>Import contacts</Button>{exportMessage && <span role="status" className="self-center text-xs text-success">{exportMessage}</span>}{error && <span role="alert" className="self-center text-xs text-danger">{error}</span>}</div>;
+  if (!open) return <div className="flex flex-wrap gap-2">{canExport && <Button size="sm" variant="outline" onClick={() => void exportContacts()} disabled={exporting}>{exporting ? `Exporting… ${Math.ceil(exportBytes / 1024)} KB` : hasExportFilters ? "Export matching contacts" : "Export contacts"}</Button>}<Button size="sm" onClick={() => setOpen(true)}>Import contacts</Button>{exportMessage && <span role="status" className="self-center text-xs text-success">{exportMessage}</span>}{error && <span role="alert" className="self-center text-xs text-danger"><T>{error}</T></span>}</div>;
   return (
     <Card className="mb-6 w-full">
       <CardHeader title="Import contacts" description="A CSV with a header row. Needs a phone column; name, email, tags and any other columns are kept." action={<div className="flex gap-2">{canExport && <Button size="sm" variant="outline" onClick={() => void exportContacts()} disabled={exporting}>{exporting ? `Exporting… ${Math.ceil(exportBytes / 1024)} KB` : hasExportFilters ? "Export matching CSV" : "Export CSV"}</Button>}<Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button></div>} />
@@ -91,13 +92,13 @@ export function ContactsImport({ canExport, exportFilters = {} }: { canExport: b
           <input type="file" accept=".csv,.txt,.tsv" aria-label="CSV file" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setText(await f.text()); }} />
           <Field label="Or paste the rows"><Textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder={"name,phone,tags\nAsha,9876543210,diwali"} /></Field>
           <Field label="Tags for everyone in this list" hint="Comma separated, for example: diwali, vip. A campaign can call everyone with a tag."><Input value={tags} onChange={(e) => setTags(e.target.value)} maxLength={200} /></Field>
-          {busy && <div className="grid gap-1" role="status" aria-live="polite"><progress className="w-full" max={Math.max(importProgress?.total ?? 0, 1)} value={importProgress?.processed ?? 0} /><p className="text-xs text-muted-foreground">{importProgress?.total ? `Imported ${importProgress.processed} of ${importProgress.total} contacts…` : "Validating CSV…"}</p></div>}
-          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+          {busy && <div className="grid gap-1" role="status" aria-live="polite"><progress className="w-full" max={Math.max(importProgress?.total ?? 0, 1)} value={importProgress?.processed ?? 0} /><p className="text-xs text-muted-foreground"><T>{importProgress?.total ? `Imported ${importProgress.processed} of ${importProgress.total} contacts…` : "Validating CSV…"}</T></p></div>}
+          {error && <p role="alert" className="text-sm text-danger"><T>{error}</T></p>}
           {exportMessage && <p role="status" className="text-sm text-success">{exportMessage}</p>}
           {result && (
             <div className="text-sm" role="status">
-              <p>Added {result.created}, updated {result.updated}{result.skippedExisting ? `, left ${result.skippedExisting} existing as they were` : ""}{result.duplicatesInFile ? `, ${result.duplicatesInFile} repeated in the file` : ""}.</p>
-              {result.problems.length > 0 && <ul className="mt-1 list-disc ps-5 text-muted-foreground">{result.problems.slice(0, 10).map((p) => <li key={p.row}>Row {p.row}: {p.reason}</li>)}</ul>}
+              <p><T>Added</T> {result.created}<T>, updated</T> {result.updated}{result.skippedExisting ? `, left ${result.skippedExisting} existing as they were` : ""}{result.duplicatesInFile ? `, ${result.duplicatesInFile} repeated in the file` : ""}.</p>
+              {result.problems.length > 0 && <ul className="mt-1 list-disc ps-5 text-muted-foreground">{result.problems.slice(0, 10).map((p) => <li key={p.row}><T>Row</T> {p.row}: {p.reason}</li>)}</ul>}
             </div>
           )}
           <div><Button type="submit" disabled={busy || !text.trim()}>{busy ? "Importing…" : "Import"}</Button></div>

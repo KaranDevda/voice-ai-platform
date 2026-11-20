@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Textarea } from "./ui/form";
 import { titleCase } from "@/lib/utils";
+import { T, Tf } from "./t";
 
 interface Sequence {
   id: string;
@@ -60,7 +61,7 @@ export function SequencesAdmin({ sequences }: { sequences: Sequence[] }) {
             <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required /></Field>
             {steps.map((s, i) => (
               <div key={i} className="grid gap-2 rounded-md border border-border p-3">
-                <div className="flex items-center justify-between text-sm font-medium">Step {i + 1} <span className="font-normal text-muted-foreground">{wait(s.delayMin)}</span></div>
+                <div className="flex items-center justify-between text-sm font-medium"><T>Step</T> {i + 1} <span className="font-normal text-muted-foreground">{wait(s.delayMin)}</span></div>
                 <Textarea rows={2} value={s.body} onChange={(e) => setStep(i, { body: e.target.value })} maxLength={1000} placeholder="Message" required />
                 <div className="grid gap-2 sm:grid-cols-2">
                   <Field label="Wait (minutes)"><Input type="number" min={0} max={43200} value={s.delayMin} onChange={(e) => setStep(i, { delayMin: Number(e.target.value) })} /></Field>
@@ -73,8 +74,8 @@ export function SequencesAdmin({ sequences }: { sequences: Sequence[] }) {
               <Button type="submit" disabled={busy || !name.trim() || steps.some((s) => !s.body.trim())}>{busy ? "Creating…" : "Create sequence"}</Button>
             </div>
           </form>
-          {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
-          {note && <p role="status" className="mt-3 text-sm text-success">{note}</p>}
+          {error && <p role="alert" className="mt-3 text-sm text-danger"><T>{error}</T></p>}
+          {note && <p role="status" className="mt-3 text-sm text-success"><T>{note}</T></p>}
         </CardBody>
       </Card>
 
@@ -83,18 +84,18 @@ export function SequencesAdmin({ sequences }: { sequences: Sequence[] }) {
           <CardHeader title={q.name} description={`${q.steps.length} step${q.steps.length === 1 ? "" : "s"} · active ${q.counts.active ?? 0} · paused ${q.counts.paused ?? 0} · all steps queued ${q.counts.completed ?? 0} · stopped ${q.counts.stopped ?? 0}`} action={<Badge tone={q.status === "active" ? "success" : "neutral"}>{titleCase(q.status)}</Badge>} />
           <CardBody className="grid gap-3">
             <div className="text-xs text-muted-foreground" aria-label="Sequence message outcomes">
-              Messages: {q.messageCounts.sent ?? 0} sent · {q.messageCounts.failed ?? 0} failed · {q.messageCounts.queued ?? 0} queued · {q.messageCounts.sending ?? 0} sending
+              <T>Messages:</T> {q.messageCounts.sent ?? 0} <T>sent ·</T> {q.messageCounts.failed ?? 0} <T>failed ·</T> {q.messageCounts.queued ?? 0} <T>queued ·</T> {q.messageCounts.sending ?? 0} <T>sending</T>
             </div>
             <div className="text-xs text-muted-foreground" aria-label="Sequence conversion">
-              Outcomes: {q.outcomes.repliedLeads} contacts replied · {q.outcomes.calledAfterReply} called afterwards · {q.outcomes.advancedAfterReply} moved to interested, callback or won · {q.outcomes.converted} converted
+              <T>Outcomes:</T> {q.outcomes.repliedLeads} <T>contacts replied ·</T> {q.outcomes.calledAfterReply} <T>called afterwards ·</T> <Tf text="{n} moved to interested, callback or won ·" vars={{ n: q.outcomes.advancedAfterReply }} /> {q.outcomes.converted} <T>converted</T>
             </div>
             <ol className="list-decimal ps-5 text-sm">{q.steps.map((s, i) => {
               const progress = q.stepProgress[i];
-              return <li key={i}><span className="text-muted-foreground">{wait(s.delayMin)} · queued {progress?.queued ?? 0} · sent {progress?.sent ?? 0} · failed {progress?.failed ?? 0} · waiting {progress?.waiting ?? 0} · replies {progress?.replies ?? 0} · response rate {progress?.responseRate ?? 0}%:</span> {s.body}</li>;
+              return <li key={i}><span className="text-muted-foreground">{wait(s.delayMin)} <T>· queued</T> {progress?.queued ?? 0} <T>· sent</T> {progress?.sent ?? 0} <T>· failed</T> {progress?.failed ?? 0} <T>· waiting</T> {progress?.waiting ?? 0} <T>· replies</T> {progress?.replies ?? 0} <T>· response rate</T> {progress?.responseRate ?? 0}%:</span> {s.body}</li>;
             })}</ol>
             {q.stepTrackingEnabled
-              ? <p className="text-xs text-muted-foreground">Per-step delivery counts cover texts queued after the step-tracking update; older texts are included in the overall totals above.</p>
-              : <p role="status" className="text-xs text-warning">Per-step delivery details are unavailable until migration 0036 is applied. Overall sequence totals are still shown.</p>}
+              ? <p className="text-xs text-muted-foreground"><T>Per-step delivery counts cover texts queued after the step-tracking update; older texts are included in the overall totals above.</T></p>
+              : <p role="status" className="text-xs text-warning"><T>Per-step delivery details are unavailable until migration 0036 is applied. Overall sequence totals are still shown.</T></p>}
             {q.status === "active" && (
               <div className="flex flex-wrap items-end gap-2">
                 <div className="min-w-48 flex-1"><Field label="Enrol everyone with tags"><Input value={enrol[q.id] ?? ""} onChange={(e) => setEnrol((x) => ({ ...x, [q.id]: e.target.value }))} placeholder="diwali, vip" /></Field></div>

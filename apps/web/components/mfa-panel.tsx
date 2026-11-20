@@ -5,6 +5,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input } from "./ui/form";
+import { T } from "./t";
 
 /** Turn two-factor authentication on or off, and get recovery codes in case the phone is lost. */
 export function MfaPanel({ enabled, required, recoveryLeft }: { enabled: boolean; required: boolean; recoveryLeft: number }) {
@@ -36,12 +37,12 @@ export function MfaPanel({ enabled, required, recoveryLeft }: { enabled: boolean
     <Card>
       <CardHeader title="Two-factor authentication" description="A 6-digit code from an authenticator app, asked for after your password." action={enabled ? <Badge tone="success">On</Badge> : <Badge>Off</Badge>} />
       <CardBody className="grid max-w-md gap-4">
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        {error && <p role="alert" className="text-sm text-danger"><T>{error}</T></p>}
 
         {codes && (
           <div className="grid gap-2 rounded-lg border border-border bg-muted p-3">
-            <p className="text-sm font-medium">Save these recovery codes now. They are shown only once.</p>
-            <p className="text-xs text-muted-foreground">Each works one time if you lose your phone. Type one in place of the 6-digit code at sign-in.</p>
+            <p className="text-sm font-medium"><T>Save these recovery codes now. They are shown only once.</T></p>
+            <p className="text-xs text-muted-foreground"><T>Each works one time if you lose your phone. Type one in place of the 6-digit code at sign-in.</T></p>
             <code className="grid grid-cols-2 gap-1 text-sm tracking-wider">{codes.map((c) => <span key={c}>{c}</span>)}</code>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(codes.join("\n"))}>Copy</Button>
@@ -54,9 +55,9 @@ export function MfaPanel({ enabled, required, recoveryLeft }: { enabled: boolean
 
         {setup && (
           <>
-            <p className="text-sm text-muted-foreground">Add this key to your authenticator app, or open the link on your phone, then enter the 6-digit code.</p>
+            <p className="text-sm text-muted-foreground"><T>Add this key to your authenticator app, or open the link on your phone, then enter the 6-digit code.</T></p>
             <code className="break-all rounded-lg bg-muted px-3 py-2 text-sm tracking-wider">{setup.secret}</code>
-            <a className="text-sm text-primary underline" href={setup.uri}>Open in authenticator app</a>
+            <a className="text-sm text-primary underline" href={setup.uri}><T>Open in authenticator app</T></a>
             <form onSubmit={confirm} className="grid gap-4">
               <Field label="6-digit code"><Input name="code" inputMode="numeric" pattern="\d{6}" autoComplete="one-time-code" required /></Field>
               <div className="flex gap-2"><Button type="submit" disabled={busy}>Confirm and turn on</Button><Button type="button" variant="outline" onClick={() => setSetup(null)}>Cancel</Button></div>
@@ -66,13 +67,13 @@ export function MfaPanel({ enabled, required, recoveryLeft }: { enabled: boolean
 
         {enabled && (
           <>
-            <p className="text-sm text-muted-foreground">Recovery codes left: {recoveryLeft}{recoveryLeft === 0 ? ". Make new ones below." : "."}</p>
+            <p className="text-sm text-muted-foreground"><T>Recovery codes left:</T> {recoveryLeft}<T>{recoveryLeft === 0 ? ". Make new ones below." : "."}</T></p>
             <form onSubmit={(e) => withPassword(e, "/api/account/mfa/recovery", (b) => setCodes(b.codes ?? null))} className="grid gap-3">
               <Field label="Password (to make new recovery codes)"><Input name="password" type="password" autoComplete="current-password" required /></Field>
               <div><Button type="submit" variant="outline" disabled={busy}>Make new recovery codes</Button></div>
             </form>
             {required ? (
-              <p className="text-xs text-muted-foreground">Your role requires two-factor authentication, so it cannot be turned off. If you lose your phone, an admin can reset it.</p>
+              <p className="text-xs text-muted-foreground"><T>Your role requires two-factor authentication, so it cannot be turned off. If you lose your phone, an admin can reset it.</T></p>
             ) : (
               <form onSubmit={(e) => withPassword(e, "/api/account/mfa/disable", () => setCodes(null))} className="grid gap-3">
                 <Field label="Password (to turn it off)"><Input name="password" type="password" autoComplete="current-password" required /></Field>

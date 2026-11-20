@@ -2,6 +2,7 @@
 import { Download, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject } from "react";
 import { clockMs, cn } from "@/lib/utils";
+import { T } from "./t";
 
 export interface PlayerHandle { seek(ms: number): void; play(): void }
 
@@ -138,7 +139,7 @@ export function WaveformPlayer({ src, lazy = false, controllerRef, onTime, downl
           ))}
         </div>
         <div className="w-[5.25rem] shrink-0 whitespace-nowrap text-end text-xs tabular-nums text-muted-foreground">
-          {loading ? "Loading…" : `${clockMs(now)} / ${total ? clockMs(total) : "--:--"}`}
+          <T>{loading ? "Loading…" : `${clockMs(now)} / ${total ? clockMs(total) : "--:--"}`}</T>
         </div>
         {downloadName && ready && objectUrl.current && (
           <a href={objectUrl.current} download={downloadName} aria-label="Download audio" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -146,7 +147,7 @@ export function WaveformPlayer({ src, lazy = false, controllerRef, onTime, downl
           </a>
         )}
       </div>
-      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-danger"><T>{error}</T></p>}
     </div>
   );
 }

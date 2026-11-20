@@ -1,4 +1,5 @@
 import { Smartphone } from "lucide-react";
+import { currentLang } from "@/lib/i18n-server";
 import { listTeam } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { AddPhone } from "@/components/add-phone";
@@ -11,8 +12,10 @@ import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { formatDateTime, timeAgo, titleCase } from "@/lib/utils";
+import { T } from "@/components/t";
 
 export default async function TeamPage() {
+  const lang = await currentLang();
   const user = await requirePageUser();
   const data = await allowed(() => listTeam(getDb(), user));
   if (!data) return <Forbidden />;
@@ -32,9 +35,9 @@ export default async function TeamPage() {
                   <Td><div className="flex gap-1">{m.roles.map((r) => <Badge key={r} tone="primary">{titleCase(r)}</Badge>)}</div></Td>
                   <Td><Badge tone={m.status === "active" ? "success" : "danger"}>{titleCase(m.status)}</Badge></Td>
                   <Td>{m.mfa ? <Badge tone="success">On</Badge> : <Badge>Off</Badge>}</Td>
-                  <Td>{m.lastLoginAt ? timeAgo(m.lastLoginAt) : "Never"}</Td>
+                  <Td><T>{m.lastLoginAt ? timeAgo(m.lastLoginAt, Date.now(), lang) : "Never"}</T></Td>
                   <Td className="text-end">
-                    {data.canResetMfa && m.mfa && m.id !== data.selfId && <PostButton url={`/api/team/${m.id}/mfa-reset`} variant="outline" size="sm" confirm={`Reset two-factor authentication for ${m.email}? They will need to set it up again.`}>Reset 2FA</PostButton>}
+                    {data.canResetMfa && m.mfa && m.id !== data.selfId && <PostButton url={`/api/team/${m.id}/mfa-reset`} variant="outline" size="sm" confirm={`Reset two-factor authentication for ${m.email}? They will need to set it up again.`}><T>Reset 2FA</T></PostButton>}
                   </Td>
                 </Tr>
               ))}
@@ -52,11 +55,11 @@ export default async function TeamPage() {
               <tbody>
                 {data.devices.map((d) => (
                   <Tr key={d.id}>
-                    <Td className="font-medium">{d.email}</Td><Td>{d.name ?? "Phone"}</Td><Td>{d.platform === "ios" ? "iPhone" : "Android"}</Td><Td>{d.platform === "ios" ? "n/a" : `SIM ${(d.workSimSlot ?? 0) + 1}`}</Td>
-                    <Td>{d.lastSyncAt ? formatDateTime(d.lastSyncAt) : "Never"}</Td>
+                    <Td className="font-medium">{d.email}</Td><Td><T>{d.name ?? "Phone"}</T></Td><Td><T>{d.platform === "ios" ? "iPhone" : "Android"}</T></Td><Td>{d.platform === "ios" ? "n/a" : `SIM ${(d.workSimSlot ?? 0) + 1}`}</Td>
+                    <Td><T>{d.lastSyncAt ? formatDateTime(d.lastSyncAt, lang) : "Never"}</T></Td>
                     <Td>{d.revokedAt ? <Badge tone="danger">Revoked</Badge> : <Badge tone="success">Active</Badge>}</Td>
                     <Td className="text-end">
-                      {data.canRevoke && !d.revokedAt && <PostButton url={`/api/devices/${d.id}/revoke`} variant="outline" size="sm" confirm={`Revoke ${d.email}'s phone? It will stop syncing.`}>Revoke</PostButton>}
+                      {data.canRevoke && !d.revokedAt && <PostButton url={`/api/devices/${d.id}/revoke`} variant="outline" size="sm" confirm={`Revoke ${d.email}'s phone? It will stop syncing.`}><T>Revoke</T></PostButton>}
                     </Td>
                   </Tr>
                 ))}

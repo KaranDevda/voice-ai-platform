@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Select } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
+import { T } from "./t";
 
 interface Row { key: string; builtIn: string; override: string }
 interface Props { landing: { headline: string; text: string }; languages: { code: string; name: string; added: boolean }[]; lang: string; rows: Row[] }
@@ -40,8 +41,8 @@ export function ContentPanel({ landing, languages, lang, rows }: Props) {
 
   return (
     <div className="grid gap-6">
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {msg && <p role="status" className="text-sm text-success">{msg}</p>}
+      {error && <p role="alert" className="text-sm text-danger"><T>{error}</T></p>}
+      {msg && <p role="status" className="text-sm text-success"><T>{msg}</T></p>}
 
       <Card>
         <CardHeader title="Sign-in page text (staff)" description="The headline and the line under the logo that visitors see before signing in. Empty puts the standard text back." />
@@ -58,7 +59,7 @@ export function ContentPanel({ landing, languages, lang, rows }: Props) {
         <CardHeader title="Translations (staff)" description="Change how a word or title appears in a language, or add a language of your own. Changes show within about 15 seconds. Page text without a translation stays in English." />
         <CardBody className="grid gap-4">
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="Language"><Select value={lang} onChange={(e) => { window.location.href = `/platform?lang=${e.target.value}`; }}>{languages.map((l) => <option key={l.code} value={l.code}>{l.name}{l.added ? " (added)" : ""}</option>)}</Select></Field>
+            <Field label="Language"><Select value={lang} onChange={(e) => { window.location.href = `/platform?lang=${e.target.value}`; }}>{languages.map((l) => <option key={l.code} value={l.code}>{l.name}<T>{l.added ? " (added)" : ""}</T></option>)}</Select></Field>
             {current?.added && <Button type="button" size="sm" variant="outline" onClick={() => void removeLanguage()}>Remove this language</Button>}
           </div>
           <Table>
@@ -75,7 +76,7 @@ export function ContentPanel({ landing, languages, lang, rows }: Props) {
           <form onSubmit={addLanguage} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-4">
             <Field label="New language code" hint="2 or 3 letters, like sw"><Input value={add.code} maxLength={6} onChange={(e) => setAdd((a) => ({ ...a, code: e.target.value.toLowerCase() }))} required /></Field>
             <Field label="Its name, in that language" hint="Shown in the language menu"><Input value={add.name} maxLength={40} onChange={(e) => setAdd((a) => ({ ...a, name: e.target.value }))} required /></Field>
-            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={add.rtl} onChange={(e) => setAdd((a) => ({ ...a, rtl: e.target.checked }))} /> Written right to left</label>
+            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={add.rtl} onChange={(e) => setAdd((a) => ({ ...a, rtl: e.target.checked }))} /> <T>Written right to left</T></label>
             <div className="flex items-end"><Button type="submit" size="sm" disabled={!add.code || !add.name.trim()}>Add language</Button></div>
           </form>
         </CardBody>

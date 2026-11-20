@@ -10,6 +10,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Select } from "./ui/form";
 import { Notice } from "./ui/page";
 import { Recorder } from "./recorder";
+import { T, Tf } from "./t";
 
 
 interface Voice { id: string; label: string; gender: string; donorName: string }
@@ -49,7 +50,7 @@ export function AddLanguage({ voices, hindiReady, ownVoice = false, unavailableR
       <CardHeader title="Add Hindi to an existing voice" description={ownVoice ? "Voices cloned before this existed speak Hindi in a built-in voice. A fresh recording of the same person, any language, lets Hindi and Hinglish be spoken in their own voice. The existing consent covers it." : "A voice made for English cannot speak Hindi until the same person records a short Hindi sample. The existing consent covers it."} />
       <CardBody className="grid gap-4">
         {!hindiReady && <Notice tone="warning">{unavailableReason}</Notice>}
-        {!voices.length ? <p className="text-sm text-muted-foreground">There are no active cloned voices yet. Clone one above first.</p> : (
+        {!voices.length ? <p className="text-sm text-muted-foreground"><T>There are no active cloned voices yet. Clone one above first.</T></p> : (
           <>
             <Field label="Voice">
               <Select value={voice} onChange={(e) => setVoice(e.target.value)} aria-label="Voice to add Hindi to">
@@ -57,17 +58,17 @@ export function AddLanguage({ voices, hindiReady, ownVoice = false, unavailableR
               </Select>
             </Field>
             <div className="rounded-xl bg-muted px-4 py-3">
-              <p className="mb-1 text-xs font-medium text-muted-foreground">{chosen?.donorName ? `Ask ${chosen.donorName} to read this aloud, read all of it, about ${SCRIPT_SECONDS.hi} seconds, in a quiet room` : "Read this aloud"}</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground"><T>{chosen?.donorName ? `Ask ${chosen.donorName} to read this aloud, read all of it, about ${SCRIPT_SECONDS.hi} seconds, in a quiet room` : "Read this aloud"}</T></p>
               <p lang="hi" className="text-[15px] leading-relaxed">{HINDI_SCRIPT}</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Recorder label="Record Hindi sample" maxSeconds={90} disabled={busy || !hindiReady} onRecorded={pick} />
               <label className={cn("inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted", (busy || !hindiReady) && "pointer-events-none opacity-50")}>
-                <Upload className="h-4 w-4" aria-hidden />Upload a recording
+                <Upload className="h-4 w-4" aria-hidden /><T>Upload a recording</T>
                 <input type="file" accept="audio/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void audioDurationMs(f).then((ms) => pick(f, ms)); e.target.value = ""; }} />
               </label>
             </div>
-            {sample?.ms && sample.ms < MIN_CLONE_SECONDS * 1000 && <Notice tone="warning">Under {MIN_CLONE_SECONDS} seconds the Hindi voice usually sounds thin. Read the whole paragraph.</Notice>}
+            {sample?.ms && sample.ms < MIN_CLONE_SECONDS * 1000 && <Notice tone="warning"><Tf text="Under {n} seconds the Hindi voice usually sounds thin. Read the whole paragraph." vars={{ n: MIN_CLONE_SECONDS }} /></Notice>}
             {sample && (
               <div className="flex items-center gap-3 rounded-lg border border-border p-3">
                 <audio controls src={sample.url} className="h-9 flex-1" />
@@ -75,9 +76,9 @@ export function AddLanguage({ voices, hindiReady, ownVoice = false, unavailableR
                 <button type="button" onClick={() => { URL.revokeObjectURL(sample.url); setSample(null); }} className="text-muted-foreground hover:text-danger" aria-label="Remove the sample"><Trash2 className="h-4 w-4" /></button>
               </div>
             )}
-            {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+            {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"><T>{error}</T></p>}
             {done && <p role="status" className="flex items-center gap-2 rounded-lg bg-success-soft px-3 py-2 text-sm text-success"><Check className="h-4 w-4" aria-hidden />{done}</p>}
-            {done && kept && <a href={kept.url} download={kept.name} className="text-sm font-medium text-primary underline">Download {kept.name} (the only copy; keep it private)</a>}
+            {done && kept && <a href={kept.url} download={kept.name} className="text-sm font-medium text-primary underline"><Tf text="Download {name} (the only copy; keep it private)" vars={{ name: kept.name }} /></a>}
             <div><Button onClick={() => void add()} disabled={!sample || busy || !hindiReady}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Languages className="h-4 w-4" aria-hidden />}{ownVoice ? "Use their own voice for Hindi" : "Add Hindi voice"}</Button></div>
           </>
         )}

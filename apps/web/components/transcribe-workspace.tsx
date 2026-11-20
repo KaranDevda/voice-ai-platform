@@ -11,6 +11,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Select } from "./ui/form";
 import { Recorder } from "./recorder";
 import { WaveformPlayer, type PlayerHandle } from "./waveform-player";
+import { T } from "./t";
 
 interface Result { text: string; durationS: number; language?: string; segments: TranscriptLine[]; assetId: string | null; latencyMs: number }
 const SPEAKER_COLORS = ["text-primary", "text-info", "text-success", "text-warning"];
@@ -79,8 +80,8 @@ export function TranscribeWorkspace() {
               className={cn("flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center text-sm transition-colors", drag ? "border-primary bg-primary-soft" : "border-border hover:bg-muted/50")}
             >
               <Upload className="h-6 w-6 text-muted-foreground" aria-hidden />
-              <span className="font-medium">Drop an audio file here, or click to browse</span>
-              <span className="text-xs text-muted-foreground">MP3, WAV, M4A, WebM, OGG, FLAC · up to 25 MB</span>
+              <span className="font-medium"><T>Drop an audio file here, or click to browse</T></span>
+              <span className="text-xs text-muted-foreground"><T>MP3, WAV, M4A, WebM, OGG, FLAC · up to 25 MB</T></span>
               <input type="file" accept="audio/*,video/mp4,video/webm,.m4a,.flac,.ogg,.opus" className="sr-only" onChange={(e) => choose(e.target.files?.[0] ?? null)} />
             </label>
             <Recorder label="Record" onRecorded={(f) => choose(f)} />
@@ -98,11 +99,11 @@ export function TranscribeWorkspace() {
           <CardBody className="grid gap-4">
             <Field label="Language" hint="“English and Hindi mixed” handles Hinglish calls.">
               <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
-                <option value="auto">Detect automatically</option><option value="en">English</option><option value="hi">Hindi</option><option value="multi">English and Hindi mixed</option>
+                <option value="auto"><T>Detect automatically</T></option><option value="en"><T>English</T></option><option value="hi"><T>Hindi</T></option><option value="multi"><T>English and Hindi mixed</T></option>
               </Select>
             </Field>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={diarize} onChange={(e) => setDiarize(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> Label different speakers</label>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> Save to Projects</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={diarize} onChange={(e) => setDiarize(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> <T>Label different speakers</T></label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" /> <T>Save to Projects</T></label>
             <Button size="lg" disabled={!file || busy} onClick={() => void run()}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}{busy ? "Transcribing…" : "Transcribe"}
             </Button>
@@ -118,14 +119,14 @@ export function TranscribeWorkspace() {
           action={result && (
             <div className="flex flex-wrap items-center justify-end gap-1.5">
               {result.language && <Badge>{result.language}</Badge>}<Badge>{(result.latencyMs / 1000).toFixed(1)}s</Badge>
-              {result.assetId && <Link href={`/projects/${result.assetId}`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><FolderOpen className="h-3.5 w-3.5" aria-hidden />Saved</Link>}
+              {result.assetId && <Link href={`/projects/${result.assetId}`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><FolderOpen className="h-3.5 w-3.5" aria-hidden /><T>Saved</T></Link>}
             </div>
           )}
         />
         <CardBody className="grid gap-4">
           {url && <WaveformPlayer src={url} controllerRef={player} onTime={setNow} />}
-          {!result && !busy && <p className="py-10 text-center text-sm text-muted-foreground">{file ? "Press Transcribe to turn this audio into text." : "Add audio on the left to get started."}</p>}
-          {busy && <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />Listening to the recording…</div>}
+          {!result && !busy && <p className="py-10 text-center text-sm text-muted-foreground"><T>{file ? "Press Transcribe to turn this audio into text." : "Add audio on the left to get started."}</T></p>}
+          {busy && <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /><T>Listening to the recording…</T></div>}
           {result && (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -133,7 +134,7 @@ export function TranscribeWorkspace() {
                   <Search className="pointer-events-none absolute start-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
                   <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the transcript" aria-label="Search the transcript" className="h-9 w-full rounded-lg border border-border bg-card ps-9 pe-3 text-sm" />
                 </div>
-                {q && <span className="text-xs text-muted-foreground">{matches} match{matches === 1 ? "" : "es"}</span>}
+                {q && <span className="text-xs text-muted-foreground">{matches} <T>match</T><T>{matches === 1 ? "" : "es"}</T></span>}
                 <Button variant="outline" size="sm" onClick={async () => { await navigator.clipboard.writeText(toPlainText(lines)); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
                   {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}{copied ? "Copied" : "Copy"}
                 </Button>
@@ -141,7 +142,7 @@ export function TranscribeWorkspace() {
                 <Button variant="outline" size="sm" onClick={() => download("transcript.srt", "application/x-subrip", toSrt(lines))}><Download className="h-4 w-4" aria-hidden />SRT</Button>
                 <Button variant="outline" size="sm" onClick={() => download("transcript.json", "application/json", JSON.stringify(result, null, 2))}><Download className="h-4 w-4" aria-hidden />JSON</Button>
               </div>
-              {lines.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No speech was detected in this audio.</p> : (
+              {lines.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground"><T>No speech was detected in this audio.</T></p> : (
                 <ol className="grid max-h-[28rem] gap-1 overflow-y-auto pe-1">
                   {lines.map((l, i) => {
                     const hit = q && l.text.toLowerCase().includes(q);

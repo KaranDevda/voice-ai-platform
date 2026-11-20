@@ -1,4 +1,5 @@
 import { Bot, Headphones, Lightbulb, User, UserRound } from "lucide-react";
+import { currentLang } from "@/lib/i18n-server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCallDetail } from "@voiceai/db";
@@ -12,6 +13,7 @@ import { WaveformPlayer } from "@/components/waveform-player";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { cn, formatDateTime, formatDuration, titleCase } from "@/lib/utils";
+import { T } from "@/components/t";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 const SPEAKER = {
@@ -22,6 +24,7 @@ const SPEAKER = {
 const mmss = (ms: number) => formatDuration(ms / 1000);
 
 export default async function CallDetail({ params }: { params: Promise<{ id: string }> }) {
+  const lang = await currentLang();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const user = await requirePageUser();
@@ -38,11 +41,11 @@ export default async function CallDetail({ params }: { params: Promise<{ id: str
 
   return (
     <>
-      <p className="mb-2 text-sm"><Link href="/calls" className="text-muted-foreground hover:text-foreground">← Call logs</Link></p>
+      <p className="mb-2 text-sm"><Link href="/calls" className="text-muted-foreground hover:text-foreground"><T>← Call logs</T></Link></p>
       <PageHeader
         title={`Call with ${call.leadName ?? "unknown caller"}`}
-        description={`${formatDateTime(call.startedAt)}${call.leadPhone ? ` · ${call.leadPhone}` : ""}`}
-        actions={call.leadId ? <Link href={`/leads/${call.leadId}`} className="text-sm text-primary hover:underline">View lead</Link> : undefined}
+        description={`${formatDateTime(call.startedAt, lang)}${call.leadPhone ? ` · ${call.leadPhone}` : ""}`}
+        actions={call.leadId ? <Link href={`/leads/${call.leadId}`} className="text-sm text-primary hover:underline"><T>View lead</T></Link> : undefined}
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -53,7 +56,7 @@ export default async function CallDetail({ params }: { params: Promise<{ id: str
               {canPlay ? (
                 <WaveformPlayer lazy src={`/api/calls/${call.id}/recording`} />
               ) : (
-                <div className="flex items-center gap-3 text-sm text-muted-foreground"><Headphones className="h-5 w-5" aria-hidden />No recording available to you for this call.</div>
+                <div className="flex items-center gap-3 text-sm text-muted-foreground"><Headphones className="h-5 w-5" aria-hidden /><T>No recording available to you for this call.</T></div>
               )}
             </CardBody>
           </Card>
@@ -102,43 +105,43 @@ export default async function CallDetail({ params }: { params: Promise<{ id: str
               <div>
                 <EmptyState title={analysisFailed ? "The AI could not analyse this call" : analysisPending ? "Being analysed" : "No insights yet"}
                   description={analysisFailed ? `It tried ${analysisFailed.attempts} times and gave up${analysisFailed.error ? `: ${analysisFailed.error}` : "."}` : analysisPending ? "The summary, sentiment and next step appear within a minute. Reload this page." : "Insights appear after the call is transcribed."} />
-                {canRerun && (analysisFailed || analysisPending) && <div className="flex justify-center pb-6"><PostButton url={`/api/calls/${id}/analysis`} size="sm" variant="soft">{analysisFailed ? "Try again" : "Analyse now"}</PostButton></div>}
+                {canRerun && (analysisFailed || analysisPending) && <div className="flex justify-center pb-6"><PostButton url={`/api/calls/${id}/analysis`} size="sm" variant="soft"><T>{analysisFailed ? "Try again" : "Analyse now"}</T></PostButton></div>}
               </div>
             ) : (
               <CardBody className="grid gap-4 text-sm">
                 <p>{insight.summary}</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <SentimentBadge label={insight.sentimentLabel} />
-                  <span className="tabular-nums text-muted-foreground">score {insight.sentimentScore.toFixed(2)}</span>
+                  <span className="tabular-nums text-muted-foreground"><T>score</T> {insight.sentimentScore.toFixed(2)}</span>
                   {insight.intent && <Badge tone="info">{titleCase(insight.intent)}</Badge>}
                 </div>
                 {insight.nextAction && (
-                  <div className="flex gap-2 rounded-lg bg-warning-soft px-3 py-2 text-warning"><Lightbulb className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /><span><b>Next:</b> {insight.nextAction}</span></div>
+                  <div className="flex gap-2 rounded-lg bg-warning-soft px-3 py-2 text-warning"><Lightbulb className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /><span><b><T>Next:</T></b> {insight.nextAction}</span></div>
                 )}
                 {insight.suggestedStatus && (
                   <div className="grid gap-2 rounded-lg border border-border px-3 py-2.5 text-xs">
                     <div className="text-muted-foreground">
-                      Suggested status <LeadStatusBadge status={insight.suggestedStatus} /> at {Math.round((insight.suggestedStatusConfidence ?? 0) * 100)}% confidence
+                      <T>Suggested status</T> <LeadStatusBadge status={insight.suggestedStatus} /> <T>at</T> {Math.round((insight.suggestedStatusConfidence ?? 0) * 100)}<T>% confidence</T>
                     </div>
                     {!statusInfo ? null : statusInfo.current === insight.suggestedStatus ? (
-                      <div className="text-foreground">{statusInfo.by === "ai" ? "Applied automatically: the lead is now " : statusInfo.by === "user" ? "Confirmed by a person: the lead is now " : "The lead is already "}<LeadStatusBadge status={statusInfo.current} /></div>
+                      <div className="text-foreground"><T>{statusInfo.by === "ai" ? "Applied automatically: the lead is now " : statusInfo.by === "user" ? "Confirmed by a person: the lead is now " : "The lead is already "}</T><LeadStatusBadge status={statusInfo.current} /></div>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-foreground">{(insight.suggestedStatusConfidence ?? 0) < 0.5 ? <>Not applied: the AI was not sure enough to offer this. The lead stays <LeadStatusBadge status={statusInfo.current} />.</> : <>Not applied automatically (the lead is <LeadStatusBadge status={statusInfo.current} />): it needs the owner to confirm.</>}</span>
-                        {statusInfo.canConfirm && (insight.suggestedStatusConfidence ?? 0) >= 0.5 && <PostButton url={`/api/calls/${id}/insight`} size="sm" variant="soft" confirm={`Change this lead's status to ${titleCase(insight.suggestedStatus)}?`}>Confirm {titleCase(insight.suggestedStatus)}</PostButton>}
+                        {statusInfo.canConfirm && (insight.suggestedStatusConfidence ?? 0) >= 0.5 && <PostButton url={`/api/calls/${id}/insight`} size="sm" variant="soft" confirm={`Change this lead's status to ${titleCase(insight.suggestedStatus)}?`}><T>Confirm</T> {titleCase(insight.suggestedStatus)}</PostButton>}
                       </div>
                     )}
                   </div>
                 )}
                 {canRerun && (
                   <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
-                    {analysisRerunQueued ? <span>A fresh analysis is on its way. Reload in a minute.</span> : <>
-                      <PostButton url={`/api/calls/${id}/analysis`} size="sm" variant="outline">Re-run analysis</PostButton>
-                      <span>Gives a fresh summary. The lead's status is not changed again.</span></>}
+                    {analysisRerunQueued ? <span><T>A fresh analysis is on its way. Reload in a minute.</T></span> : <>
+                      <PostButton url={`/api/calls/${id}/analysis`} size="sm" variant="outline"><T>Re-run analysis</T></PostButton>
+                      <span><T>Gives a fresh summary. The lead's status is not changed again.</T></span></>}
                   </div>
                 )}
                 {!insight.suggestedStatus && insight.sentimentLabel === "negative" && (
-                  <div className="text-xs text-muted-foreground">Negative sentiment never closes a lead on its own, so it is flagged for manager review.</div>
+                  <div className="text-xs text-muted-foreground"><T>Negative sentiment never closes a lead on its own, so it is flagged for manager review.</T></div>
                 )}
               </CardBody>
             )}

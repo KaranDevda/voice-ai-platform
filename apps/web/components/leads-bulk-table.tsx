@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, Pager } from "@/components/ui/page";
 import { Table, Td, Th, Tr } from "@/components/ui/table";
-import { formatDateTime, titleCase } from "@/lib/utils";
+import { formatDateTime, titleCase, formatNumber } from "@/lib/utils";
+import { T, useLang } from "./t";
 
 interface LeadRow {
   id: string; name: string | null; phone: string; status: string; score: number | null;
@@ -33,6 +34,7 @@ function heatOf(score: number | null) {
 }
 
 export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, hasMore, q, status, heat, sort, tag, consent, dnd, field, history }: LeadsBulkTableProps) {
+  const lang = useLang();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkNote, setBulkNote] = useState("");
@@ -65,17 +67,17 @@ export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, ha
     <>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Leads</h1>
-          <p className="text-sm text-muted-foreground">Every caller and prospect, linked to their calls.</p>
+          <h1 className="text-xl font-semibold"><T>Leads</T></h1>
+          <p className="text-sm text-muted-foreground"><T>Every caller and prospect, linked to their calls.</T></p>
         </div>
         <ContactsImport canExport={canExport} exportFilters={exportFilters} />
         {selected.size > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">{selected.size} selected</span>{" "}
+            <span className="text-sm text-muted-foreground">{selected.size} <T>selected</T></span>{" "}
             <Button size="sm" variant="outline" onClick={() => toggleAll(false)}>Clear selection</Button>{" "}
             <Button size="sm" onClick={() => { document.getElementById("bulk-menu")?.classList.toggle("hidden"); }}>Bulk actions</Button>
             <div id="bulk-menu" className="z-50 hidden mt-2 w-56 rounded-lg border border-border bg-card p-3 shadow-lg">
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">Bulk actions</div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2"><T>Bulk actions</T></div>
               <div className="grid gap-1.5">
                 <div className="grid grid-cols-2 gap-2">
                   {LEAD_STATUSES.map((s) => (
@@ -114,7 +116,7 @@ export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, ha
           { name: "sort", value: sort, label: "Newest first", options: [["score", "Highest score first"]] },
         ]} />
         <p className="px-5 py-3 text-sm text-muted-foreground" role="status">
-          {total.toLocaleString()} {total === 1 ? "contact matches" : "contacts match"} these filters.
+          {formatNumber(total, lang)} <T>{total === 1 ? "contact matches" : "contacts match"}</T> <T>these filters.</T>
         </p>
         {rows.length === 0 ? (
           <EmptyState title="No leads match" description="Try clearing the filters." />
@@ -131,15 +133,15 @@ export function LeadsBulkTable({ canExport, exportFilters, rows, total, page, ha
                 <Tr key={l.id} className="cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("input, a, button")) toggleOne(l.id); }}>
                   <Td className="w-8"><input type="checkbox" checked={selected.has(l.id)} onChange={(e) => { e.stopPropagation(); toggleOne(l.id); }} aria-label={`Select ${l.name}`} /></Td>
                   <Td>
-                    <Link href={`/leads/${l.id}`} className="font-medium text-primary hover:underline block">{l.name ?? "Unknown caller"}</Link>
+                    <Link href={`/leads/${l.id}`} className="font-medium text-primary hover:underline block"><T>{l.name ?? "Unknown caller"}</T></Link>
                     <div className="text-xs text-muted-foreground">{l.phone}</div>
                   </Td>
                   <Td><div className="flex items-center gap-1.5"><LeadStatusBadge status={l.status} />{l.dnd && <Badge tone="danger">DND</Badge>}</div></Td>
                   <Td><div className="flex items-center gap-1.5"><span className="tabular-nums">{l.score ?? "—"}</span>{heatOf(l.score) && <Badge tone={heatOf(l.score) === "hot" ? "success" : heatOf(l.score) === "warm" ? "warning" : "neutral"}>{titleCase(heatOf(l.score)!)}</Badge>}</div></Td>
                   <Td>{l.source ?? "—"}</Td>
-                  <Td>{l.ownerEmail ?? <span className="text-muted-foreground">Unassigned</span>}</Td>
+                  <Td>{l.ownerEmail ?? <span className="text-muted-foreground"><T>Unassigned</T></span>}</Td>
                   <Td className="tabular-nums">{l.callCount}</Td>
-                  <Td>{l.lastCallAt ? formatDateTime(l.lastCallAt) : "—"}</Td>
+                  <Td>{l.lastCallAt ? formatDateTime(l.lastCallAt, lang) : "—"}</Td>
                   <Td className="text-end text-muted-foreground" />
                 </Tr>
               ))}

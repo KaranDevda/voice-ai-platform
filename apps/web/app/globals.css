@@ -87,6 +87,9 @@ body { background: var(--background); color: var(--foreground); font-family: var
  * Grids size their column to the widest content by default, so one long line, a waveform or a wide table can push a card past
  * the screen. Base layer, so any explicit grid-cols-* or min-w-* class still wins.
  */
+/* Arrows that point along the reading direction mirror in right-to-left languages. */
+[dir="rtl"] .rtl-flip { transform: scaleX(-1); }
+
 @layer base {
   .grid:not([class*="grid-cols"]) { grid-template-columns: minmax(0, 1fr); }
   .grid > * { min-width: 0; }

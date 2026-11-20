@@ -1,16 +1,19 @@
 "use client";
 import { Headphones, Send, Square } from "lucide-react";
+import { formatTime } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardBody, CardHeader } from "./ui/card";
 import { Input } from "./ui/form";
+import { T, useLang } from "./t";
 
 interface LiveCall { id: string; direction: string; startedAt: number; listeners: number }
 interface Line { who: "caller" | "ai"; text: string }
 
 /** Live calls right now: listen to both sides, read the transcript as it happens, and have the AI say something to the caller. */
 export function ListenIn() {
+  const lang = useLang();
   const [calls, setCalls] = useState<LiveCall[]>([]);
   const [canSpeak, setCanSpeak] = useState(false);
   const [down, setDown] = useState(false);
@@ -102,13 +105,13 @@ export function ListenIn() {
     <Card>
       <CardHeader title="Live calls" description="Calls in progress right now. Listen to both sides, follow the transcript, and have the AI say something to the caller. Listening and speaking are recorded in the audit log." />
       <CardBody className="grid gap-3">
-        {down && <p role="status" className="text-sm text-warning">The voice service is not reachable, so live calls cannot be listed.</p>}
-        {!down && calls.length === 0 && <p className="text-sm text-muted-foreground">No live calls right now. Start a practice call on the Live page in another tab and it will appear here within a few seconds.</p>}
+        {down && <p role="status" className="text-sm text-warning"><T>The voice service is not reachable, so live calls cannot be listed.</T></p>}
+        {!down && calls.length === 0 && <p className="text-sm text-muted-foreground"><T>No live calls right now. Start a practice call on the Live page in another tab and it will appear here within a few seconds.</T></p>}
         <ul className="grid gap-2">
           {calls.map((c) => (
             <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
               <Badge tone="success">Live</Badge>
-              <span>{c.direction === "outbound" ? "Outbound" : "Inbound"} call · started {new Date(c.startedAt).toLocaleTimeString()} · {c.listeners} listening</span>
+              <span><T>{c.direction === "outbound" ? "Outbound" : "Inbound"}</T> <T>call · started</T> {formatTime(new Date(c.startedAt), lang)} · {c.listeners} <T>listening</T></span>
               <span className="flex-1" />
               {joined === c.id
                 ? <Button size="sm" variant="outline" onClick={leave}><Square className="h-4 w-4" aria-hidden />Stop listening</Button>
@@ -116,13 +119,13 @@ export function ListenIn() {
             </li>
           ))}
         </ul>
-        {note && <p role="status" className="text-sm text-muted-foreground">{note}</p>}
+        {note && <p role="status" className="text-sm text-muted-foreground"><T>{note}</T></p>}
         {joined && (
           <div className="grid gap-2">
             <div className="max-h-72 min-h-32 overflow-y-auto rounded-xl bg-muted p-3 text-sm" aria-live="polite">
-              {lines.length === 0 && !partial && <p className="text-muted-foreground">Listening… the transcript appears as people speak.</p>}
-              {lines.map((l, i) => <p key={i} className="mb-1"><span className="font-medium">{l.who === "ai" ? "AI" : "Caller"}:</span> {l.text}</p>)}
-              {partial && <p className="italic text-muted-foreground">Caller: {partial}</p>}
+              {lines.length === 0 && !partial && <p className="text-muted-foreground"><T>Listening… the transcript appears as people speak.</T></p>}
+              {lines.map((l, i) => <p key={i} className="mb-1"><span className="font-medium"><T>{l.who === "ai" ? "AI" : "Caller"}</T>:</span> {l.text}</p>)}
+              {partial && <p className="italic text-muted-foreground"><T>Caller:</T> {partial}</p>}
             </div>
             {canSpeak
               ? (
@@ -131,7 +134,7 @@ export function ListenIn() {
                   <Button type="submit" disabled={!say.trim()}><Send className="h-4 w-4" aria-hidden />Say it</Button>
                 </form>
               )
-              : <p className="text-xs text-muted-foreground">You can listen, but your role cannot speak into calls.</p>}
+              : <p className="text-xs text-muted-foreground"><T>You can listen, but your role cannot speak into calls.</T></p>}
           </div>
         )}
       </CardBody>

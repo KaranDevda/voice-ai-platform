@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
+import { formatDate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Table, Td, Th, Tr } from "@/components/ui/table";
+import { T, useLang } from "@/components/t";
 
 const TEMPLATES: Array<{ id: string; name: string; role: string; instructions: string; knowledge: string }> = [
   {
@@ -54,6 +56,7 @@ const TEMPLATES: Array<{ id: string; name: string; role: string; instructions: s
 interface Profile { id: string; name: string; createdAt: string }
 
 export default function AgentTemplatesPage() {
+  const lang = useLang();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
@@ -92,10 +95,10 @@ export default function AgentTemplatesPage() {
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold">Agent templates</h1>
-        <p className="text-sm text-muted-foreground">Ready-made AI agent templates you can copy and customise. Pick one, then edit its instructions and knowledge under Agent console.</p>
+        <h1 className="text-2xl font-semibold"><T>Agent templates</T></h1>
+        <p className="text-sm text-muted-foreground"><T>Ready-made AI agent templates you can copy and customise. Pick one, then edit its instructions and knowledge under Agent console.</T></p>
       </div>
-      {note && <p className="px-5 py-2 text-sm text-success">{note}</p>}
+      {note && <p className="px-5 py-2 text-sm text-success"><T>{note}</T></p>}
       <Card>
         <CardHeader title="Ready-made templates" description="Each template starts a new agent profile pre-filled with instructions and a knowledge text." />
         <CardBody className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -109,7 +112,7 @@ export default function AgentTemplatesPage() {
                 <Button size="sm" disabled={busy.has(t.name)} onClick={() => void useTemplate(t)}>{busy.has(t.name) ? "Creating…" : "Use template"}</Button>
               </div>
               <div className="text-xs text-muted-foreground mb-2">{t.instructions.slice(0, 120)}…</div>
-              <div className="text-xs text-muted-foreground">Knowledge: {t.knowledge.slice(0, 80)}…</div>
+              <div className="text-xs text-muted-foreground"><T>Knowledge:</T> {t.knowledge.slice(0, 80)}…</div>
             </Card>
           ))}
         </CardBody>
@@ -125,7 +128,7 @@ export default function AgentTemplatesPage() {
                 {profiles.map((p) => (
                   <Tr key={p.id}>
                     <Td className="font-medium">{p.name}</Td>
-                    <Td className="text-xs text-muted-foreground">{new Date(p.createdAt).toLocaleDateString()}</Td>
+                    <Td className="text-xs text-muted-foreground">{formatDate(p.createdAt, lang)}</Td>
                     <Td className="text-end">
                       <Link href="/agent-console" className="text-decoration-none"><Button size="sm" variant="outline">Open</Button></Link>{" "}
                       <Button size="sm" variant="outline" disabled={busy.has(p.id)} onClick={() => void removeProfile(p.id)}>{busy.has(p.id) ? "…" : "Delete"}</Button>

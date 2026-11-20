@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { headers } from "next/headers";
 import { join } from "node:path";
 import {
-  createAskG1, createChatterbox, createDeepgramStt, createDeepgramTts, createElevenLabsTts, createPocketTts, createPlivo, kokoroHindiVoiceFor, ProviderError, signVoiceFileId, STOCK_VOICES, stockVoiceById,
+  createAskG1, createChatterbox, createDeepgramStt, createDeepgramTts, createElevenLabsTts, createPocketTts, createPlivo, createTwilio, kokoroHindiVoiceFor, ProviderError, signVoiceFileId, STOCK_VOICES, stockVoiceById,
   voiceFileStem,
 } from "@voiceai/providers";
 import type { SpeechSynthesizer } from "@voiceai/providers";
@@ -32,6 +32,15 @@ export function getPlivo() {
   if (!authId || !authToken) throw new NotConfiguredError("plivo", "Set PLIVO_AUTH_ID and PLIVO_AUTH_TOKEN on the server");
   return createPlivo({ authId, authToken, baseUrl: env("PLIVO_API_BASE") });
 }
+
+export const isTwilioConfigured = () => !!(env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN"));
+export function getTwilio() {
+  const accountSid = env("TWILIO_ACCOUNT_SID"), authToken = env("TWILIO_AUTH_TOKEN");
+  if (!accountSid || !authToken) throw new NotConfiguredError("twilio", "Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN on the server");
+  return createTwilio({ accountSid, authToken, baseUrl: env("TWILIO_API_BASE"), trunkingBaseUrl: env("TWILIO_TRUNKING_BASE"), pricingBaseUrl: env("TWILIO_PRICING_BASE") });
+}
+/** The carrier client for a number search or purchase. */
+export const getCarrier = (carrier: "plivo" | "twilio") => (carrier === "twilio" ? getTwilio() : getPlivo());
 
 export function getElevenLabs() {
   const apiKey = env("ELEVENLABS_API_KEY");

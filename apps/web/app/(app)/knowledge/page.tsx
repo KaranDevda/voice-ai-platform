@@ -1,4 +1,5 @@
 import { BookOpen } from "lucide-react";
+import { currentLang } from "@/lib/i18n-server";
 import { listKnowledge } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { KnowledgeAdd } from "@/components/knowledge-add";
@@ -10,8 +11,10 @@ import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { formatDate } from "@/lib/utils";
+import { T } from "@/components/t";
 
 export default async function KnowledgePage() {
+  const lang = await currentLang();
   const user = await requirePageUser();
   const docs = await allowed(() => listKnowledge(getDb(), user));
   if (!docs) return <Forbidden />;
@@ -20,7 +23,7 @@ export default async function KnowledgePage() {
   return (
     <>
       <PageHeader title="Knowledge base" description="Documents the AI answers from. Answers are grounded in these, not invented." />
-      <div className="mb-6"><Notice>Search currently matches keywords. Smarter meaning-based search turns on once AskG1&apos;s embedding service is connected; your documents will not need re-uploading.</Notice></div>
+      <div className="mb-6"><Notice><T>Search currently matches keywords. Smarter meaning-based search turns on once AskG1&apos;s embedding service is connected; your documents will not need re-uploading.</T></Notice></div>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title={`Documents (${docs.length})`} />
@@ -32,8 +35,8 @@ export default async function KnowledgePage() {
               <tbody>
                 {docs.map((d) => (
                   <Tr key={d.id}>
-                    <Td className="font-medium">{d.title}</Td><Td className="max-w-48 truncate text-muted-foreground">{d.sourceUrl ?? "Added in app"}</Td><Td className="tabular-nums">{d.chunks}</Td><Td>{formatDate(d.createdAt)}</Td>
-                    {canWrite && <Td className="text-end"><PostButton url={`/api/knowledge/${d.id}`} method="DELETE" variant="ghost" size="sm" confirm={`Delete "${d.title}"? The AI will stop using it.`}>Delete</PostButton></Td>}
+                    <Td className="font-medium">{d.title}</Td><Td className="max-w-48 truncate text-muted-foreground"><T>{d.sourceUrl ?? "Added in app"}</T></Td><Td className="tabular-nums">{d.chunks}</Td><Td>{formatDate(d.createdAt, lang)}</Td>
+                    {canWrite && <Td className="text-end"><PostButton url={`/api/knowledge/${d.id}`} method="DELETE" variant="ghost" size="sm" confirm={`Delete "${d.title}"? The AI will stop using it.`}><T>Delete</T></PostButton></Td>}
                   </Tr>
                 ))}
               </tbody>
