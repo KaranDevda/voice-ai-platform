@@ -84,8 +84,8 @@ export function CloneWizard({ staff, consents, cloningReady, builtInHindi = fals
     form.set("label", label); form.set("gender", gender); form.set("donorUserId", donor); form.set("consentRecordId", consentId);
     try {
       // Recordings come in many formats; the voice engine wants one clean WAV.
-      form.append("samples", await samplesToWav(samples.map((s) => s.file)));
-      if (hindiSample) form.append("samplesHindi", await samplesToWav([hindiSample.file]));
+      form.append("samples", await samplesToWav(samples.map((s) => s.file), { maxSeconds: 200 }));
+      if (hindiSample) form.append("samplesHindi", await samplesToWav([hindiSample.file], { maxSeconds: 200 }));
       const res = await fetch("/api/studio/clone", { method: "POST", body: form });
       if (!res.ok) { const e = await apiError(res); return setError(e.hint ? `${e.message} ${e.hint}` : e.message); }
       setDone(await res.json());
