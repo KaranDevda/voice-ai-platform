@@ -139,6 +139,8 @@ function llm(say?: Say, choice?: { model: "default" | "openrouter"; openrouterMo
   const apiKey = env("ASKG1_API_KEY"), baseUrl = env("ASKG1_BASE_URL"), localUrl = env("LOCAL_LLM_URL");
   const maxTokens = Number(env("ASKG1_MAX_TOKENS") ?? 220), temperature = Number(env("ASKG1_TEMPERATURE") ?? 0.3);
   const local = localUrl ? createAskG1({ apiKey: env("LOCAL_LLM_KEY") ?? "local", baseUrl: localUrl, model: env("LOCAL_LLM_MODEL") ?? "local", maxTokens, temperature }) : null;
+  // LLM_PRIMARY=openrouter: OpenRouter answers every call (for example while AskG1 is down), without each organisation having to choose it.
+  if (env("LLM_PRIMARY") === "openrouter" && choice?.model !== "openrouter") choice = { model: "openrouter", openrouterModel: env("OPENROUTER_MODEL") ?? choice?.openrouterModel ?? "openai/gpt-4o-mini" };
   // The organisation chose another model (Settings -> AI assistant): OpenRouter, with the small local model as backup when there is one.
   if (choice?.model === "openrouter") {
     const orKey = env("OPENROUTER_API_KEY") ?? (localUrl?.includes("openrouter.ai") ? env("LOCAL_LLM_KEY") : undefined);
@@ -885,4 +887,22 @@ function keepWarm(): void {
   setInterval(() => void ping(), 4 * 60_000).unref();
 }
 
-server.listen(PORT, () => { console.log(`voice service listening on :${PORT}`); keepWarm(); });
+/**
+ * At start-up, sends AskG1 one tiny request and logs the real outcome (status, body, error.cause), so a wrong URL/port, a down VPN
+ * or a bad key is named in the log instead of showing up later as "fetch failed" and a Llama answer on every call.
+ */
+async function checkAskG1(): Promise<void> {
+  const apiKey = env("ASKG1_API_KEY"), baseUrl = env("ASKG1_BASE_URL");
+  if (!apiKey || !baseUrl) { console.warn("AskG1 health check: ASKG1_API_KEY / ASKG1_BASE_URL not set, so only the backup model will answer."); return; }
+  const t0 = Date.now();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 8000);
+  try {
+    for await (const _ of createAskG1({ apiKey, baseUrl, model: env("ASKG1_MODEL"), maxTokens: 1, responseTimeoutMs: 8000 }).chat({ messages: [{ role: "user", content: "Hello" }], signal: ac.signal })) break;
+    console.log(`AskG1 health check OK (${baseUrl}, first token in ${Date.now() - t0} ms)`);
+  } catch (e) {
+    console.error(`AskG1 health check FAILED: ${e instanceof Error ? e.message : String(e)}. Every call will be answered by the local Llama backup until this is fixed. Check ASKG1_BASE_URL (host AND port), that the company VPN is connected (tailscale status), and ASKG1_API_KEY.`);
+  } finally { clearTimeout(timer); }
+}
+
+server.listen(PORT, () => { console.log(`voice service listening on :${PORT}`); void checkAskG1(); keepWarm(); });
