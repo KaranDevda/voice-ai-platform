@@ -4,7 +4,7 @@ import { consentRecordInputSchema, VOICE_GENDERS, voiceProfileInputSchema, type 
 import { PITCH_RANGE, SPEED_RANGE } from "@voiceai/shared";
 import { writeAudit } from "./audit";
 import { withOrg, type Db, type DbTx } from "./client";
-import { consentRecords, users, voiceProfiles, voiceSamples } from "./schema";
+import { callLogs, consentRecords, users, voiceProfiles, voiceSamples } from "./schema";
 
 export class VoiceProfileError extends Error {}
 
@@ -78,6 +78,36 @@ export async function revokeVoiceProfile(
 
   // After commit: if this throws the profile is already unusable, and a retry is safe.
   await deleteAtProvider(profile.providerVoiceId, profile.provider);
+}
+
+/**
+ * Deletes a cloned voice for good. A voice still in use is revoked first (that also deletes the clone at the provider: the
+ * ElevenLabs voice, or the voice files on this machine). Then the voice and its kept recording are removed, and past calls
+ * keep their recording and transcript but no longer point at the voice. The signed consent record is KEPT: it is the evidence
+ * that the voice was used with permission, and it already shows the consent as withdrawn. Audited.
+ */
+export async function deleteVoiceProfile(
+  db: Db,
+  actor: AuthUser,
+  profileId: string,
+  deleteAtProvider: (providerVoiceId: string, provider: string) => Promise<void>,
+) {
+  assertAuthorized(actor, "voice_profiles.manage");
+  const [p] = await withOrg(db, actor.orgId, (tx) => tx.select().from(voiceProfiles).where(eq(voiceProfiles.id, profileId)));
+  if (!p) throw new VoiceProfileError("voice profile not found");
+  if (p.status !== "revoked") await revokeVoiceProfile(db, actor, profileId, deleteAtProvider);
+  await withOrg(db, actor.orgId, async (tx) => {
+    await tx.update(callLogs).set({ voiceProfileId: null }).where(eq(callLogs.voiceProfileId, profileId));
+    await tx.delete(voiceProfiles).where(eq(voiceProfiles.id, profileId)); // the kept recording (voice_samples) goes with it
+    await writeAudit(tx, {
+      orgId: actor.orgId,
+      actorUserId: actor.id,
+      action: "voice_profile.delete",
+      entity: "voice_profiles",
+      entityId: profileId,
+      before: { label: p.label, provider: p.provider, providerVoiceId: p.providerVoiceId, status: p.status, consentRecordId: p.consentRecordId },
+    });
+  });
 }
 
 /**

@@ -32,3 +32,4 @@ export * from "./reports";
 export * from "./app-errors";
 export * from "./cron-jobs";
 export * from "./sip-trunks";
+export * from "./team-admin";

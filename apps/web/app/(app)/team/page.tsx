@@ -1,8 +1,9 @@
 import { Smartphone } from "lucide-react";
 import { currentLang } from "@/lib/i18n-server";
-import { listTeam } from "@voiceai/db";
+import { listOrgTeams, listTeam } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
 import { AddPhone } from "@/components/add-phone";
+import { AddTeamMember, MemberControls } from "@/components/team-admin";
 import { PostButton } from "@/components/post-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -19,11 +20,15 @@ export default async function TeamPage() {
   const user = await requirePageUser();
   const data = await allowed(() => listTeam(getDb(), user));
   if (!data) return <Forbidden />;
+  // Adding people, changing roles and switching people off need users.write (Org admin and platform staff).
+  const canManage = data.canResetMfa;
+  const teams = canManage ? await listOrgTeams(getDb(), user) : [];
 
   return (
     <>
       <PageHeader title="Team & devices" description="People you can see, and the agent phones that sync calls to the CRM." />
       <div className="grid gap-6">
+        {canManage && <AddTeamMember teams={teams} />}
         <Card>
           <CardHeader title="People" />
           <Table>
@@ -37,7 +42,10 @@ export default async function TeamPage() {
                   <Td>{m.mfa ? <Badge tone="success">On</Badge> : <Badge>Off</Badge>}</Td>
                   <Td><T>{m.lastLoginAt ? timeAgo(m.lastLoginAt, Date.now(), lang) : "Never"}</T></Td>
                   <Td className="text-end">
-                    {data.canResetMfa && m.mfa && m.id !== data.selfId && <PostButton url={`/api/team/${m.id}/mfa-reset`} variant="outline" size="sm" confirm={`Reset two-factor authentication for ${m.email}? They will need to set it up again.`}><T>Reset 2FA</T></PostButton>}
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {canManage && m.id !== data.selfId && <MemberControls id={m.id} email={m.email} roles={m.roles} status={m.status} />}
+                      {data.canResetMfa && m.mfa && m.id !== data.selfId && <PostButton url={`/api/team/${m.id}/mfa-reset`} variant="outline" size="sm" confirm={`Reset two-factor authentication for ${m.email}? They will need to set it up again.`}><T>Reset 2FA</T></PostButton>}
+                    </div>
                   </Td>
                 </Tr>
               ))}

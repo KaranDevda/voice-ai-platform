@@ -62,6 +62,7 @@ const passwordHash = await hashPassword(DEMO_PASSWORD);
 const mfaEnc = encryptSecret(DEMO_TOTP_SECRET, parseKey(mfaKey));
 const people: Array<{ email: string; role: RoleKey; team: typeof north | null }> = [
   { email: "admin@demo.io", role: "org_admin", team: null },
+  { email: "staff@demo.io", role: "super_admin", team: null }, // platform staff: Platform page, permission matrix, impersonation
   { email: "manager.north@demo.io", role: "manager", team: north },
   { email: "manager.south@demo.io", role: "manager", team: south },
   { email: "asha@demo.io", role: "agent", team: north },

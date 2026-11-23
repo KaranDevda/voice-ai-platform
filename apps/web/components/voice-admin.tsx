@@ -112,7 +112,8 @@ function VoiceRow({ p }: { p: Profile }) {
       <Td className="text-end whitespace-nowrap">
         {p.status === "active" && p.hasSample && <Button size="sm" variant="outline" onClick={() => void playOriginal()}>Original</Button>}{" "}
         {p.status === "active" && <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>}{" "}
-        {p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}><T>Revoke</T></PostButton>}
+        {p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}><T>Revoke</T></PostButton>}{" "}
+        <PostButton url={`/api/voices/${p.id}`} method="DELETE" variant="danger" size="sm" confirm={`Delete "${p.label}" for good? The cloned voice and its saved recording are deleted and it disappears from this list. This cannot be undone. Past calls keep their recordings, and the signed consent record is kept as evidence.`}><T>Delete</T></PostButton>
       </Td>
     </Tr>
   );

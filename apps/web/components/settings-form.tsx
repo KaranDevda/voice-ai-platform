@@ -16,7 +16,8 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const form = e.currentTarget; // React clears currentTarget after the first await
+    const f = new FormData(form);
     const str = (k: string) => String(f.get(k) ?? "");
     const body = {
       dataRetentionDays: Number(str("dataRetentionDays")),
@@ -48,10 +49,12 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
       },
     };
     setState("saving");
-    const res = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (res.ok) { setState("saved"); router.refresh(); return; }
+    const res = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, confirmPassword: str("confirmPassword") }) });
+    const passwordField = form.elements.namedItem("confirmPassword") as HTMLInputElement | null;
+    if (res.ok) { setState("saved"); if (passwordField) passwordField.value = ""; router.refresh(); return; }
     setState("error");
-    setMessage(res.status === 400 ? "Some values are out of range. Check the fields and try again." : "You may not have permission to change settings.");
+    const err = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    setMessage(err.error === "password" ? "Not saved: your password is not right." : res.status === 400 ? "Some values are out of range. Check the fields and try again." : "You may not have permission to change settings.");
   }
 
   const ro = !canEdit;
@@ -161,7 +164,8 @@ export function SettingsForm({ settings, dataRetentionDays, recordingRetentionDa
       </fieldset>
 
       {canEdit ? (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-64"><Field label="Your password" hint="Needed to save organisation settings."><Input name="confirmPassword" type="password" required autoComplete="current-password" /></Field></div>
           <Button type="submit" disabled={state === "saving"}>{state === "saving" ? "Saving…" : "Save settings"}</Button>
           {state === "saved" && <span role="status" className="text-sm text-success"><T>Saved</T></span>}
           {state === "error" && <span role="alert" className="text-sm text-danger"><T>{message}</T></span>}

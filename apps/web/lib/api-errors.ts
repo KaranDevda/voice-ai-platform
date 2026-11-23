@@ -1,6 +1,6 @@
 import "server-only";
 import { ForbiddenError } from "@voiceai/auth";
-import { AdminError, ApiTokenError, IntegrationError, ProfitError, BillingError, CampaignError, MessagingError, VoiceProfileError, WidgetError, PasswordError, ContentError, RoleEditError } from "@voiceai/db";
+import { AdminError, ApiTokenError, IntegrationError, ProfitError, BillingError, CampaignError, MessagingError, VoiceProfileError, WidgetError, PasswordError, ContentError, RoleEditError, TeamError } from "@voiceai/db";
 import { ProviderError, UnsafeUrlError } from "@voiceai/providers";
 import { ZodError } from "zod";
 import { NotConfiguredError } from "./providers";
@@ -16,6 +16,7 @@ export function toResponse(err: unknown): Response {
   if (err instanceof BillingError) return Response.json({ error: "billing", message: err.message }, { status: 402 });
   if (err instanceof MessagingError) return Response.json({ error: "messaging", message: err.message }, { status: 409 });
   if (err instanceof RoleEditError) return Response.json({ error: "role", message: err.message }, { status: 409 });
+  if (err instanceof TeamError) return Response.json({ error: "team", message: err.message }, { status: 409 });
   if (err instanceof PasswordError) return Response.json({ error: "password", message: err.message }, { status: 400 });
   if (err instanceof ApiTokenError) return Response.json({ error: "api_token", message: err.message }, { status: 400 });
   if (err instanceof ContentError) return Response.json({ error: "content", message: err.message }, { status: 409 });

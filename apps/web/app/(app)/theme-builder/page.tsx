@@ -1,5 +1,6 @@
-import { getLandingText, setLandingText } from "@voiceai/db";
+import { getLandingText } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
+import { Notice } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -8,14 +9,17 @@ import { allowed, requirePageUser } from "@/lib/page-auth";
 import { getDb } from "@/lib/server";
 import { T, Tf } from "@/components/t";
 
-export default async function ThemeBuilderPage() {
+export default async function ThemeBuilderPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const user = await requirePageUser();
   if (!user.permissions.includes("platform.admin")) return <Forbidden />;
   const landing = await allowed(() => getLandingText(getDb()));
   if (!landing) return <Forbidden />;
+  const sp = await searchParams;
   return (
     <>
       <PageHeader title="Theme & landing page" description="Customize the sign-in page headline and text. This is the first thing users see." />
+      {sp.saved && <div className="mb-4"><Notice><T>Saved. The sign-in page now shows this text.</T></Notice></div>}
+      {sp.error && <div className="mb-4"><Notice tone="warning"><T>{sp.error === "invalid" ? "Not saved: the headline is at most 60 characters and the sub-text at most 140." : "Not saved: something went wrong. Try again."}</T></Notice></div>}
       <Card>
         <CardHeader title="Sign-in page" description="Plain text only. No HTML/markdown." />
         <CardBody className="grid gap-4 max-w-2xl">
