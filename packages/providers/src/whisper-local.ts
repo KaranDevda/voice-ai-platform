@@ -135,6 +135,8 @@ export function createLocalWhisper(config: LocalWhisperConfig): SttAdapter {
             // The first utterance sets the speaker's level straight away, so the next voice is judged against it even
             // before this one has been transcribed.
             if (gate && reference === 0) reference = e.level;
+            // Said now, before transcribing: the moment the caller stopped is the start of every latency figure for this turn.
+            push({ kind: "end_of_speech", trailingSilenceMs: e.silenceMs });
             chain = chain.then(() => transcribe(e.pcm, e.speechMs, e.level)).catch(() => { /* one bad utterance must not stop the call */ });
           }
         }

@@ -10,6 +10,7 @@ import { askAgainSlow, greetingFix, sorryAgain, stillWorking, strictNote, wrongL
 import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
 import { replyToGreeting, replyToIdentityQuestion, replyToOrphanedPlanFragment, completeOrphanedPlanFragment } from "./small-talk";
+import { goodbyeFor, isClosing, type BookingFlow } from "./booking";
 import type { TranscriptSegment } from "@voiceai/shared";
 
 /** Speaks text as audio chunks in the engine's native format. Abort the signal to stop mid-sentence. */
@@ -33,7 +34,19 @@ export type ServerEvent =
   | { type: "user"; text: string; turn: number; /** the caller kept talking: this replaces their previous line */ replace?: boolean }
   | { type: "assistant"; text: string; turn: number }
   | { type: "clear" }
-  | { type: "timing"; turn: number; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number; /** when the caller first hears the real answer (after any acknowledgement), from the final transcript */ answerMs?: number; /** when the acknowledgement started, if one was played */ ackMs?: number; /** how long the company-knowledge search took (part of llmFirstTokenMs) */ groundMs?: number }
+  | {
+      type: "timing"; turn: number;
+      /** All "...Ms" below except speechToTextMs, heardMs and answerHeardMs count from the moment the final transcript arrived. */
+      llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number;
+      /** when the caller first hears the real answer (after any acknowledgement), from the final transcript */ answerMs?: number;
+      /** when the acknowledgement started, if one was played */ ackMs?: number;
+      /** how long the company-knowledge search took (part of llmFirstTokenMs) */ groundMs?: number;
+      /** From the moment the caller stopped speaking: the silence wait plus speech-to-text, until the final transcript. */ speechToTextMs?: number;
+      /** From the moment the caller stopped speaking to the first sound sent to them (an acknowledgement or the answer). */ heardMs?: number;
+      /** From the moment the caller stopped speaking to the start of the real answer. */ answerHeardMs?: number;
+      /** Where the answer came from: the AI model, a saved earlier answer, or a fixed line (booking, greeting, goodbye). */ source?: "model" | "saved_answer" | "scripted";
+      /** The first sound of the answer was replayed from saved audio, so "voice starts" is near zero on purpose. */ audioFromCache?: boolean;
+    }
   | { type: "barge_in"; turn: number }
   | { type: "handoff"; reason: HandoffReason; message: string }
   | { type: "blocked"; reason: string; message: string }
@@ -73,6 +86,13 @@ export interface ConversationOptions {
   maxHistory?: number;
   /** How long a chunk of audio plays. Defaults to deriving it from the byte count and the engine's format. */
   chunkDurationMs?: (chunk: Uint8Array) => number;
+  /** Books a callback or a demo by asking for the name, day and time one at a time (booking.ts), instead of free chat with the model. */
+  booking?: BookingFlow;
+  /**
+   * For speech-to-text that gives no end-of-speech signal before its transcript (Deepgram's comes after): how long after the
+   * caller stops speaking it usually sends the final text, so every turn's timings start from the same moment.
+   */
+  speechEndLagMs?: number;
   log?: (line: string) => void;
 }
 
@@ -120,6 +140,9 @@ export class Conversation {
   private readonly t0: number;
   private readonly segments: TranscriptSegment[] = [];
   private speechStartedAt: number | null = null;
+  /** When the caller stopped speaking (the end-of-speech signal, moved back by the silence the recogniser waited for). */
+  private pendingSpeechEnd: number | null = null;
+  private heldSpeechEnd: number | undefined;
   private speechStartedDuringSuppressedAudio = false;
   private bargeInSuppressedUntil = 0;
   private handedOff: HandoffReason | null = null;
@@ -240,8 +263,13 @@ export class Conversation {
 
   private onSttEvent(ev: SttEvent) {
     switch (ev.kind) {
+      case "end_of_speech":
+        // Only the first signal per utterance counts; a late one (Deepgram sends it after the transcript) is cleared by the next speech start.
+        this.pendingSpeechEnd ??= this.now() - (ev.trailingSilenceMs ?? 0);
+        break;
       case "speech_started":
         {
+          this.pendingSpeechEnd = null;
           // If the caller resumes during the unfinished-text grace period, wait for that utterance's final transcript too.
           if (this.heldText && this.holdTimer) {
             clearTimeout(this.holdTimer);
@@ -272,7 +300,9 @@ export class Conversation {
             break;
           }
           this.o.log?.(`heard: ${ev.text}`);
-          this.onFinalText(ev.text);
+          const speechEnd = Math.min(this.now(), this.pendingSpeechEnd ?? this.now() - (this.o.speechEndLagMs ?? 0));
+          this.pendingSpeechEnd = null;
+          this.onFinalText(ev.text, speechEnd);
         }
         break;
       default:
@@ -313,20 +343,21 @@ export class Conversation {
   /** A caller's finished piece of speech. If it stops mid-sentence, wait briefly for the rest; the pieces are then answered as one question. */
   private heldText: string | null = null;
   private holdTimer?: ReturnType<typeof setTimeout>;
-  private onFinalText(text: string) {
+  private onFinalText(text: string, speechEnd?: number) {
     if (this.holdTimer) { clearTimeout(this.holdTimer); this.holdTimer = undefined; }
     if (this.heldText) { text = `${this.heldText} ${text}`; this.heldText = null; }
     const hold = this.o.holdUnfinishedMs ?? 0;
     if (hold > 0 && looksUnfinished(text)) {
       this.heldText = text;
+      this.heldSpeechEnd = speechEnd;
       this.o.log?.(`waiting ${hold} ms: the caller may not have finished ("${text.slice(-30)}")`);
-      this.holdTimer = setTimeout(() => { const t = this.heldText; this.heldText = null; this.holdTimer = undefined; if (t && !this.closed) this.begin(t); }, hold);
+      this.holdTimer = setTimeout(() => { const t = this.heldText; this.heldText = null; this.holdTimer = undefined; if (t && !this.closed) this.begin(t, undefined, this.heldSpeechEnd); }, hold);
       return;
     }
-    this.begin(text);
+    this.begin(text, undefined, speechEnd);
   }
 
-  private begin(userText: string | null, scripted?: string) {
+  private begin(userText: string | null, scripted?: string, speechEnd?: number) {
     if (userText) {
       const previousUser = this.history.filter((m) => m.role === "user").at(-1)?.content;
       userText = normalizeBizfyPlanQuestion(userText, previousUser);
@@ -366,20 +397,26 @@ export class Conversation {
         // A clipped "through the Business plan" becomes a real question for the model, not a request to repeat.
         const completed = completeOrphanedPlanFragment(userText, this.o.language);
         if (completed) { const lastMsg = this.history.at(-1); if (lastMsg?.role === "user") lastMsg.content = completed; }
-        scripted = replyToGreeting(userText, this.o.language, this.history.filter((m) => m.role === "user").at(-2)?.content)
-          ?? replyToIdentityQuestion(userText, this.o.language)
-          ?? (completed ? undefined : replyToOrphanedPlanFragment(userText, this.o.language))
-          ?? scripted;
+        const previousUser = this.history.filter((m) => m.role === "user").at(-2)?.content;
+        let fixed = replyToGreeting(userText, this.o.language, previousUser) ?? replyToIdentityQuestion(userText, this.o.language);
+        // "Thank you / धन्यवाद / take care": one short goodbye, said the same way every time instead of another model reply.
+        if (!fixed && isClosing(userText)) fixed = goodbyeFor(userText, this.o.language, previousUser);
+        // Booking a callback or demo: the name, the day and the time, one question at a time, then one confirmation.
+        if (!fixed && this.o.booking) fixed = this.o.booking.handle(completed ?? userText) ?? null;
+        if (!fixed && !completed) fixed = replyToOrphanedPlanFragment(userText, this.o.language);
+        scripted = fixed ?? scripted;
       }
     }
-    void this.run(active, tFinal, scripted);
+    void this.run(active, tFinal, scripted, userText ? speechEnd ?? tFinal : undefined);
   }
 
-  private async run(active: ActiveTurn, tFinal: number, scripted?: string) {
+  private async run(active: ActiveTurn, tFinal: number, scripted?: string, speechEnd?: number) {
     const { turn, ac } = active;
     const { signal } = ac;
     const spoken: { text: string; playStart: number }[] = [];
     let tFirstToken = 0, tFirstSentence = 0, tSpeakStart = 0, tFirstAudio = 0, failed = false, groundMs = 0, tAck = 0, tAnswerPlay = 0;
+    let source: "model" | "saved_answer" | "scripted" = scripted ? "scripted" : "model";
+    let firstAudioCached = false;
     let ackDone: Promise<void> = Promise.resolve();
     let waitTimer: ReturnType<typeof setTimeout> | undefined;
     this.setState("thinking");
@@ -414,7 +451,7 @@ export class Conversation {
         if (signal.aborted) return;
         if (!scached) sfresh.push(new Uint8Array(chunk));
         const t = this.now();
-        if (!tFirstAudio) { tFirstAudio = t; this.setState("speaking"); if (this.active?.turn === turn) this.active.answerStarted = true; }
+        if (!tFirstAudio) { tFirstAudio = t; firstAudioCached = !!scached; this.setState("speaking"); if (this.active?.turn === turn) this.active.answerStarted = true; }
         if (playStart < 0) { playStart = Math.max(this.playbackEndsAt, t); if (!tAnswerPlay) tAnswerPlay = playStart; }
         this.playbackEndsAt = Math.max(this.playbackEndsAt, t) + this.chunkMs(chunk);
         this.o.sendAudio(chunk);
@@ -448,6 +485,7 @@ export class Conversation {
         const missingPlan = this.o.ground ? unknownPlanReply(lastUser, passages, this.o.language, earlierUser, !!this.o.handoff?.enabled.person) : null;
         if (missingPlan) {
           scripted = missingPlan;
+          source = "scripted";
           await say(missingPlan);
           return;
         }
@@ -469,7 +507,7 @@ export class Conversation {
         const normQ = lastUser.normalize("NFC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
         const cacheKey = this.o.tts.cacheKey && passages.length && normQ.split(" ").length >= 3 ? `${lang}|${this.o.tts.cacheKey}|${normQ}|${passages.join("|")}` : null;
         const cachedAnswer = cacheKey ? answerCache.get(cacheKey) : undefined;
-        if (cachedAnswer) this.o.log?.("answered from the saved answer");
+        if (cachedAnswer) { this.o.log?.("answered from the saved answer"); source = "saved_answer"; }
         const chat = cachedAnswer ? async function* () { yield cachedAnswer.join(" "); } : (a: Parameters<typeof this.o.llm.chat>[0]) => this.o.llm.chat(a);
         for (let attempt = 0; attempt < 2 && !signal.aborted; attempt++) {
           const chunker = new SentenceChunker(this.o.language === "en" ? {} : { eagerFirstChars: 14 }); // Hindi voice time grows with length: start on a shorter first piece
@@ -507,6 +545,9 @@ export class Conversation {
         }
         if (violated && !spoken.length && !signal.aborted) await say(sorryAgain(lang));
         if (cacheKey && !cachedAnswer && complete && !violated && !signal.aborted && active.interruptedAt === null && spoken.length) remember(answerCache, cacheKey, spoken.map((x) => x.text), 300);
+        // The caller asked something else in the middle of a booking: after answering it, ask the booking question that is still open.
+        const open = !signal.aborted && spoken.length ? this.o.booking?.pendingQuestion(lastUser) : null;
+        if (open) await say(open);
       }
     } catch (e) {
       if (!signal.aborted) {
@@ -537,15 +578,24 @@ export class Conversation {
         if (active.interruptedAt === null) this.lastSpoken = { index: this.history.length - 1, sentences: spoken };
       }
       if (!failed && !signal.aborted && !scripted && tFirstToken) this.errorStreak = 0;
-      if (tFirstAudio && !scripted && !failed) {
+      // Every caller turn that was answered reports its timings, all from the same two moments: when the caller stopped speaking
+      // and when the final transcript arrived. A fixed line (booking, goodbye) or a saved answer is labelled, so a near-zero
+      // "AI first word" or "voice starts" is understood as instant rather than as a measuring error.
+      if (tFirstAudio && !failed && speechEnd !== undefined) {
+        const fromFinal = (t: number) => (t ? Math.max(0, Math.round(t - tFinal)) : 0);
+        const firstSound = tAck || tFirstAudio;
         this.o.send({
-          type: "timing", turn,
-          llmFirstTokenMs: Math.round(tFirstToken - tFinal), groundMs: Math.round(groundMs),
-          firstSentenceMs: Math.round(tFirstSentence - tFinal),
-          ttsFirstAudioMs: Math.round(tFirstAudio - tSpeakStart),
-          totalMs: Math.round((tAck || tFirstAudio) - tFinal),
-          answerMs: Math.round(tAnswerPlay - tFinal),
-          ...(tAck ? { ackMs: Math.round(tAck - tFinal) } : {}),
+          type: "timing", turn, source,
+          llmFirstTokenMs: fromFinal(tFirstToken), groundMs: Math.round(groundMs),
+          firstSentenceMs: fromFinal(tFirstSentence),
+          ttsFirstAudioMs: Math.max(0, Math.round(tFirstAudio - tSpeakStart)),
+          totalMs: fromFinal(firstSound),
+          answerMs: fromFinal(tAnswerPlay),
+          ...(tAck ? { ackMs: fromFinal(tAck) } : {}),
+          speechToTextMs: Math.max(0, Math.round(tFinal - speechEnd)),
+          heardMs: Math.max(0, Math.round(firstSound - speechEnd)),
+          answerHeardMs: Math.max(0, Math.round((tAnswerPlay || firstSound) - speechEnd)),
+          ...(firstAudioCached ? { audioFromCache: true } : {}),
         });
       }
       if (this.active?.turn === turn) {

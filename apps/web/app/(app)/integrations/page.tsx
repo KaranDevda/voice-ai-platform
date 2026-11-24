@@ -1,6 +1,6 @@
-import { listIntegrations, listWidgets } from "@voiceai/db";
+import { listCrmInbound, listIntegrations, listWidgets } from "@voiceai/db";
 import { Forbidden } from "@/components/forbidden";
-import { IntegrationsPanel } from "@/components/integrations-panel";
+import { InboundSync, IntegrationsPanel } from "@/components/integrations-panel";
 import { WidgetsPanel } from "@/components/widgets-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { allowed, requirePageUser } from "@/lib/page-auth";
@@ -12,14 +12,16 @@ export default async function IntegrationsPage() {
   const data = await allowed(() => listIntegrations(getDb(), user));
   if (!data) return <Forbidden />;
   const widgets = await listWidgets(getDb(), user);
+  const inbound = await listCrmInbound(getDb(), user, 10).catch(() => []);
   return (
     <>
       <PageHeader title="CRM integrations" description="Send calls, call summaries and lead changes to your CRM or any tool, as signed web requests. Failures are retried automatically." />
       <IntegrationsPanel
         canEdit={user.permissions.includes("org_settings.write")} events={data.events}
-        endpoints={data.endpoints.map((e) => ({ ...e, createdAt: e.createdAt.toISOString(), lastDeliveredAt: e.lastDeliveredAt ? new Date(e.lastDeliveredAt).toISOString() : null, test: e.test ? { ...e.test, createdAt: new Date(e.test.createdAt).toISOString() } : null }))}
+        endpoints={data.endpoints.map((e) => ({ ...e, createdAt: e.createdAt.toISOString(), lastDeliveredAt: e.lastDeliveredAt ? new Date(e.lastDeliveredAt).toISOString() : null, test: e.test ? { ...e.test, createdAt: new Date(e.test.createdAt).toISOString() } : null, lastCheckedAt: e.lastCheckedAt ? new Date(e.lastCheckedAt).toISOString() : null, lastHealthJson: (e.lastHealthJson ?? null) as { checks: Array<{ check: string; level: string; detail: string }> } | null }))}
         deliveries={data.deliveries.map((d) => ({ ...d, nextAttemptAt: d.nextAttemptAt.toISOString(), createdAt: d.createdAt.toISOString() }))}
       />
+      <div className="mt-6"><InboundSync batches={inbound.map((b) => ({ ...b, createdAt: b.createdAt.toISOString(), problems: (b.problems ?? []) as Array<{ index: number; phone?: string; problem: string }> }))} /></div>
       <h2 className="mb-3 mt-10 text-lg font-semibold tracking-tight"><T>Website voice widget</T></h2>
       <WidgetsPanel canEdit={user.permissions.includes("org_settings.write") && user.permissions.includes("studio.use")} widgets={widgets.map((w) => ({ ...w, createdAt: undefined }))} />
     </>

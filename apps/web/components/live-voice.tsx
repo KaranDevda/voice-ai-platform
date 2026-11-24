@@ -12,7 +12,12 @@ import { T, Tf } from "./t";
 type Phase = "idle" | "connecting" | "live";
 type AiState = "listening" | "thinking" | "speaking";
 interface Line { who: "you" | "ai"; text: string }
-interface Timing { turn: number; heardToSound: number | null; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number }
+interface Timing {
+  turn: number; heardToSound: number | null; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number;
+  answerMs?: number; speechToTextMs?: number; heardMs?: number; answerHeardMs?: number; source?: "model" | "saved_answer" | "scripted"; audioFromCache?: boolean;
+}
+const SOURCE_LABEL: Record<string, string> = { model: "AI model", saved_answer: "Saved answer", scripted: "Fixed line" };
+const ms = (v: number | undefined) => (v === undefined ? "–" : v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${v} ms`);
 
 /** Free built-in voices from the self-hosted engine; cloned staff voices come from the database. */
 const BUILT_IN = ["alba", "anna", "azelma", "cosette", "eponine", "eve", "fantine", "jane", "mary", "vera", "marius", "javert", "jean", "charles", "george", "paul", "michael"];
@@ -309,20 +314,23 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
         </Card>
 
         <Card>
-          <CardHeader title="Response time" description="From when you stop talking to the first sound." />
+          <CardHeader title="Response time" description="Every stage is measured from the same two moments: when you stopped talking, and when your words were written down." />
           <CardBody className="grid gap-3 text-sm">
             {!timings.length && <p className="text-muted-foreground"><T>Each answer shows its timings here.</T></p>}
             {[...timings].reverse().map((t) => (
               <div key={t.turn} className="rounded-lg border border-border p-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-muted-foreground"><T>Turn</T> {t.turn}</span>
-                  <span className="text-lg font-semibold">{t.heardToSound !== null ? `${(t.heardToSound / 1000).toFixed(2)} s` : `${(t.totalMs / 1000).toFixed(2)} s`}</span>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-muted-foreground"><T>Turn</T> {t.turn} {t.source && <span className="ms-1 rounded bg-muted px-1.5 py-0.5 text-[11px]"><T>{SOURCE_LABEL[t.source] ?? t.source}</T></span>}</span>
+                  <span className="text-lg font-semibold" title="You stopped talking, to the first sound sent to you">{ms(t.heardMs ?? t.heardToSound ?? t.totalMs)}</span>
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <dt><T>AI starts writing</T></dt><dd className="text-end">{t.llmFirstTokenMs} <T>ms</T></dd>
-                  <dt><T>First sentence ready</T></dt><dd className="text-end">{t.firstSentenceMs} <T>ms</T></dd>
-                  <dt><T>Voice starts</T></dt><dd className="text-end">{t.ttsFirstAudioMs} <T>ms</T></dd>
-                  <dt><T>After transcript</T></dt><dd className="text-end">{t.totalMs} <T>ms</T></dd>
+                  <dt><T>You stopped → words written down</T></dt><dd className="text-end">{ms(t.speechToTextMs)}</dd>
+                  <dt><T>Words → AI first word</T></dt><dd className="text-end">{t.source === "model" || !t.source ? ms(t.llmFirstTokenMs) : <T>not needed</T>}</dd>
+                  <dt><T>Words → first sentence ready</T></dt><dd className="text-end">{t.source === "model" || !t.source ? ms(t.firstSentenceMs) : <T>not needed</T>}</dd>
+                  <dt><T>Voice made the first sound in</T></dt><dd className="text-end">{t.audioFromCache ? <T>instant (saved audio)</T> : ms(t.ttsFirstAudioMs)}</dd>
+                  <dt><T>Words → first sound</T></dt><dd className="text-end">{ms(t.totalMs)}</dd>
+                  <dt><T>You stopped → answer starts</T></dt><dd className="text-end">{ms(t.answerHeardMs)}</dd>
+                  {t.heardToSound !== null && <><dt><T>Measured in your browser</T></dt><dd className="text-end">{ms(t.heardToSound)}</dd></>}
                 </dl>
               </div>
             ))}

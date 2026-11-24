@@ -2,6 +2,7 @@ import { getLandingText, listExtraLanguages, listJobs, platformListKyc, platform
 import { ContentPanel } from "@/components/content-panel";
 import { Forbidden } from "@/components/forbidden";
 import { PlatformPanel } from "@/components/platform-panel";
+import { ProviderKeys } from "@/components/provider-keys";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePageUser } from "@/lib/page-auth";
 import { builtInTranslation, LANGUAGES, TRANSLATABLE } from "@/lib/i18n";
@@ -27,6 +28,7 @@ export default async function PlatformPage({ searchParams }: { searchParams: Pro
         requests={nums.requests.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }))}
         jobs={jobs.map((j) => ({ ...j, lastRunAt: j.lastRunAt.toISOString() }))}
       />
+      <div className="mt-6"><ProviderKeys /></div>
       <div className="mt-6"><ContentPanel landing={landing} languages={languages} lang={lang} rows={rows} /></div>
     </>
   );

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { signVoiceToken, verifyVoiceToken, type AuthUser, type VoiceTokenClaims } from "@voiceai/auth";
 import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
 import { asc, eq } from "drizzle-orm";
-import { checkOutboundCall, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getCampaignAgentProfile, getLeadPhone, getPhoneConfig, getHandoffTimeoutSeconds, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, requestCallback, writeAudit, reportMachine, getCampaignAudio, saveAiCall, resolveCallVoice, searchKnowledge, isCampaignCallerId, type Db, withOrg, smsMessages } from "@voiceai/db";
+import { checkOutboundCall, saveCallBooking, startPlatformSecrets, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getCampaignAgentProfile, getLeadPhone, getPhoneConfig, getHandoffTimeoutSeconds, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, requestCallback, writeAudit, reportMachine, getCampaignAudio, saveAiCall, resolveCallVoice, searchKnowledge, isCampaignCallerId, type Db, withOrg, smsMessages } from "@voiceai/db";
 import {
   createAskG1, createDeepgramLive, createPlivo, embeddingsFromEnv, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoSpeakHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
@@ -25,6 +25,7 @@ import { withFailover } from "./llm-failover";
 import { speakerNote, type Gender } from "./gender";
 import { Conversation, primeAck, type ServerEvent, type TtsEngine } from "./pipeline";
 import { ackFor } from "./ack";
+import { BookingFlow, todayNote, type Booking } from "./booking";
 import { FALLBACK, FALLBACK_HI, GREETING, GREETING_HI, GREETING_HINGLISH, systemPromptFor, voiceRulesFor } from "./prompt";
 
 // Paths are relative to this file, never to the folder the service was started from: starting it from the wrong folder used to run it
@@ -104,6 +105,13 @@ export type ListenMode = "close" | "anyone" | "push";
 const nameHints = () => (env("STT_NAME_HINTS") ?? "").split(",").map((n) => n.trim()).filter(Boolean).slice(0, 40).join(", ");
 
 /** Local Whisper when it is set up (free, on this machine); otherwise Deepgram's cloud. */
+/** True when this call's speech-to-text is Deepgram (its end-of-speech signal comes after the transcript, so timings use its endpointing delay). */
+function sttIsDeepgram(language: "en" | "hi" | "en-hi"): boolean {
+  const whisper = (language === "en" && env("WHISPER_URL_EN")) || env("WHISPER_URL");
+  const viaDeepgram = env("STT_PROVIDER") === "deepgram" || (env("STT_HINDI") === "deepgram" && language !== "en");
+  return viaDeepgram || !whisper;
+}
+
 function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line: string) => void): SttAdapter {
   // English calls can use a small English-only model (WHISPER_URL_EN): about five times faster to decode, but weaker on strong accents.
   const whisper = (language === "en" && env("WHISPER_URL_EN")) || env("WHISPER_URL");
@@ -137,7 +145,8 @@ function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line
 const askg1Shared = { inFlight: 0, downUntil: 0 };
 function llm(say?: Say, choice?: { model: "default" | "openrouter"; openrouterModel: string }): LlmAdapter {
   const apiKey = env("ASKG1_API_KEY"), baseUrl = env("ASKG1_BASE_URL"), localUrl = env("LOCAL_LLM_URL");
-  const maxTokens = Number(env("ASKG1_MAX_TOKENS") ?? 220), temperature = Number(env("ASKG1_TEMPERATURE") ?? 0.3);
+  // Replies are one or two spoken sentences: 150 tokens caps a runaway answer without cutting a normal Hindi one (a cut-off tail is never spoken).
+  const maxTokens = Number(env("ASKG1_MAX_TOKENS") ?? 150), temperature = Number(env("ASKG1_TEMPERATURE") ?? 0.3);
   const local = localUrl ? createAskG1({ apiKey: env("LOCAL_LLM_KEY") ?? "local", baseUrl: localUrl, model: env("LOCAL_LLM_MODEL") ?? "local", maxTokens, temperature }) : null;
   // LLM_PRIMARY=openrouter: OpenRouter answers every call (for example while AskG1 is down), without each organisation having to choose it.
   if (env("LLM_PRIMARY") === "openrouter" && choice?.model !== "openrouter") choice = { model: "openrouter", openrouterModel: env("OPENROUTER_MODEL") ?? choice?.openrouterModel ?? "openai/gpt-4o-mini" };
@@ -355,6 +364,25 @@ interface SessionRecord { user: AuthUser; callId: string; startedAt: Date; langu
 interface StartParams { voice: string; language: "en" | "hi" | "en-hi"; greeting: boolean; listen: ListenMode; leadId?: string; opening?: string }
 
 /** The call may not go ahead (not allowed, or on the Do Not Disturb list). `code` is the WebSocket close code, `event` what the client is told. */
+/**
+ * A booking the caller confirmed: saved for the organisation (when this is a real signed-in session), the lead marked
+ * "callback requested", the team e-mailed, and the page told. Practice calls without an organisation are only logged.
+ */
+async function storeBooking(b: Booking, c: { claims: VoiceTokenClaims; user: AuthUser | null; leadId?: string; callId: string; tag: string; say: Say }) {
+  const when = b.at.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
+  console.log(`[${c.tag}] booking ${b.changed ? "changed" : "made"}: ${b.name}, ${when} (India time)`);
+  if (!env("DATABASE_URL") || !c.user) { c.say({ type: "notice", message: `Callback noted for ${b.name}, ${when}. (Practice call without an organisation: not saved.)` }); return; }
+  try {
+    const saved = await saveCallBooking(getDb(), c.claims.org, { callerName: b.name, scheduledFor: b.at, language: b.language, leadId: c.leadId ?? null, callId: c.callId, bookedByUserId: c.user.id, replacesEarlier: b.changed });
+    c.say({ type: "notice", message: `Callback booked for ${b.name}, ${when} (India time). Saved, and the team will be told.` });
+    const smtp = smtpFromEnv();
+    if (smtp) for (const to of saved.notify) await sendEmail(smtp, { to, subject: `Callback booked: ${b.name}, ${when}`, text: `${b.name} asked for a call back on ${when} (India time) during an AI call${saved.leadName ? ` (lead: ${saved.leadName})` : ""}.\n\nThe caller heard: "${b.confirmation}"\n\nPlease confirm with a meeting link.` }).catch((e) => console.error("booking e-mail failed:", e instanceof Error ? e.message : e));
+  } catch (e) {
+    console.error(`[${c.tag}] booking could not be saved:`, e instanceof Error ? e.message : e);
+    c.say({ type: "notice", message: "The booking could not be saved. Please note it down." });
+  }
+}
+
 class SessionRefused extends Error { constructor(public code: number, public event: ServerEvent) { super(event.type); } }
 
 /**
@@ -443,17 +471,24 @@ async function buildSession(
   systemPrompt += sessionLanguageRule(p.language);
   const model = llm(io.send, aiChoice);
   warmUp(model, systemPrompt);
+  const callId = o.callId ?? randomUUID();
+  // Callbacks and demos are booked by a small state machine (name, then day, then time; one confirmation), saved, and the team told.
+  const booking = new BookingFlow({ language: p.language, onBooked: (b) => void storeBooking(b, { claims, user, leadId: p.leadId, callId, tag, say: io.send }) });
   const convo = new Conversation({
     holdUnfinishedMs: Number(env("TURN_HOLD_MS") ?? 350), // give an unfinished English, Hindi, or Hinglish clause a short chance to continue
     stt: sttFor(p.listen, p.language, (l) => console.log(`[${tag}] ${l}`)),
-    llm: model, tts, language: p.language, systemPrompt, ground, ack: env("ACK") === "off" ? undefined : (t) => ackFor(t, p.language, true), turnNote: (a, b) => languageNote(a, b, p.language), handoff,
+    llm: model, tts, language: p.language, systemPrompt, ground, ack: env("ACK") === "off" ? undefined : (t) => ackFor(t, p.language, true), handoff, booking,
+    // Rides on the newest caller line (the system prompt stays the same, so the model keeps it cached): today's date in India,
+    // the caller's name as first heard (so it is never spelled two ways), the booking state, and the reply language.
+    turnNote: (a, b) => [todayNote(), booking.modelNote(), languageNote(a, b, p.language)].filter(Boolean).join("\n"),
+    speechEndLagMs: sttIsDeepgram(p.language) ? Number(env("ENDPOINTING_MS") ?? 300) : 0,
     greeting: p.greeting ? (p.opening ? `${disclosure} ${p.opening}`.trim() : p.language === "hi" ? GREETING_HI : p.language === "en-hi" ? GREETING_HINGLISH : greeting) : undefined,
     resumeAfterHandoff: !o.phone,
     bargeOnVoice: o.phone, // Browser calls confirm interruptions with recognized words to avoid reacting to speaker echo.
     fallback: p.language === "hi" ? FALLBACK_HI : FALLBACK, send: io.send, sendAudio: io.sendAudio, log: (l) => console.log(`[${tag}] ${l}`),
   });
   const record: SessionRecord | null = user?.permissions.includes("calls.place")
-    ? { user, callId: o.callId ?? randomUUID(), startedAt: new Date(), language: p.language, direction: o.direction, leadId: p.leadId, voiceProfileId: voice.startsWith("profile:") ? voice.slice(8) : undefined }
+    ? { user, callId, startedAt: new Date(), language: p.language, direction: o.direction, leadId: p.leadId, voiceProfileId: voice.startsWith("profile:") ? voice.slice(8) : undefined }
     : null;
   return { convo, record };
 }
@@ -905,4 +940,6 @@ async function checkAskG1(): Promise<void> {
   } finally { clearTimeout(timer); }
 }
 
+// Provider keys saved in the website (Platform > Provider keys) override this service's env file; refreshed every minute.
+if (env("DATABASE_URL")) startPlatformSecrets(getDb(), { log: (l) => console.log(l) });
 server.listen(PORT, () => { console.log(`voice service listening on :${PORT}`); void checkAskG1(); keepWarm(); });

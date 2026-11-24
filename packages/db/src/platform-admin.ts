@@ -5,7 +5,7 @@ import { writeAudit, type AuditEntry } from "./audit";
 import { withOrg, type Db, type DbTx } from "./client";
 import { createHash } from "node:crypto";
 import { checkGstin, checkPan, KYC_DOC_MAX_BYTES, sniffDocument, type KycDocKind } from "./kyc-checks";
-import { jobHeartbeats, kycDocuments, kycSubmissions, numberRequests, organizations, phoneNumbers } from "./schema";
+import { jobHeartbeats, kycDocuments, kycSubmissions, numberRequests, organizations, phoneNumbers, type KycCheckResult, type KycVerification } from "./schema";
 
 export class AdminError extends Error {}
 
@@ -32,7 +32,31 @@ export async function assertKyc(tx: DbTx, orgId: string) {
 export interface KycDocument { kind: KycDocKind; fileName: string; data: Uint8Array }
 export interface KycInput { tier: "basic" | "business"; legalName: string; pan: string; gstin?: string; contactName: string; contactPhone: string; address: string; documents?: KycDocument[] }
 
-export async function submitKyc(db: Db, actor: AuthUser, input: KycInput) {
+/**
+ * A KYC verification service (for example Cashfree Secure ID): checks a PAN and a GSTIN against the Income Tax and GST Network
+ * records. The provider adapter lives in @voiceai/providers; this is only its shape.
+ */
+export interface KycChecker {
+  provider: string;
+  verifyPan(pan: string, name: string): Promise<KycCheckResult>;
+  verifyGstin(gstin: string, businessName: string): Promise<KycCheckResult>;
+}
+
+/** Runs the government checks. A check the service cannot answer (down, slow) is recorded as "error" and left to the reviewer. */
+export async function verifyWithGovernment(checker: KycChecker, pan: string, legalName: string, gstin: string | null, timeoutMs = 10_000): Promise<KycVerification> {
+  const safe = async (f: () => Promise<KycCheckResult>): Promise<KycCheckResult> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([f(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("the verification service did not answer in time")), timeoutMs); })]);
+    } catch (e) {
+      return { status: "error", message: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
+    } finally { clearTimeout(timer); }
+  };
+  const [panResult, gstinResult] = await Promise.all([safe(() => checker.verifyPan(pan, legalName)), gstin ? safe(() => checker.verifyGstin(gstin, legalName)) : Promise.resolve(undefined)]);
+  return { provider: checker.provider, checkedAt: new Date().toISOString(), pan: panResult, ...(gstinResult ? { gstin: gstinResult } : {}) };
+}
+
+export async function submitKyc(db: Db, actor: AuthUser, input: KycInput, checker?: KycChecker | null) {
   assertAuthorized(actor, "org_settings.write");
   if (input.tier !== "basic" && input.tier !== "business") throw new AdminError("choose basic or business");
   const legalName = text(input.legalName, "the legal name", 120), contactName = text(input.contactName, "a contact name", 80), address = text(input.address, "the address", 300);
@@ -55,15 +79,20 @@ export async function submitKyc(db: Db, actor: AuthUser, input: KycInput) {
   });
   const contactPhone = text(input.contactPhone, "a contact phone", 20).replace(/[\s-]/g, "");
   if (!E164.test(contactPhone)) throw new AdminError("the contact phone must be like +919876543210");
+  // Real checks against the government records, when a verification service is set up. A number that does not exist, or a
+  // GSTIN that is cancelled or suspended, is refused here; a name that does not match is shown to the reviewer.
+  const verification = checker ? await verifyWithGovernment(checker, pan, legalName, gstin) : null;
+  if (verification?.pan?.status === "invalid") throw new AdminError(`the PAN ${pan} is not a valid, active PAN in the Income Tax records${verification.pan.message ? ` (${verification.pan.message})` : ""}. Check the number.`);
+  if (verification?.gstin?.status === "invalid") throw new AdminError(`the GSTIN ${gstin} is not active in the GST records${verification.gstin.gstStatus ? ` (status: ${verification.gstin.gstStatus})` : verification.gstin.message ? ` (${verification.gstin.message})` : ""}. Check the number.`);
   return withOrg(db, actor.orgId, async (tx) => {
     const [org] = await tx.select({ tier: organizations.kycTier }).from(organizations).where(eq(organizations.id, actor.orgId));
     if (org && RANK[org.tier] >= RANK[input.tier]) throw new AdminError(`this organisation is already verified at ${org.tier} level or higher`);
     const open = await tx.select({ id: kycSubmissions.id }).from(kycSubmissions).where(sql`${kycSubmissions.status} = 'pending'`).limit(1);
     if (open.length) throw new AdminError("a verification request is already waiting for review");
-    const [row] = await tx.insert(kycSubmissions).values({ orgId: actor.orgId, tier: input.tier, legalName, pan, gstin, contactName, contactPhone, address, submittedBy: actor.id }).returning({ id: kycSubmissions.id });
+    const [row] = await tx.insert(kycSubmissions).values({ orgId: actor.orgId, tier: input.tier, legalName, pan, gstin, contactName, contactPhone, address, submittedBy: actor.id, verification }).returning({ id: kycSubmissions.id });
     for (const d of checked) await tx.insert(kycDocuments).values({ orgId: actor.orgId, submissionId: row!.id, kind: d.kind, fileName: d.fileName, mime: d.mime, sizeBytes: d.data.length, sha256: d.sha256, data: d.data });
-    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "kyc.submit", entity: "kyc_submissions", entityId: row!.id, after: { tier: input.tier, documents: checked.map((d) => d.kind) } });
-    return row!;
+    await writeAudit(tx, { orgId: actor.orgId, actorUserId: actor.id, action: "kyc.submit", entity: "kyc_submissions", entityId: row!.id, after: { tier: input.tier, documents: checked.map((d) => d.kind), government: verification ? { provider: verification.provider, pan: verification.pan?.status ?? null, gstin: verification.gstin?.status ?? null } : null } });
+    return { ...row!, verification };
   });
 }
 
@@ -77,7 +106,7 @@ export async function getKyc(db: Db, actor: AuthUser) {
 }
 
 export async function platformListKyc(db: Db, actor: AuthUser) {
-  return asPlatform(db, actor, (tx) => tx.select({ id: kycSubmissions.id, orgName: organizations.name, tier: kycSubmissions.tier, legalName: kycSubmissions.legalName, pan: kycSubmissions.pan, gstin: kycSubmissions.gstin, contactName: kycSubmissions.contactName, contactPhone: kycSubmissions.contactPhone, address: kycSubmissions.address, createdAt: kycSubmissions.createdAt })
+  return asPlatform(db, actor, (tx) => tx.select({ id: kycSubmissions.id, orgName: organizations.name, tier: kycSubmissions.tier, legalName: kycSubmissions.legalName, pan: kycSubmissions.pan, gstin: kycSubmissions.gstin, contactName: kycSubmissions.contactName, contactPhone: kycSubmissions.contactPhone, address: kycSubmissions.address, verification: kycSubmissions.verification, createdAt: kycSubmissions.createdAt })
     .from(kycSubmissions).innerJoin(organizations, eq(organizations.id, kycSubmissions.orgId)).where(sql`${kycSubmissions.status} = 'pending'`).orderBy(kycSubmissions.createdAt).limit(100));
 }
 

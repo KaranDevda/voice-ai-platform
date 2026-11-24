@@ -10,3 +10,4 @@ export * from "./messaging";
 export * from "./billing";
 export * from "./admin";
 export * from "./integrations";
+export * from "./bookings";

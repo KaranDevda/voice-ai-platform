@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { submitKyc, type KycDocument } from "@voiceai/db";
 import { toResponse } from "@/lib/api-errors";
+import { getKycVerifier } from "@/lib/providers";
 import { assertSameOrigin, getDb, requireUser } from "@/lib/server";
 
 const MAX_FILE = 2 * 1024 * 1024;
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
       if (f.size > MAX_FILE) return Response.json({ error: "admin", message: "each document must be 2 MB or smaller" }, { status: 409 });
       documents.push({ kind, fileName: f.name, data: new Uint8Array(await f.arrayBuffer()) });
     }
-    return Response.json(await submitKyc(getDb(), user, { ...input, documents }), { status: 201 });
+    // The PAN and GSTIN are checked against the government records when a verification service is set up.
+    return Response.json(await submitKyc(getDb(), user, { ...input, documents }, getKycVerifier()), { status: 201 });
   } catch (err) { return toResponse(err); }
 }

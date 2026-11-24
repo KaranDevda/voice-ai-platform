@@ -19,6 +19,8 @@ type GreetingKind = "greeting" | "how" | "greeting-and-how";
 
 function greetingKind(text: string): GreetingKind | null {
   let normalized = text.normalize("NFC").toLowerCase().replace(/[.,!?؟।]+/gu, " ").replace(/\s+/gu, " ").trim();
+  // Spellings Hindi speech-to-text writes for the same greeting ("नमस्टे", "हिलू", "हैलो").
+  normalized = normalized.replace(/नमस्टे|नमसते/gu, "नमस्ते").replace(/(?:^|(?<=\s))(?:हिलू|हैलो|हेल्लो|हलो)(?=\s|$)/gu, "हेलो");
   // Whisper occasionally prefixes a clean greeting with a stray fragment such as "who Hi, how are you?".
   // Only trim it when the remainder still matches one of the exact greeting patterns below.
   normalized = normalized.replace(/^(?:(?:who|uh|um|well|yeah|yes|so)\s+)+(?=(?:hi|hello|hey|good morning|good afternoon|good evening|नमस्ते|नमस्कार|हेलो|हाय|namaste|namaskar)(?:\s|$))/iu, "");

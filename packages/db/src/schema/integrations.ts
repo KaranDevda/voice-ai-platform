@@ -17,6 +17,10 @@ export const crmEndpoints = pgTable(
     active: boolean("active").notNull().default(true),
     createdBy: uuid("created_by"),
     createdAt: createdAt(),
+    /** The last health check: "ok", "degraded" or "down", with one line per check. */
+    lastHealthStatus: text("last_health_status", { enum: ["ok", "degraded", "down"] }),
+    lastHealthJson: jsonb("last_health_json"),
+    lastCheckedAt: tstz("last_checked_at"),
   },
   (t) => [index("crm_endpoints_org_idx").on(t.orgId), orgIsolationPolicy()],
 ).enableRLS();
@@ -59,4 +63,22 @@ export const widgets = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("widgets_org_idx").on(t.orgId), orgIsolationPolicy()],
+).enableRLS();
+
+/** Contacts a CRM sent in (two-way sync): how many came, were created or updated, and what was refused. */
+export const crmInboundEvents = pgTable(
+  "crm_inbound_events",
+  {
+    id: id(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    received: integer("received").notNull(),
+    created: integer("created").notNull(),
+    updated: integer("updated").notNull(),
+    statusChanges: integer("status_changes").notNull().default(0),
+    invalid: integer("invalid").notNull(),
+    problems: jsonb("problems").notNull().default([]),
+    createdAt: createdAt(),
+  },
+  (t) => [index("crm_inbound_events_org_idx").on(t.orgId, t.createdAt), orgIsolationPolicy()],
 ).enableRLS();

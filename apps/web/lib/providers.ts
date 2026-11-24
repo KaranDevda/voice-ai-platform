@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { headers } from "next/headers";
 import { join } from "node:path";
 import {
-  createAskG1, createChatterbox, createDeepgramStt, createDeepgramTts, createElevenLabsTts, createPocketTts, createPlivo, createTwilio, kokoroHindiVoiceFor, ProviderError, signVoiceFileId, STOCK_VOICES, stockVoiceById,
+  createAskG1, createChatterbox, createDeepgramStt, createDeepgramTts, createElevenLabsTts, createPocketTts, createPlivo, createTwilio, kokoroHindiVoiceFor, kycVerifierFromEnv, ProviderError, signVoiceFileId, STOCK_VOICES, stockVoiceById,
   voiceFileStem,
 } from "@voiceai/providers";
 import type { SpeechSynthesizer } from "@voiceai/providers";
@@ -217,3 +217,6 @@ export async function checkProviders(): Promise<Record<"deepgram" | "elevenlabs"
 }
 
 export { ProviderError };
+
+/** The KYC verification service (real PAN and GSTIN checks), when its keys are set (env file or Platform > Provider keys). */
+export const getKycVerifier = () => kycVerifierFromEnv(process.env);

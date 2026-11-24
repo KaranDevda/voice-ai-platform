@@ -33,3 +33,6 @@ export * from "./app-errors";
 export * from "./cron-jobs";
 export * from "./sip-trunks";
 export * from "./team-admin";
+export * from "./call-bookings";
+export * from "./platform-secrets";
+export * from "./crm-sync";

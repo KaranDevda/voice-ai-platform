@@ -9,7 +9,7 @@ import { Table, Td, Th, Tr } from "./ui/table";
 import { formatDateTime, titleCase } from "@/lib/utils";
 import { T, useLang } from "./t";
 
-interface Endpoint { id: string; name: string; url: string; events: string[]; active: boolean; createdAt: string; counts: Record<string, number>; lastDeliveredAt: string | null; test: { status: string; lastStatus: number | null; lastError: string | null; createdAt: string } | null }
+interface Endpoint { id: string; name: string; url: string; events: string[]; active: boolean; createdAt: string; counts: Record<string, number>; lastDeliveredAt: string | null; test: { status: string; lastStatus: number | null; lastError: string | null; createdAt: string } | null; lastHealthStatus?: string | null; lastCheckedAt?: string | null; lastHealthJson?: { checks: Array<{ check: string; level: string; detail: string }> } | null }
 interface Delivery { id: string; endpointId: string; event: string; status: string; attempts: number; lastStatus: number | null; lastError: string | null; nextAttemptAt: string; createdAt: string }
 const TONE: Record<string, "success" | "danger" | "warning" | "neutral"> = { delivered: "success", failed: "danger", pending: "warning", sending: "warning" };
 const EVENT_NOTE: Record<string, string> = { "call.completed": "a call ended", "call.analyzed": "summary, sentiment and next step are ready", "lead.created": "a new lead", "lead.status_changed": "a lead's status changed" };
@@ -25,6 +25,7 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
   const [error, setError] = useState("");
   const [secret, setSecret] = useState<{ name: string; value: string } | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
   const nameOf = (id: string) => endpoints.find((e) => e.id === id)?.name ?? "";
 
   useEffect(() => {
@@ -56,6 +57,16 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
     } finally {
       if (action === "test") setTesting(null);
     }
+  }
+  async function checkHealth(id: string) {
+    setError(""); setChecking(id);
+    try {
+      const res = await fetch(`/api/integrations/${id}/health`, { method: "POST" });
+      if (!res.ok) setError(((await res.json().catch(() => ({}))) as { message?: string }).message ?? "The health check could not run");
+      router.refresh();
+    } catch {
+      setError("Could not reach the server. Try again.");
+    } finally { setChecking(null); }
   }
   async function retry(id: string) {
     setError("");
@@ -107,9 +118,16 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
               <div className="text-muted-foreground"><T>Last 7 days:</T> {e.counts.delivered ?? 0} <T>delivered ·</T> {(e.counts.pending ?? 0) + (e.counts.sending ?? 0)} <T>waiting ·</T> {e.counts.failed ?? 0} <T>failed</T>{e.lastDeliveredAt ? ` · last delivered ${formatDateTime(e.lastDeliveredAt, lang)}` : ""}</div>
               {e.test ? <p role="status" className="text-muted-foreground"><T>Last test</T> {formatDateTime(e.test.createdAt, lang)}: {titleCase(e.test.status)}{e.test.lastStatus ? ` · HTTP ${e.test.lastStatus}` : ""}{e.test.lastError ? ` · ${e.test.lastError}` : ""}</p> : <p className="text-muted-foreground"><T>No connection test has run yet.</T></p>}
               <div><T>Events:</T> {e.events.map((ev) => <code key={ev} className="me-2">{ev}</code>)}</div>
+              {e.lastHealthJson && e.lastCheckedAt && (
+                <div className="grid gap-1 rounded-md bg-muted/40 p-2">
+                  <div className="flex flex-wrap items-center gap-2"><T>Health check</T> <Badge tone={e.lastHealthStatus === "ok" ? "success" : e.lastHealthStatus === "down" ? "danger" : "warning"}>{titleCase(e.lastHealthStatus ?? "unknown")}</Badge><span className="text-xs text-muted-foreground">{formatDateTime(e.lastCheckedAt, lang)}</span></div>
+                  {e.lastHealthJson.checks.map((c) => <div key={c.check} className="text-xs"><Badge tone={c.level === "ok" ? "success" : c.level === "fail" ? "danger" : "warning"}>{c.level === "ok" ? "OK" : c.level === "fail" ? "Fail" : "Warn"}</Badge> <strong><T>{c.check}</T></strong>: {c.detail}</div>)}
+                </div>
+              )}
               {canEdit && (
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" disabled={!e.active || testing === e.id || testPending} onClick={() => void act(e.id, "test")}>{testing === e.id ? "Queuing…" : testPending ? "Test pending…" : "Send a test"}</Button>
+                  <Button size="sm" variant="outline" disabled={checking === e.id} onClick={() => void checkHealth(e.id)}>{checking === e.id ? "Checking…" : "Check health"}</Button>
                   <Button size="sm" variant="outline" onClick={() => void act(e.id, e.active ? "disable" : "enable")}>{e.active ? "Turn off" : "Turn on"}</Button>
                   <Button size="sm" variant="outline" onClick={() => void act(e.id, "delete")}>Remove</Button>
                 </div>
@@ -134,5 +152,40 @@ export function IntegrationsPanel({ canEdit, events, endpoints, deliveries }: { 
         )}
       </Card>
     </div>
+  );
+}
+
+interface InboundBatch { id: string; received: number; created: number; updated: number; statusChanges: number; invalid: number; problems: Array<{ index: number; phone?: string; problem: string }>; createdAt: string }
+
+/** Two-way sync, the incoming half: how a CRM sends contacts in, and the latest batches it sent. */
+export function InboundSync({ batches }: { batches: InboundBatch[] }) {
+  const lang = useLang();
+  const [origin, setOrigin] = useState("https://your-bizfy-address");
+  useEffect(() => setOrigin(window.location.origin), []);
+  const example = `curl -X POST ${origin}/api/integrations/inbound \\
+  -H "Authorization: Bearer va_YOUR_API_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"contacts":[{"phone":"+919812345678","name":"Priya Shah","email":"priya@example.com","status":"interested","tags":["crm"],"externalId":"crm-42"}]}'`;
+  return (
+    <Card>
+      <CardHeader title="Incoming sync (CRM to Bizfy)" description="Your CRM can also send contacts here: new numbers become leads, existing ones are updated (name, e-mail, status, tags). Changes that come in this way are not sent back to the CRM." />
+      <CardBody className="grid gap-3 text-sm">
+        <ol className="list-decimal ps-5 text-muted-foreground">
+          <li><T>Create an API token with permission to edit leads (Account, API tokens).</T></li>
+          <li><T>Have the CRM send up to 500 contacts per request to the address below. Only the phone is required; status must be one of new, contacted, interested, callback_requested, not_interested, won, lost.</T></li>
+        </ol>
+        <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">{example}</pre>
+        {batches.length === 0 ? <p className="text-muted-foreground"><T>Nothing received yet.</T></p> : (
+          <Table>
+            <thead><tr><Th>Received</Th><Th>Contacts</Th><Th>Created</Th><Th>Updated</Th><Th>Status changes</Th><Th>Refused</Th></tr></thead>
+            <tbody>{batches.map((b) => (
+              <Tr key={b.id}>
+                <Td>{formatDateTime(b.createdAt, lang)}</Td><Td>{b.received}</Td><Td>{b.created}</Td><Td>{b.updated}</Td><Td>{b.statusChanges}</Td>
+                <Td>{b.invalid ? <span title={b.problems.map((p) => `#${p.index + 1}${p.phone ? ` ${p.phone}` : ""}: ${p.problem}`).join("\n")}><Badge tone="warning">{b.invalid}</Badge></span> : 0}</Td>
+              </Tr>
+            ))}</tbody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
   );
 }

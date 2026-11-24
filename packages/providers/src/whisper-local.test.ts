@@ -28,7 +28,7 @@ async function run(audio: Int16Array, f: typeof fetch, language: "en" | "hi" | "
 describe("local Whisper speech-to-text", () => {
   it("reports speech starting, then the transcript, for each utterance", async () => {
     const ev = await run(Int16Array.from([...quiet(500), ...tone(1500), ...quiet(900)]), fakeWhisper(() => " What is the price? "));
-    expect(ev).toEqual([{ kind: "speech_started" }, { kind: "final", text: "What is the price?", language: "en" }]);
+    expect(ev).toEqual([{ kind: "speech_started" }, { kind: "end_of_speech", trailingSilenceMs: expect.any(Number) }, { kind: "final", text: "What is the price?", language: "en" }]);
   });
 
   it("sends the language and a brand-name hint, as a 16 kHz WAV", async () => {

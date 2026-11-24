@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { campaignTick, createDb, crmClaim, crmDone, dialToken, heartbeat, lowBalanceDue, lowBalanceSent, refreshExchangeRatesIfStale, smsDone, smsRound, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, reportDial, saveAnalysis } from "@voiceai/db";
+import { campaignTick, createDb, crmClaim, crmDone, dialToken, heartbeat, lowBalanceDue, lowBalanceSent, refreshExchangeRatesIfStale, smsDone, smsRound, listExpiredRecordings, listExpiredTranscripts, listPendingAnalysis, loadCallForAnalysis, purgeRecording, purgeTranscript, recordAnalysisFailure, reportDial, saveAnalysis, startPlatformSecrets } from "@voiceai/db";
 import { createAskG1, createPlivo, S3Recordings, sendCrmWebhook, sendEmail, smtpFromEnv, type LlmAdapter } from "@voiceai/providers";
 import { analyzeCall } from "./analyze";
 import { renderTemplate } from "@voiceai/shared";
@@ -27,6 +27,8 @@ const log = (m: string) => console.log(`[${new Date().toISOString().slice(11, 19
 
 const once = process.argv.includes("--once");
 const { db } = createDb(env("DATABASE_URL") ?? (() => { throw new Error("DATABASE_URL is not set"); })());
+// Provider keys saved in the website (Platform > Provider keys: SMTP, carrier, payment gateways) override the env file; refreshed every minute.
+startPlatformSecrets(db, { log });
 
 /** AskG1 first; the local backup model when AskG1 cannot answer. Returns the name of the model that answered, for the record. */
 const askg1 = env("ASKG1_API_KEY") && env("ASKG1_BASE_URL")

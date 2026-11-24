@@ -19,7 +19,7 @@ export interface VadOptions {
 }
 
 /** `level` is the average loudness (0..1) of the voiced frames: how close and how loud the speaker was. */
-export type VadEvent = { kind: "start"; level: number } | { kind: "end"; pcm: Int16Array; speechMs: number; level: number };
+export type VadEvent = { kind: "start"; level: number } | { kind: "end"; pcm: Int16Array; speechMs: number; level: number; /** how much silence passed after the last voiced frame before the end was called */ silenceMs: number };
 
 const FRAME_MS = 20;
 
@@ -94,8 +94,8 @@ export class Vad {
     const frames = this.utter.slice(0, this.utter.length - Math.max(0, this.silenceMs / FRAME_MS - keepTail));
     const pcm = new Int16Array(frames.length * this.frameSamples);
     frames.forEach((fr, i) => pcm.set(fr, i * this.frameSamples));
-    const speechMs = this.speechMs, level = this.levelFrames ? this.levelSum / this.levelFrames : 0;
+    const speechMs = this.speechMs, level = this.levelFrames ? this.levelSum / this.levelFrames : 0, silenceMs = this.silenceMs;
     this.speaking = false; this.voiced = 0; this.silenceMs = 0; this.speechMs = 0; this.levelSum = 0; this.levelFrames = 0; this.utter = []; this.preRoll = [];
-    if (speechMs >= this.o.minSpeechMs) out.push({ kind: "end", pcm, speechMs, level });
+    if (speechMs >= this.o.minSpeechMs) out.push({ kind: "end", pcm, speechMs, level, silenceMs });
   }
 }

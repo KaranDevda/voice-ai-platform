@@ -58,7 +58,8 @@ describe.skipIf(!ownerUrl || !appUrl)("role-scoped queries", () => {
   });
 
   it("exports only the matching contacts within the export scope", async () => {
-    const admin = as("org_admin", "admin", []);
+    // The export is audited with the actor's id, which must be a real user (the audit log's actor column references users).
+    const admin = as("org_admin", x.aN!, []);
     const csv = await new Response(streamContactsCsv(app.db, admin, { tag: "VIP", consent: "granted", dnd: "false" })).text();
     expect(csv).toContain("North Lead");
     expect(csv).not.toContain("South Lead");

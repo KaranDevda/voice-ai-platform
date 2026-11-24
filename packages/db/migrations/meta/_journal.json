@@ -344,6 +344,34 @@
       "when": 1794821408005,
       "tag": "0048_sip_trunks_carrier",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794821409005,
+      "tag": "0049_call_bookings",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794821410005,
+      "tag": "0050_kyc_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794821411005,
+      "tag": "0051_platform_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794821412005,
+      "tag": "0052_crm_sync",
+      "breakpoints": true
     }
   ]
 }

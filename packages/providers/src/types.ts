@@ -58,6 +58,8 @@ export interface SttEvent {
   kind: "partial" | "final" | "speech_started" | "end_of_speech";
   text?: string;
   language?: string;
+  /** end_of_speech only: how long ago the caller actually stopped (the silence the recogniser waited for before deciding). */
+  trailingSilenceMs?: number;
 }
 
 export interface SttSession {

@@ -6,6 +6,25 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () =>
 
 export const KYC_TIERS = ["unverified", "basic", "business"] as const;
 
+/** One government check, as stored on a KYC request. */
+export interface KycCheckResult {
+  /** "valid": exists and active; "invalid": does not exist or is cancelled/inactive; "error": the service could not answer. */
+  status: "valid" | "invalid" | "error";
+  /** The name the government record holds (PAN holder, or GST legal name). */
+  registeredName?: string;
+  /** How well that name matches the name typed on the form, 0 to 100, when the service reports it. */
+  nameMatchScore?: number;
+  /** For a GSTIN: "Active", "Cancelled", "Suspended"... as the GST Network reports it. */
+  gstStatus?: string;
+  message?: string;
+}
+export interface KycVerification {
+  provider: string;
+  checkedAt: string;
+  pan?: KycCheckResult;
+  gstin?: KycCheckResult;
+}
+
 /** An organisation's request to be verified. A person at the platform reviews it; approval raises organizations.kyc_tier. */
 export const kycSubmissions = pgTable(
   "kyc_submissions",
@@ -24,6 +43,8 @@ export const kycSubmissions = pgTable(
     reviewNote: text("review_note"),
     reviewedBy: uuid("reviewed_by"),
     reviewedAt: tstz("reviewed_at"),
+    /** What the government records said about the PAN and GSTIN when the request was sent (through a KYC verification service). */
+    verification: jsonb("verification").$type<KycVerification>(),
     createdAt: createdAt(),
   },
   (t) => [index("kyc_submissions_org_idx").on(t.orgId, t.createdAt), orgIsolationPolicy()],
@@ -113,3 +134,15 @@ export const jobHeartbeats = pgTable("job_heartbeats", {
   lastError: text("last_error"),
   runs: bigint("runs", { mode: "number" }).notNull().default(0),
 });
+
+/**
+ * Provider keys set from the website by platform staff (carrier, payment gateways, AI, KYC, e-mail), encrypted at rest. Only the
+ * last four characters are readable, so staff can tell which key is in use. Platform staff only (row-level security).
+ */
+export const platformSecrets = pgTable("platform_secrets", {
+  name: text("name").primaryKey(),
+  valueEnc: text("value_enc").notNull(),
+  hint: text("hint"),
+  updatedBy: uuid("updated_by"),
+  updatedAt: tstz("updated_at").notNull().defaultNow(),
+}).enableRLS();

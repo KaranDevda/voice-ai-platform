@@ -9,7 +9,9 @@ import { Table, Td, Th, Tr } from "./ui/table";
 import { formatDateTime, titleCase } from "@/lib/utils";
 import { useT, useLang } from "./t";
 
-interface Kyc { id: string; orgName: string; tier: string; legalName: string; pan: string; gstin: string | null; contactName: string; contactPhone: string; address: string; createdAt: string; docs: Array<{ id: string; kind: string; fileName: string; sizeBytes: number }>; panProblem: string | null; gstinProblem: string | null }
+interface Kyc { id: string; orgName: string; tier: string; legalName: string; pan: string; gstin: string | null; contactName: string; contactPhone: string; address: string; createdAt: string; docs: Array<{ id: string; kind: string; fileName: string; sizeBytes: number }>; panProblem: string | null; gstinProblem: string | null; verification?: GovCheck | null }
+interface GovResult { status: "valid" | "invalid" | "error"; registeredName?: string; nameMatchScore?: number; gstStatus?: string; message?: string }
+interface GovCheck { provider: string; checkedAt: string; pan?: GovResult; gstin?: GovResult }
 interface Num { id: string; e164: string; label: string | null; capabilities: string[]; carrier?: string; status: string; orgId: string | null; orgName: string | null }
 interface Request { id: string; orgName: string; kind: string; country: string; purpose: string | null; createdAt: string }
 interface Job { name: string; lastRunAt: string; lastOk: boolean; lastError: string | null; runs: number }
@@ -142,8 +144,9 @@ export function PlatformPanel({ kyc, numbers, orgs, requests, jobs }: { kyc: Kyc
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={k.panProblem ? "danger" : "success"}>{k.panProblem ? "PAN check failed" : "PAN format OK"}</Badge>
                 {k.gstin && <Badge tone={k.gstinProblem ? "danger" : "success"}>{k.gstinProblem ? "GSTIN check failed" : "GSTIN checksum and PAN match OK"}</Badge>}
-                <span className="text-xs text-muted-foreground">{t("These checks do not prove the number is real: compare the documents with the details.")}</span>
+                {!k.verification && <span className="text-xs text-muted-foreground">{t("These checks do not prove the number is real: compare the documents with the details.")}</span>}
               </div>
+              <GovernmentCheck v={k.verification ?? null} hasGstin={!!k.gstin} />
               {(k.panProblem || k.gstinProblem) && <div className="text-danger">{k.panProblem ?? k.gstinProblem}</div>}
               <div className="flex flex-wrap items-center gap-3">
                 {k.docs.length === 0 ? <span className="text-muted-foreground">{t("No documents attached.")}</span> : k.docs.map((d) => <a key={d.id} className="underline" href={`/api/kyc/documents/${d.id}`}>{t(d.kind === "pan" ? "PAN card" : "GST certificate")} ({Math.max(1, Math.round(d.sizeBytes / 1024))} KB)</a>)}
@@ -242,6 +245,34 @@ export function PlatformPanel({ kyc, numbers, orgs, requests, jobs }: { kyc: Kyc
           ))}
         </CardBody>
       </Card>
+    </div>
+  );
+}
+
+/** What the government records said (through the KYC verification service), for the person reviewing the request. */
+function GovernmentCheck({ v, hasGstin }: { v: GovCheck | null; hasGstin: boolean }) {
+  const t = useT();
+  if (!v) return <div className="text-xs text-muted-foreground">{t("Not checked with government records: no KYC verification service is set up (Platform > Provider keys > KYC).")}</div>;
+  const line = (label: string, r: GovResult | undefined) => {
+    if (!r) return null;
+    const tone = r.status === "valid" ? "success" : r.status === "invalid" ? "danger" : "warning";
+    const text = r.status === "valid" ? `${label} found in government records` : r.status === "invalid" ? `${label} NOT valid in government records` : `${label} could not be checked`;
+    const lowMatch = r.nameMatchScore !== undefined && r.nameMatchScore < 70;
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={tone}>{t(text)}</Badge>
+        {r.registeredName && <span>{t("Name on record")}: <strong>{r.registeredName}</strong></span>}
+        {r.nameMatchScore !== undefined && <Badge tone={lowMatch ? "danger" : "success"}>{t("Name match")} {Math.round(r.nameMatchScore)}%</Badge>}
+        {r.gstStatus && <span className="text-muted-foreground">{t("GST status")}: {r.gstStatus}</span>}
+        {r.message && r.status !== "valid" && <span className="text-xs text-muted-foreground">{r.message}</span>}
+      </div>
+    );
+  };
+  return (
+    <div className="grid gap-1 rounded-md bg-muted/40 p-2">
+      <div className="text-xs text-muted-foreground">{t("Government check")} ({v.provider}, {new Date(v.checkedAt).toLocaleString()})</div>
+      {line("PAN", v.pan)}
+      {hasGstin && line("GSTIN", v.gstin)}
     </div>
   );
 }

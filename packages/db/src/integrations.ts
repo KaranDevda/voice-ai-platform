@@ -10,7 +10,7 @@ export class IntegrationError extends Error {}
 export async function listIntegrations(db: Db, actor: AuthUser) {
   assertAuthorized(actor, "org_settings.read");
   return withOrg(db, actor.orgId, async (tx) => {
-    const endpoints = await tx.select({ id: crmEndpoints.id, name: crmEndpoints.name, url: crmEndpoints.url, events: crmEndpoints.events, active: crmEndpoints.active, createdAt: crmEndpoints.createdAt }).from(crmEndpoints).orderBy(crmEndpoints.createdAt);
+    const endpoints = await tx.select({ id: crmEndpoints.id, name: crmEndpoints.name, url: crmEndpoints.url, events: crmEndpoints.events, active: crmEndpoints.active, createdAt: crmEndpoints.createdAt, lastHealthStatus: crmEndpoints.lastHealthStatus, lastHealthJson: crmEndpoints.lastHealthJson, lastCheckedAt: crmEndpoints.lastCheckedAt }).from(crmEndpoints).orderBy(crmEndpoints.createdAt);
     const counts = await tx.select({ endpointId: crmDeliveries.endpointId, status: crmDeliveries.status, n: sql<number>`count(*)::int` }).from(crmDeliveries).where(sql`${crmDeliveries.createdAt} > now() - interval '7 days'`).groupBy(crmDeliveries.endpointId, crmDeliveries.status);
     const last = await tx.select({ endpointId: crmDeliveries.endpointId, at: sql<Date>`max(${crmDeliveries.deliveredAt})`, ok: sql<boolean>`bool_or(${crmDeliveries.status} = 'delivered')` }).from(crmDeliveries).groupBy(crmDeliveries.endpointId);
     const testRows = await tx.execute<{ endpoint_id: string; status: string; last_status: number | null; last_error: string | null; created_at: Date }>(sql`
