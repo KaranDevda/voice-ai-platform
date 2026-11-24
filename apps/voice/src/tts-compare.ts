@@ -7,7 +7,7 @@
  *
  *   pnpm --filter @voiceai/voice exec tsx src/tts-compare.ts -- --runs 3
  *
- * ASSUMPTION for Cartesia: its documented REST call POST https://api.cartesia.ai/tts/bytes (X-API-Key, Cartesia-Version,
+ * Cartesia defaults follow docs.cartesia.ai (24 Nov 2026): model sonic-3.6, API version 2026-08-14. ASSUMPTION: its documented REST call POST https://api.cartesia.ai/tts/bytes (X-API-Key, Cartesia-Version,
  * model_id, transcript, voice {mode: "id", id}, output_format raw pcm_s16le, language). Check the current model and version
  * strings on Cartesia's docs page and pass them with --cartesia-model / --cartesia-version.
  */
@@ -40,7 +40,7 @@ if (el) {
 }
 const ca = process.env.CARTESIA_API_KEY?.trim();
 if (ca) {
-  const voice = arg("cartesia-voice", ""), model = arg("cartesia-model", "sonic-3"), version = arg("cartesia-version", "2025-04-16");
+  const voice = arg("cartesia-voice", ""), model = arg("cartesia-model", "sonic-3.6"), version = arg("cartesia-version", "2026-08-14");
   if (!voice) console.warn("CARTESIA_API_KEY is set but --cartesia-voice is missing: skipping Cartesia");
   else providers.push({ name: `Cartesia ${model}`, run: (text, lang) => firstByte("https://api.cartesia.ai/tts/bytes", { method: "POST", headers: { "X-API-Key": ca, "Cartesia-Version": version, "content-type": "application/json" }, body: JSON.stringify({ model_id: model, transcript: text, voice: { mode: "id", id: voice }, output_format: { container: "raw", encoding: "pcm_s16le", sample_rate: 24000 }, language: lang }) }) });
 }
