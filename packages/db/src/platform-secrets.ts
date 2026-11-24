@@ -34,6 +34,7 @@ export const MANAGED_SECRETS = [
   { name: "LLM_PRIMARY", group: "AI and voice", label: "Main AI model: askg1 (default), openrouter or local", secret: false },
   { name: "DEEPGRAM_API_KEY", group: "AI and voice", label: "Deepgram API key", secret: true },
   { name: "ELEVENLABS_API_KEY", group: "AI and voice", label: "ElevenLabs API key", secret: true },
+  { name: "CARTESIA_API_KEY", group: "AI and voice", label: "Cartesia API key", secret: true },
   { name: "KYC_PROVIDER", group: "KYC", label: "Verification service (cashfree)", secret: false },
   { name: "CASHFREE_CLIENT_ID", group: "KYC", label: "Cashfree Verification client ID", secret: false },
   { name: "CASHFREE_CLIENT_SECRET", group: "KYC", label: "Cashfree Verification client secret", secret: true },

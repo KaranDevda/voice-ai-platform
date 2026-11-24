@@ -40,8 +40,20 @@ if (el) {
 }
 const ca = process.env.CARTESIA_API_KEY?.trim();
 if (ca) {
-  const voice = arg("cartesia-voice", ""), model = arg("cartesia-model", "sonic-3.6"), version = arg("cartesia-version", "2026-08-14");
-  if (!voice) console.warn("CARTESIA_API_KEY is set but --cartesia-voice is missing: skipping Cartesia");
+  const model = arg("cartesia-model", "sonic-3.6"), version = arg("cartesia-version", "2026-08-14");
+  let voice = arg("cartesia-voice", "");
+  if (!voice) {
+    // No voice given: list the account's voices and take one that speaks Hindi (else the first), and say which.
+    try {
+      const r = await fetch("https://api.cartesia.ai/voices?limit=100", { headers: { "X-API-Key": ca, "Cartesia-Version": version } });
+      const body = (await r.json().catch(() => ({}))) as { data?: Array<{ id: string; name?: string; language?: string }> } | Array<{ id: string; name?: string; language?: string }>;
+      const list = Array.isArray(body) ? body : body.data ?? [];
+      const pick = list.find((v) => v.language === "hi") ?? list[0];
+      if (pick) { voice = pick.id; console.log(`Cartesia voice: ${pick.name ?? pick.id} (${pick.language ?? "language not listed"})`); }
+      else console.warn(`Cartesia: could not list voices (HTTP ${r.status}). Pass --cartesia-voice <id>.`);
+    } catch (e) { console.warn(`Cartesia: could not list voices: ${e instanceof Error ? e.message : e}`); }
+  }
+  if (!voice) console.warn("Cartesia skipped: no voice id");
   else providers.push({ name: `Cartesia ${model}`, run: (text, lang) => firstByte("https://api.cartesia.ai/tts/bytes", { method: "POST", headers: { "X-API-Key": ca, "Cartesia-Version": version, "content-type": "application/json" }, body: JSON.stringify({ model_id: model, transcript: text, voice: { mode: "id", id: voice }, output_format: { container: "raw", encoding: "pcm_s16le", sample_rate: 24000 }, language: lang }) }) });
 }
 if (!providers.length) { console.log("No provider key set (ELEVENLABS_API_KEY, CARTESIA_API_KEY): nothing to measure."); process.exit(0); }
