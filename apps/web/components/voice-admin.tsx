@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "./ui/card";
 import { Field, Input, Select } from "./ui/form";
 import { Table, Td, Th, Tr } from "./ui/table";
 import { PostButton } from "./post-button";
+import { HinglishPanel } from "./hinglish-panel";
 import { formatDate, titleCase } from "@/lib/utils";
 import { T, useLang } from "./t";
 
@@ -51,6 +52,7 @@ function VoiceRow({ p }: { p: Profile }) {
   const [pitch, setPitch] = useState(p.pitch);
   const [busy, setBusy] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [hinglish, setHinglish] = useState(false);
   const [error, setError] = useState("");
   const donor = [p.donorFirst, p.donorLast].filter(Boolean).join(" ") || p.donorEmail;
 
@@ -71,6 +73,17 @@ function VoiceRow({ p }: { p: Profile }) {
     const audio = new Audio(url);
     audio.onended = audio.onerror = () => URL.revokeObjectURL(url);
     await audio.play().catch(() => {});
+  }
+
+  /** Saves the stored recording to the computer. */
+  async function downloadOriginal() {
+    const res = await fetch(`/api/voices/${p.id}/sample`);
+    if (!res.ok) return setError("Could not download the original recording");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${p.label}-original.${(blob.type.split("/")[1] || "wav").replace("x-wav", "wav").replace("mpeg", "mp3")}`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   /** Plays a Hinglish sample with the slider values, before anything is saved. */
@@ -105,17 +118,22 @@ function VoiceRow({ p }: { p: Profile }) {
     );
   }
   return (
+    <>
     <Tr>
       <Td className="font-medium">{p.label}{p.hasSample ? "" : <span className="ms-2 text-xs font-normal text-muted-foreground" title="This voice was cloned before recordings were kept. Clone it again to use it with the realistic open-source engine."><T>no recording saved</T></span>}{p.speed !== 1 || p.pitch !== 0 ? <span className="ms-2 text-xs font-normal text-muted-foreground" title="Speed and pitch applied to this voice">{p.speed.toFixed(2)}× · {p.pitch > 0 ? "+" : ""}{p.pitch.toFixed(1)} <T>st</T></span> : null}</Td><Td>{titleCase(p.gender)}</Td><Td>{donor}</Td>
       <Td className="text-muted-foreground">{formatDate(p.consentGrantedAt, lang)}<T>{p.consentWithdrawn ? " · withdrawn" : ""}</T></Td>
       <Td><Badge tone={p.status === "active" ? "success" : "danger"}>{titleCase(p.status)}</Badge></Td>
       <Td className="text-end whitespace-nowrap">
         {p.status === "active" && p.hasSample && <Button size="sm" variant="outline" onClick={() => void playOriginal()}>Original</Button>}{" "}
+        {p.status === "active" && p.hasSample && <Button size="sm" variant="outline" onClick={() => void downloadOriginal()}>Download</Button>}{" "}
+        {p.status === "active" && p.provider === "pocket_tts" && <Button size="sm" variant="outline" onClick={() => setHinglish((v) => !v)}>Hinglish</Button>}{" "}
         {p.status === "active" && <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>}{" "}
         {p.status === "active" && <PostButton url={`/api/voices/${p.id}/revoke`} variant="outline" size="sm" confirm={`Revoke "${p.label}"? The clone will be deleted at the provider.`}><T>Revoke</T></PostButton>}{" "}
         <PostButton url={`/api/voices/${p.id}`} method="DELETE" variant="danger" size="sm" confirm={`Delete "${p.label}" for good? The cloned voice and its saved recording are deleted and it disappears from this list. This cannot be undone. Past calls keep their recordings, and the signed consent record is kept as evidence.`}><T>Delete</T></PostButton>
       </Td>
     </Tr>
+    {hinglish && <Tr><Td colSpan={6}><HinglishPanel voiceId={p.id} label={p.label} donorName={donor} /></Td></Tr>}
+    </>
   );
 }
 

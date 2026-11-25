@@ -23,6 +23,16 @@ export const HINDI_SCRIPT =
   "क्या आज मैं आपकी और कोई मदद कर सकती हूँ? " +
   "आपके समय के लिए बहुत-बहुत धन्यवाद। आपका दिन शुभ हो, नमस्कार।";
 
+export const HINGLISH_SCRIPT =
+  "Hello, and thank you for calling Bizfy. Mera naam screen par dikh raha hai, aur aapki help karke mujhe bahut khushi hogi. " +
+  "Hamare plans 4,999 rupees per month se start hote hain, aur aap kabhi bhi change ya cancel kar sakte hain. " +
+  "Starter plan 1,999 rupees ka hai, aur usme up to 3 users include hain. " +
+  "Agar aap chahein, toh saari details aapke phone ya email par send ho jayengi. Please apna name aur best number bataiye. " +
+  "Sorry, mujhe yeh clear nahi hua. Kya aap ek baar phir, thoda slow bol sakte hain? " +
+  "Wait karne ke liye thank you. Maine sab kuch note kar liya hai, aur hamare colleague kal subah 10 baje se shaam 6 baje ke beech aapko call back karenge. " +
+  "Kya aaj aapko kisi aur cheez mein help chahiye? " +
+  "Aapke time ke liye bahut bahut thank you. Have a wonderful day, goodbye.";
+
 /** Roughly how long the script takes to read, so the wizard can say so. */
-export const SCRIPT_SECONDS = { en: 55, hi: 60 } as const;
+export const SCRIPT_SECONDS = { en: 55, hi: 60, hinglish: 60 } as const;
 export const MIN_CLONE_SECONDS = 30;

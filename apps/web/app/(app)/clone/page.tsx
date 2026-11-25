@@ -30,6 +30,14 @@ export default async function ClonePage() {
           ? "Kokoro is enabled for reliable Hindi playback, but adding a speaker-specific Hindi clone requires the voice-conversion service. Start it and set VOICE_CONVERT_URL to enable recording and upload."
           : "The Hindi clone engine is not configured. Set POCKET_TTS_HI_URL and POCKET_TTS_BIN to enable recording and upload."}
       />
+      <AddLanguage variant="hinglish"
+        voices={data.profiles.filter((p) => p.status === "active" && p.provider === "pocket_tts").map((p) => ({ id: p.id, label: p.label, gender: p.gender, donorName: [p.donorFirst, p.donorLast].filter(Boolean).join(" ") || p.donorEmail }))}
+        hindiReady={hindiConversionOn() || (!builtInHindi() && !!process.env.POCKET_TTS_HI_URL?.trim() && !!process.env.POCKET_TTS_BIN?.trim())}
+        ownVoice={hindiConversionOn()}
+        unavailableReason={builtInHindi()
+          ? "Kokoro is enabled for reliable Hindi playback, but adding a speaker-specific Hindi clone requires the voice-conversion service. Start it and set VOICE_CONVERT_URL to enable recording and upload."
+          : "The Hindi clone engine is not configured. Set POCKET_TTS_HI_URL and POCKET_TTS_BIN to enable recording and upload."}
+      />
       </div>
     </>
   );
