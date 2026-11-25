@@ -1,4 +1,4 @@
-import { applyProsody, clampProsody, hinglishToDevanagari, createChatterbox, isNeutralProsody, mulawToPcm16, pcmToMulaw8k, type Prosody, type TtsAdapter, type createPocketTts } from "@voiceai/providers";
+import { applyProsody, clampProsody, hinglishToDevanagari, createChatterbox, createMaya2, isNeutralProsody, mulawToPcm16, pcmToMulaw8k, type Prosody, type TtsAdapter, type createPocketTts } from "@voiceai/providers";
 import type { TtsEngine } from "./pipeline";
 
 const asBytes = (s: Int16Array) => new Uint8Array(s.buffer, s.byteOffset, s.byteLength);
@@ -80,6 +80,22 @@ export function chatterboxEngine(baseUrl: string, voiceId: string, opts: { token
       const pcm = wav.subarray(44); // a 44-byte header, then 16-bit samples at 24 kHz
       const step = 24_000 / 4 * 2; // 250 ms of audio per chunk
       for (let i = 0; i < pcm.length; i += step) { if (signal.aborted) return; yield pcm.slice(i, Math.min(pcm.length, i + step)); }
+    },
+  };
+}
+
+/**
+ * Maya 2 Native, run on a GPU (scripts/maya2-colab.ipynb): English, Hindi and Hinglish in the person's own voice, streamed as it is
+ * generated, so the first sound starts in about 0.13 s (24 kHz, the same as the browser test expects).
+ */
+export function maya2Engine(baseUrl: string, voiceId: string, opts: { token?: string; voicesDir?: string; loadRecording?: (voiceId: string) => Promise<Uint8Array | null | undefined>; doFetch?: typeof fetch } = {}): TtsEngine {
+  const client = createMaya2({ baseUrl, token: opts.token, voicesDir: opts.voicesDir, loadRecording: opts.loadRecording, fetch: opts.doFetch });
+  return {
+    encoding: "linear16",
+    rate: 24_000,
+    cacheKey: "maya2",
+    async *speak(text, signal) {
+      for await (const chunk of client.pcm(text, voiceId, signal)) { if (signal.aborted) return; yield chunk; }
     },
   };
 }

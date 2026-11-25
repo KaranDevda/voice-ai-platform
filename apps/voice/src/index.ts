@@ -9,11 +9,11 @@ import { CALL_BLOCK_MESSAGES, normalizePhone } from "@voiceai/shared";
 import { asc, eq } from "drizzle-orm";
 import { checkOutboundCall, saveCallBooking, startPlatformSecrets, createDb, getVoiceSampleForEngine, findLeadIdByPhone, getAgentConfig, getCampaignAgentProfile, getLeadPhone, getPhoneConfig, getHandoffTimeoutSeconds, getSmsSettings, loadAuthUser, queueSmsToLead, recordInboundSms, requestCallback, writeAudit, reportMachine, getCampaignAudio, saveAiCall, resolveCallVoice, searchKnowledge, isCampaignCallerId, type Db, withOrg, smsMessages } from "@voiceai/db";
 import {
-  createAskG1, createDeepgramLive, createPlivo, embeddingsFromEnv, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoSpeakHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
+  createAskG1, createMaya2, createDeepgramLive, createPlivo, embeddingsFromEnv, parsePlivoStreamMessage, plivoClearAudio, plivoDialXml, plivoHangupXml, plivoSpeakHangupXml, plivoMenuXml, plivoPlayAudio, plivoPlayXml, plivoStreamXml, verifyPlivoSignature, createDeepgramTts, createElevenLabsTts, createLocalWhisper, createPocketTts, mulawToPcm16, isBuiltInPocketVoice, signVoiceFileId,
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
 import { sendEmail, smtpFromEnv } from "@voiceai/providers";
-import { chatterboxEngine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
+import { chatterboxEngine, maya2Engine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
 import { MulawTo16k } from "./telephony-audio";
 import { expandServiceOverviewQuery, hindiToEnglishKeywords, relevantExcerpt, unknownPlanReply } from "./knowledge";
 import { languageNote, sessionLanguageRule } from "./language";
@@ -242,6 +242,15 @@ async function engineFor(voice: string, user: VoiceTokenClaims, say: Say, langua
         : `Hindi and Hinglish are spoken by a built-in ${profile.gender} Hindi voice, not ${profile.label}'s own voice. English uses the clone.` });
     }
     const g: Gender = profile.gender === "male" ? "male" : "female";
+    // MAYA2_URL set: every language is made by Maya 2 in the person's own voice, streamed (browser calls only). If it is not answering, fall through to the old engines.
+    if (profile.provider === "pocket_tts" && env("MAYA2_URL") && !phone && (existsSync(join(env("POCKET_TTS_VOICES_DIR") ?? join(REPO_DIR, ".local/voices"), `${profile.providerVoiceId}.ref.wav`)) || !!(await getVoiceSampleForEngine(getDb(), user.org, profile.providerVoiceId)))) {
+      const maya = createMaya2({ baseUrl: env("MAYA2_URL")!, token: env("MAYA2_TOKEN") });
+      if (await maya.healthy()) {
+        say({ type: "notice", message: `${profile.label} is speaking with Maya 2 (own voice, streamed).` });
+        return { ...withProsody(maya2Engine(env("MAYA2_URL")!, profile.providerVoiceId, { token: env("MAYA2_TOKEN"), loadRecording: (id) => getVoiceSampleForEngine(getDb(), user.org, id), voicesDir: env("POCKET_TTS_VOICES_DIR") ?? join(REPO_DIR, ".local/voices") }), profile), gender: g };
+      }
+      say({ type: "notice", message: "Maya 2 is not answering, so the built-in voice engine is used." });
+    }
     // CHATTERBOX_URL set and this person has a reference recording: Hindi and mixed calls are made directly in their own voice (browser calls only).
     if (profile.provider === "pocket_tts" && env("CHATTERBOX_URL") && language !== "en" && !phone && (existsSync(join(env("POCKET_TTS_VOICES_DIR") ?? join(REPO_DIR, ".local/voices"), `${profile.providerVoiceId}.ref.wav`)) || !!(await getVoiceSampleForEngine(getDb(), user.org, profile.providerVoiceId)))) {
       say({ type: "notice", message: `${profile.label}'s Hindi is made directly in their own voice (Chatterbox).` });

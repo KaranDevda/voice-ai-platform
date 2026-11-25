@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { headers } from "next/headers";
 import { join } from "node:path";
 import {
-  createAskG1, createChatterbox, createDeepgramStt, createDeepgramTts, createElevenLabsTts, createPocketTts, createPlivo, createTwilio, kokoroHindiVoiceFor, kycVerifierFromEnv, ProviderError, signVoiceFileId, STOCK_VOICES, stockVoiceById,
+  createAskG1, createChatterbox, createMaya2, createDeepgramStt, createDeepgramTts, createElevenLabsTts, createPocketTts, createPlivo, createTwilio, kokoroHindiVoiceFor, kycVerifierFromEnv, ProviderError, signVoiceFileId, STOCK_VOICES, stockVoiceById,
   voiceFileStem,
 } from "@voiceai/providers";
 import type { SpeechSynthesizer } from "@voiceai/providers";
@@ -134,6 +134,7 @@ export interface VoiceOption { ref: string; name: string; gender: string; group:
 
 /** A voice reference is "dg:<aura id>" for stock voices or "profile:<uuid>" for a consented clone. */
 export const highQualityReady = () => !!env("CHATTERBOX_URL");
+export const maya2Ready = () => !!env("MAYA2_URL");
 
 /** `opts.highQuality`: synthesize directly from the saved clone recording with Chatterbox. Slower than real time, but more natural and closer to the speaker. */
 export async function resolveVoice(user: AuthUser, ref: string, opts: { highQuality?: boolean } = {}): Promise<{ speak: SpeechSynthesizer; voiceId: string; provider: string; hindiVoice?: string; prosody?: { speed: number; pitch: number } }> {
@@ -148,6 +149,26 @@ export async function resolveVoice(user: AuthUser, ref: string, opts: { highQual
     if (profile.provider !== "elevenlabs" && profile.provider !== "pocket_tts") throw new RangeError("unsupported voice provider");
     // Seeded demo profiles have placeholder ids that ElevenLabs does not know.
     if (profile.providerVoiceId.startsWith("demo-voice-")) throw new RangeError("This is a demo voice with no real ElevenLabs clone behind it. Clone a real staff voice in Voice clone, or pick a stock voice.");
+    if (profile.provider === "pocket_tts" && env("MAYA2_URL") && !opts.highQuality) {
+      // Maya 2 on a GPU: English, Hindi and Hinglish in the person's own voice, first sound in about 0.13 s. If it is not answering,
+      // the built-in engine speaks instead and the result says so.
+      const maya = createMaya2({ baseUrl: env("MAYA2_URL")!, token: env("MAYA2_TOKEN"), voicesDir: voicesDir(), loadRecording: (id) => getVoiceSampleForEngine(getDb(), user.orgId, id) });
+      const pocket = getPocketTts(await ownBaseUrl());
+      return {
+        provider: "maya2", voiceId: profile.providerVoiceId, hindiVoice: kokoroHindiVoiceFor(profile.gender), prosody: { speed: profile.speed, pitch: profile.pitch },
+        speak: {
+          async speak(input) {
+            const signal = input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000);
+            try { return { ...(await maya.speak({ ...input, signal })), engine: "maya2" as const }; }
+            catch (e) {
+              if (input.signal?.aborted) throw e;
+              const fallback = await pocket.speak(input);
+              return { ...fallback, engine: "fallback" as const, note: `Maya 2 could not be used (${e instanceof Error ? e.message : String(e)}), so the built-in voice engine spoke.` };
+            }
+          },
+        },
+      };
+    }
     if (profile.provider === "pocket_tts" && env("CHATTERBOX_URL") && opts.highQuality) {
       // Open-source realistic voice: English, Hindi and Hinglish directly in the person's own voice. If the GPU machine is not
       // answering, the built-in engine speaks instead and the result says so (it never fails silently or sounds different unannounced).

@@ -29,15 +29,16 @@ export const POST = (req: Request) =>
     const shaping = clampProsody({ speed: input.speed ?? prosody?.speed, pitch: input.pitch ?? prosody?.pitch });
     // Emotion tags like [excited] change speed, pitch and pauses per part; they are applied while the parts are joined.
     const segments = tagged ? parseEmotionScript(input.text).map((s) => ({ ...s, text: spoken(s.text) })) : [];
-    const made = await timed(user, provider, "speech", () => segments.length ? speakStyled(speak, { voiceId, hindiVoice, signal: args.signal }, segments, shaping) : provider === "chatterbox" || input.pacing === "off" ? speak.speak(args) : speakPaced(speak, args), () => input.text.length);
+    const made = await timed(user, provider, "speech", () => segments.length ? speakStyled(speak, { voiceId, hindiVoice, signal: args.signal }, segments, shaping) : provider === "chatterbox" || provider === "maya2" || input.pacing === "off" ? speak.speak(args) : speakPaced(speak, args), () => input.text.length);
     const result = made.mime !== "audio/wav" ? made
       : segments.length ? made // already cleaned and shaped piece by piece
       : { ...made, audio: tidyWavEnds(applyProsodyToWav(made.audio, shaping)) };
 
     // Be plain about who is speaking, from what actually happened (a conversion that failed falls back to the built-in voice).
     const gender = hindiVoice?.startsWith("hm_") ? "male" : "female";
-    const voiceNote = result.engine === "chatterbox" ? "Made directly in this person's own voice (Chatterbox)."
-      : result.engine === "fallback" ? (result.note ?? "Chatterbox could not be used, so the built-in voice engine spoke.")
+    const voiceNote = result.engine === "maya2" ? "Made directly in this person's own voice (Maya 2)."
+      : result.engine === "chatterbox" ? "Made directly in this person's own voice (Chatterbox)."
+      : result.engine === "fallback" ? (result.note ?? "The GPU voice engine could not be used, so the built-in voice engine spoke.")
       : result.hindiVoice === "converted"
       ? "Hindi and Hinglish parts were changed into this person's own voice. English parts use the clone."
       : result.hindiVoice === "built-in" || (provider === "pocket_tts" && /[\u0900-\u097F]/.test(input.text) && builtInHindi())
