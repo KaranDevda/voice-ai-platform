@@ -8,6 +8,8 @@ import { Field, Select } from "./ui/form";
 import { Notice } from "./ui/page";
 import type { VoiceChoice } from "./voice-picker";
 import { T, Tf } from "./t";
+import { AvatarVideo } from "./avatar-3d";
+import type { AvatarStream } from "@/lib/avatar-stream";
 
 type Phase = "idle" | "connecting" | "live";
 type AiState = "listening" | "thinking" | "speaking";
@@ -44,6 +46,8 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
   const ws = useRef<WebSocket | null>(null);
   const mic = useRef<{ stream: MediaStream; ctx: AudioContext } | null>(null);
   const play = useRef<{ ctx: AudioContext; next: number; sources: AudioBufferSourceNode[]; rate: number } | null>(null);
+  const avatar = useRef<AvatarStream | null>(null);   // talking-face video for the AI's voice, when an avatar server is connected
+  const [avatarOn, setAvatarOn] = useState(true);
   const lastLoud = useRef(0);
   const heardAt = useRef<number | null>(null); // when the caller last stopped speaking, for the turn now being answered
   const awaitingSound = useRef<number | null>(null);
@@ -71,6 +75,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
     void mic.current?.ctx.close();
     mic.current = null;
     stopAudio();
+    avatar.current?.clear();
     void play.current?.ctx.close();
     play.current = null;
     mutedRef.current = false;
@@ -107,7 +112,11 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
     const src = p.ctx.createBufferSource();
     src.buffer = ab;
     src.connect(p.ctx.destination);
-    const at = Math.max(p.next, p.ctx.currentTime + 0.02);
+    // With an avatar, the first sound of each answer is held back a little so the video of the mouth is ready when it plays.
+    const av = avatarOn ? avatar.current : null;
+    const idle = p.next <= p.ctx.currentTime + 0.01;
+    const at = idle && av ? p.ctx.currentTime + av.startDelay() : Math.max(p.next, p.ctx.currentTime + 0.02);
+    av?.push(buf.slice(0, pcm.length * 2), p.rate, p.ctx, at, ab.duration);
     src.start(at);
     p.next = at + ab.duration;
     p.sources.push(src);
@@ -140,7 +149,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
         awaitingSound.current = Number(e.turn);
         break;
       case "assistant": setLines((l) => [...l, { who: "ai", text: String(e.text) }]); break;
-      case "clear": stopAudio(); break;
+      case "clear": stopAudio(); avatar.current?.clear(); break;
       case "timing": {
         const t = e as unknown as Timing;
         setTimings((l) => [...l.slice(-4), { ...t, heardToSound: pendingPerceived.current.get(t.turn) ?? null }]);
@@ -288,6 +297,11 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
       </Card>
 
       <div className="grid content-start gap-6">
+        <Card>
+          <CardHeader title="Avatar" description="A real face from your photo, speaking the AI's voice as live video (needs the avatar notebook running on a GPU)." action={<label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={avatarOn} onChange={(e) => setAvatarOn(e.target.checked)} /><T>Show</T></label>} />
+          <CardBody className={avatarOn ? "" : "hidden"}><AvatarVideo onStream={(s) => { avatar.current = s; }} /></CardBody>
+        </Card>
+
         <Card>
           <CardHeader title="Settings" description="Applies the next time you press Start." />
           <CardBody className="grid gap-4">
