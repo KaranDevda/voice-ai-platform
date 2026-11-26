@@ -107,14 +107,14 @@ const nameHints = () => (env("STT_NAME_HINTS") ?? "").split(",").map((n) => n.tr
 /** Local Whisper when it is set up (free, on this machine); otherwise Deepgram's cloud. */
 /** True when this call's speech-to-text is Deepgram (its end-of-speech signal comes after the transcript, so timings use its endpointing delay). */
 function sttIsDeepgram(language: "en" | "hi" | "en-hi"): boolean {
-  const whisper = (language === "en" && env("WHISPER_URL_EN")) || env("WHISPER_URL");
+  const whisper = (language === "en" ? env("WHISPER_URL_EN") : env("INDIC_STT_URL")) || env("WHISPER_URL");
   const viaDeepgram = env("STT_PROVIDER") === "deepgram" || (env("STT_HINDI") === "deepgram" && language !== "en");
   return viaDeepgram || !whisper;
 }
 
 function sttFor(listen: ListenMode, language: "en" | "hi" | "en-hi", log?: (line: string) => void): SttAdapter {
   // English calls can use a small English-only model (WHISPER_URL_EN): about five times faster to decode, but weaker on strong accents.
-  const whisper = (language === "en" && env("WHISPER_URL_EN")) || env("WHISPER_URL");
+  const whisper = (language === "en" ? env("WHISPER_URL_EN") : env("INDIC_STT_URL")) || env("WHISPER_URL");
   // STT_HINDI=deepgram sends Hindi and mixed-language calls to Deepgram (nova-3 hears Hindi well and answers in about 0.3 s); English stays on the local model.
   const viaDeepgram = env("STT_PROVIDER") === "deepgram" || (env("STT_HINDI") === "deepgram" && language !== "en");
   if (!viaDeepgram && whisper) {
