@@ -10,9 +10,9 @@ const HI_HOW = "(?:आप कैसे हैं|आप कैसी हैं|�
 const LATIN_HOW = "(?:(?:aap )?(?:kaise|kaisi) (?:ho|hain)(?: aap)?|how are you)";
 const GREETING = `(?:${EN_GREETING}|${HI_GREETING}|${LATIN_GREETING})`;
 const HOW = `(?:${EN_HOW}|${HI_HOW}|${LATIN_HOW})`;
-const greetOnly = new RegExp(`^${GREETING}$`, "iu");
+const greetOnly = new RegExp(`^(?:${GREETING}\\s+)*${GREETING}$`, "iu");
 const howOnly = new RegExp(`^${HOW}$`, "iu");
-const greetAndHow = new RegExp(`^${GREETING}\\s+${HOW}$`, "iu");
+const greetAndHow = new RegExp(`^(?:${GREETING}\\s+)+${HOW}$`, "iu");
 const IDENTITY_QUESTION = /^(?:what are you|who are you|are you (?:an ai|a person|human)|am i speaking to an ai)[.!?]*$/iu;
 
 type GreetingKind = "greeting" | "how" | "greeting-and-how";

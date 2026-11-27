@@ -134,5 +134,5 @@ export const orgSettingsUpdateSchema = z.object({
 });
 
 /** Allowed speed (1 = as recorded) and pitch shift (semitones) for a cloned voice. Wider settings make words hard to understand. */
-export const SPEED_RANGE = { min: 0.8, max: 1.25 } as const;
+export const SPEED_RANGE = { min: 0.8, max: 1.5 } as const;
 export const PITCH_RANGE = { min: -3, max: 3 } as const;

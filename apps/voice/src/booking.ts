@@ -105,7 +105,7 @@ function numberWord(w: string): number | undefined {
 
 // ---------- intent ----------
 // "meeting" alone is not a request ("does it include meeting transcripts?"): only with a verb ("schedule a meeting", "I want a meeting").
-const INTENT_EN = /\b(demo|call ?back|appointment|call me\b|(?:schedule|book|arrange|set ?up|fix|want|need|like)\s+(?:a|an|the|my|one)?\s*(?:call|slot|time|demo|meeting))/i;
+const INTENT_EN = /\b(demo|call ?back|appointment|call me\b|(?:connect|put|transfer)\s+me\s+(?:with|to)\s+(?:the|your|a)?\s*(?:team|someone|sales)|(?:talk|speak)\s+(?:to|with)\s+(?:the|your|a)?\s*(?:team|someone|sales)|team\s+(?:to\s+)?call|(?:schedule|book|arrange|set ?up|fix|want|need|like)\s+(?:a|an|the|my|one)?\s*(?:call|slot|time|demo|meeting))/i;
 // Speech-to-text spells "schedule" several ways in Devanagari (शेड्यूल, शेडिूल, शेड्युल, शेडूल): any word "शेड…ल" counts.
 const INTENT_HI = /(डेमो|मीटिंग (?:चाहिए|फिक्स|करनी|करना|करवा|रख|बुक)|कॉल ?बैक|अपॉइंटमेंट|अपोइंटमेंट|शे[डड़]\S*ल|बुक कर|(?:कॉल|फ़ोन|फोन) (?:करवा|करवाइए|करवाना|करवानी|कर दीजिए|कर दो|कीजिए|करना|करनी|चाहिए|बुक))/;
 const INTENT_LATIN = /\b(demo|meeting (?:chahiye|fix|karni|karna|karwa|rakh)|callback|call back|call (?:karwa|karva|karwao|kar do|kar dijiye|kijiye|chahiye)|schedule|book (?:kar|karo|kijiye))\b/i;
@@ -469,7 +469,7 @@ export const isClosing = (text: string) => { const t = text.trim(); return !!t &
 /** One short goodbye in the caller's language (never repeated filler lines). */
 export function goodbyeFor(text: string, session: CallLanguage, previous?: string): string {
   const l: ReplyLanguage = session === "en" ? "en" : session === "hi" ? "hi" : (detectCallerLanguage(text) ?? (previous ? detectCallerLanguage(previous) : undefined) ?? "en");
-  if (l === "en") return "You're welcome! Have a great day.";
-  if (l === "hi") return "धन्यवाद! आपका दिन शुभ हो।";
-  return "Thank you! आपका दिन अच्छा रहे।";
+  if (l === "en") return "You're welcome! Our team will call you soon to take this forward. Have a great day.";
+  if (l === "hi") return "धन्यवाद! हमारी team जल्दी ही आपको call करेगी। आपका दिन शुभ हो।";
+  return "Thank you! हमारी team जल्दी ही आपको call करेगी। आपका दिन अच्छा रहे।";
 }

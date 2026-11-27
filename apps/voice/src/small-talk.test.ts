@@ -51,3 +51,10 @@ describe("replyToOrphanedPlanFragment", () => {
     expect(replyToOrphanedPlanFragment("What does the business plan include?", "en")).toBeNull();
   });
 });
+
+describe("two greetings in a row", () => {
+  it("answers 'Hi, good afternoon, how are you?' with how it is doing", () => {
+    expect(replyToGreeting("Hi, good afternoon, how are you?", "en")).toBe("Good afternoon! I'm doing well, thank you. How can I help you today?");
+    expect(replyToGreeting("Hello, hi there!", "en")).toBe("Hi! How can I help you today?");
+  });
+});

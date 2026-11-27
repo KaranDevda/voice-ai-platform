@@ -37,7 +37,7 @@ describe("speed and pitch", () => {
   });
   it("does nothing at the neutral setting, and clamps wild values", () => {
     expect(applyProsody(tone, rate, { speed: 1, pitch: 0 })).toBe(tone);
-    expect(clampProsody({ speed: 5, pitch: -40 })).toEqual({ speed: 1.25, pitch: -3 });
+    expect(clampProsody({ speed: 5, pitch: -40 })).toEqual({ speed: 1.5, pitch: -3 });
   });
   it("works on a WAV file", () => {
     const wav = new Uint8Array(44 + tone.byteLength);
