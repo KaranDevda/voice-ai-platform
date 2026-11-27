@@ -24,6 +24,8 @@ export interface TtsEngine {
   cacheKey?: string;
   /** Part of the cache key for settings that change how the same text sounds (a voice's speed and pitch), so cached lines are never played with old settings. */
   variant?: string;
+  /** Set by engines that change speed themselves, cleanly and streamed (Maya 2 does it on its GPU server); the live sliders then use this instead of stretching the finished audio. */
+  setSpeed?(speed: number): void;
   speak(text: string, signal: AbortSignal): AsyncIterable<Uint8Array>;
 }
 
