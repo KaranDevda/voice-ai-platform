@@ -13,7 +13,8 @@ import type { AvatarStream } from "@/lib/avatar-stream";
 
 type Phase = "idle" | "connecting" | "live";
 type AiState = "listening" | "thinking" | "speaking";
-interface Line { who: "you" | "ai"; text: string }
+interface PlanRow { name: string; price: string; includes: string }
+interface Line { who: "you" | "ai"; text: string; plans?: { rows: PlanRow[]; notes: string[] } }
 interface Timing {
   turn: number; heardToSound: number | null; llmFirstTokenMs: number; firstSentenceMs: number; ttsFirstAudioMs: number; totalMs: number;
   answerMs?: number; speechToTextMs?: number; heardMs?: number; answerHeardMs?: number; source?: "model" | "saved_answer" | "scripted"; audioFromCache?: boolean;
@@ -33,6 +34,8 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
   const [notice, setNotice] = useState("");
   const [voice, setVoice] = useState(voices.find((v) => v.ref === initialVoice)?.ref ?? voices.find((v) => v.group === "cloned")?.ref ?? "pocket:alba");
   const [language, setLanguage] = useState<"en" | "hi" | "en-hi">("en-hi");
+  const [speed, setSpeed] = useState(1); // voice speed (1 = as made); changes are heard from the next sentence, even mid-call
+  const [pitch, setPitch] = useState(0);     // semitones
   const [listen, setListen] = useState<"close" | "anyone" | "push">("close");
   const [talking, setTalking] = useState(false); // hold-to-talk button or Space is down
   const [muted, setMuted] = useState(false);
@@ -148,6 +151,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
         heardAt.current = lastLoud.current || performance.now();
         awaitingSound.current = Number(e.turn);
         break;
+      case "plans": setLines((l) => [...l, { who: "ai", text: "", plans: { rows: e.rows as PlanRow[], notes: (e.notes as string[]) ?? [] } }]); break;
       case "assistant": setLines((l) => [...l, { who: "ai", text: String(e.text) }]); break;
       case "clear": stopAudio(); avatar.current?.clear(); break;
       case "timing": {
@@ -215,7 +219,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
       const socket = new WebSocket(`${url}?token=${encodeURIComponent(token)}`);
       socket.binaryType = "arraybuffer";
       ws.current = socket;
-      socket.onopen = () => socket.send(JSON.stringify({ type: "start", language, voice, greeting: true, listen, ...(lead ? { leadId: lead.id } : {}) }));
+      socket.onopen = () => socket.send(JSON.stringify({ type: "start", language, voice, greeting: true, listen, speed, pitch, ...(lead ? { leadId: lead.id } : {}) }));
       socket.onmessage = (m) => (typeof m.data === "string" ? onEvent(JSON.parse(m.data)) : onAudio(m.data as ArrayBuffer));
       socket.onclose = () => { if (ws.current === socket) stop(); };
       socket.onerror = () => { setError("Could not reach the voice service. Start everything with pnpm dev:stack (it runs the voice service on port 4001 and restarts it if it stops), then try again."); stop(); };
@@ -236,6 +240,12 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
   }
 
   const live = phase === "live";
+  /** Sliders work during a call too: the voice service applies the new speed / pitch from the next sentence. */
+  const tune = (next: { speed?: number; pitch?: number }) => {
+    if (next.speed !== undefined) setSpeed(next.speed);
+    if (next.pitch !== undefined) setPitch(next.pitch);
+    try { if (ws.current?.readyState === 1) ws.current.send(JSON.stringify({ type: "tune", ...next })); } catch { /* socket closed */ }
+  };
   const cloned = voices.filter((v) => v.group === "cloned");
   const stock = voices.filter((v) => v.group === "stock");
 
@@ -253,7 +263,19 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
               {lines.map((l, i) => (
                 <div key={i} className={l.who === "you" ? "justify-self-end" : "justify-self-start"}>
                   <div className="mb-0.5 text-xs text-muted-foreground"><T>{l.who === "you" ? "You" : "AI"}</T></div>
-                  <div className={`max-w-[34rem] rounded-2xl px-4 py-2 text-sm ${l.who === "you" ? "bg-primary-soft" : "bg-card"}`}>{l.text}</div>
+                  {l.plans ? (
+                    <div className="max-w-[40rem] overflow-hidden rounded-2xl border border-border bg-card text-sm shadow-sm">
+                      <table className="w-full border-collapse text-start">
+                        <thead className="bg-primary-soft text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-4 py-2 text-start"><T>Plan</T></th><th className="px-4 py-2 text-start"><T>Price</T></th><th className="px-4 py-2 text-start"><T>What you get</T></th></tr></thead>
+                        <tbody>{l.plans.rows.map((r) => (
+                          <tr key={r.name} className="border-t border-border align-top"><td className="px-4 py-2 font-semibold">{r.name}</td><td className="whitespace-nowrap px-4 py-2 font-medium text-primary">{r.price}</td><td className="px-4 py-2 text-muted-foreground">{r.includes}</td></tr>
+                        ))}</tbody>
+                      </table>
+                      {l.plans.notes.length > 0 && <div className="border-t border-border bg-muted px-4 py-2 text-xs text-muted-foreground">{l.plans.notes.join(" ")}</div>}
+                    </div>
+                  ) : (
+                    <div className={`max-w-[34rem] rounded-2xl px-4 py-2 text-sm ${l.who === "you" ? "bg-primary-soft" : "bg-card"}`}>{l.text}</div>
+                  )}
                 </div>
               ))}
               {partial && <div className="justify-self-end max-w-[34rem] rounded-2xl bg-primary-soft/60 px-4 py-2 text-sm italic text-muted-foreground">{partial}</div>}
@@ -303,7 +325,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
         </Card>
 
         <Card>
-          <CardHeader title="Settings" description="Applies the next time you press Start." />
+          <CardHeader title="Settings" description="Voice and language apply the next time you press Start. Speed and pitch can be changed any time." />
           <CardBody className="grid gap-4">
             <Field label="Voice">
               <Select value={voice} onChange={(e) => setVoice(e.target.value)} disabled={live} aria-label="Voice">
@@ -311,6 +333,13 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
                 <optgroup label="Free built-in voices (self-hosted)">{BUILT_IN.map((n) => <option key={n} value={`pocket:${n}`}>{n.charAt(0).toUpperCase() + n.slice(1)}</option>)}</optgroup>
                 <optgroup label="Stock voices (Deepgram)">{stock.map((v) => <option key={v.ref} value={v.ref}>{v.name} · {v.gender}</option>)}</optgroup>
               </Select>
+            </Field>
+            <Field label={`Voice speed: ${speed.toFixed(2)}×`} hint="Higher is faster. You can move this during a call; it is heard from the next sentence. Above 1.3 words start to blur.">
+              <input type="range" min={0.8} max={1.5} step={0.05} value={speed} onChange={(e) => tune({ speed: Number(e.target.value) })} aria-label="Voice speed" className="w-full" />
+            </Field>
+            <Field label={`Voice pitch: ${pitch > 0 ? "+" : ""}${pitch.toFixed(1)}`} hint="Semitones: negative is deeper, positive is higher.">
+              <input type="range" min={-3} max={3} step={0.5} value={pitch} onChange={(e) => tune({ pitch: Number(e.target.value) })} aria-label="Voice pitch" className="w-full" />
+              <button type="button" className="mt-1 text-xs text-muted-foreground underline" onClick={() => tune({ speed: 1, pitch: 0 })}><T>Reset to normal</T></button>
             </Field>
             <Field label="Who should it listen to?" hint={listen === "close" ? "Ignores voices that are quieter than yours, such as people further from the microphone. Speak at your normal volume near the mic." : listen === "push" ? "Hears nothing until you hold the Talk button or the Space bar. The most reliable choice in a noisy room." : "Hears every voice it can pick up. Use only in a quiet room."}>
               <Select value={listen} onChange={(e) => setListen(e.target.value as typeof listen)} disabled={live} aria-label="Who should it listen to">

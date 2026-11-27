@@ -10,6 +10,7 @@ import { askAgainSlow, greetingFix, sorryAgain, stillWorking, strictNote, wrongL
 import { matchGender, type Gender } from "./gender";
 import { detectHandoff, HANDOFF_ENGLISH, HANDOFF_HINDI, commitsToConnect, isAgreement, offeredHandoff, type HandoffEnabled, type HandoffReason } from "./handoff";
 import { replyToGreeting, replyToIdentityQuestion, replyToOrphanedPlanFragment, completeOrphanedPlanFragment } from "./small-talk";
+import { asksAboutPlans, extractPlans } from "./plans-table";
 import { goodbyeFor, isClosing, type BookingFlow } from "./booking";
 import type { TranscriptSegment } from "@voiceai/shared";
 
@@ -33,6 +34,7 @@ export type ServerEvent =
   | { type: "partial"; text: string }
   | { type: "user"; text: string; turn: number; /** the caller kept talking: this replaces their previous line */ replace?: boolean }
   | { type: "assistant"; text: string; turn: number }
+  | { type: "plans"; turn: number; rows: { name: string; price: string; includes: string }[]; notes: string[] }
   | { type: "clear" }
   | {
       type: "timing"; turn: number;
@@ -482,6 +484,8 @@ export class Conversation {
         const passages = this.o.ground ? await this.o.ground(lastUser, earlierUser).catch(() => []) : [];
         groundMs = this.now() - tGround;
         if (signal.aborted) return;
+        // A plans / pricing question is also shown as a table on screen while the AI explains it in speech.
+        if (passages.length && asksAboutPlans(lastUser)) { const card = extractPlans(passages); if (card) this.o.send({ type: "plans", turn, ...card }); }
         const missingPlan = this.o.ground ? unknownPlanReply(lastUser, passages, this.o.language, earlierUser, !!this.o.handoff?.enabled.person) : null;
         if (missingPlan) {
           scripted = missingPlan;

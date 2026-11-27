@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 clip="$(pbpaste)"
-get() { printf '%s\n' "$clip" | grep -E "^$1=" | tail -1 | cut -d= -f2- | tr -d '[:space:]'; }
+get() { printf '%s\n' "$clip" | grep -E "^$1=" | tail -1 | cut -d= -f2- | tr -d '[:space:]' || true; }
 MAYA2_URL="$(get MAYA2_URL)"; MAYA2_TOKEN="$(get MAYA2_TOKEN)"; INDIC_STT_URL="$(get INDIC_STT_URL)"; AVATAR_URL="$(get AVATAR_URL)"
 [ -n "$MAYA2_URL" ] && [ -n "$MAYA2_TOKEN" ] || { echo "No MAYA2_URL / MAYA2_TOKEN in the clipboard. Copy the lines the notebook printed, then run this again."; exit 1; }
 setenv() { # file key value

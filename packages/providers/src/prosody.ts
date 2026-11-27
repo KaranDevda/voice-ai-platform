@@ -6,7 +6,7 @@
  */
 export interface Prosody { speed: number; pitch: number }
 
-export const SPEED_RANGE = { min: 0.8, max: 1.25 } as const;
+export const SPEED_RANGE = { min: 0.8, max: 1.5 } as const;
 /** Semitones. Plus or minus 3 is a clearly different voice that is still easy to understand. */
 export const PITCH_RANGE = { min: -3, max: 3 } as const;
 

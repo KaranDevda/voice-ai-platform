@@ -124,3 +124,29 @@ export function withProsody(engine: TtsEngine, prosody: Partial<Prosody>): TtsEn
     },
   };
 }
+
+/**
+ * A speed and pitch the caller can change while the call is running (the sliders on the Live page). Read on every sentence, so a change
+ * is heard from the next sentence on. Left at 1x / 0 the audio streams straight through, as before.
+ */
+export function withLiveProsody(engine: TtsEngine): TtsEngine & { tune(p: Partial<Prosody>): void } {
+  let current: Prosody = clampProsody({});
+  const wrapped: TtsEngine & { tune(p: Partial<Prosody>): void } = {
+    ...engine,
+    tune(p) { current = clampProsody(p); wrapped.variant = `${engine.variant ?? ""}|live-s${current.speed.toFixed(2)}p${current.pitch.toFixed(1)}`; },
+    async *speak(text, signal) {
+      if (isNeutralProsody(current)) { yield* engine.speak(text, signal); return; }
+      const parts: Uint8Array[] = [];
+      for await (const chunk of engine.speak(text, signal)) parts.push(chunk);
+      const bytes = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+      let at = 0;
+      for (const p of parts) { bytes.set(p, at); at += p.length; }
+      const pcm = engine.encoding === "mulaw" ? mulawToPcm16(bytes) : new Int16Array(bytes.buffer.slice(0, bytes.length & ~1));
+      const shaped = applyProsody(pcm, engine.rate, current);
+      const out = engine.encoding === "mulaw" ? pcmToMulaw8k(shaped, engine.rate) : asBytes(shaped);
+      const step = engine.encoding === "mulaw" ? engine.rate / 4 : engine.rate / 4 * 2;
+      for (let i = 0; i < out.length; i += step) { if (signal.aborted) return; yield out.slice(i, Math.min(out.length, i + step)); }
+    },
+  };
+  return wrapped;
+}

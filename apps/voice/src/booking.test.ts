@@ -124,8 +124,8 @@ describe("booking: intent, goodbye and today's note", () => {
   it("says one short goodbye in the caller's language", () => {
     for (const t of ["thank you", "Okay, thanks. Bye!", "धन्यवाद", "ठीक है, धन्यवाद", "shukriya ji", "take care"]) expect(isClosing(t)).toBe(true);
     for (const t of ["thanks, what about the Starter plan?", "धन्यवाद, और Starter plan?"]) expect(isClosing(t)).toBe(false);
-    expect(goodbyeFor("धन्यवाद", "en-hi")).toBe("धन्यवाद! आपका दिन शुभ हो।");
-    expect(goodbyeFor("thank you", "en")).toBe("You're welcome! Have a great day.");
+    expect(goodbyeFor("धन्यवाद", "en-hi")).toBe("धन्यवाद! हमारी team जल्दी ही आपको call करेगी। आपका दिन शुभ हो।");
+    expect(goodbyeFor("thank you", "en")).toBe("You're welcome! Our team will call you soon to take this forward. Have a great day.");
   });
 
   it("gives the model today's date in India", () => {

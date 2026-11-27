@@ -13,7 +13,7 @@ import {
   kokoroHindiVoiceFor, stockVoiceById, voiceFileStem, type LlmAdapter, type PocketLanguage, type SttAdapter,
 } from "@voiceai/providers";
 import { sendEmail, smtpFromEnv } from "@voiceai/providers";
-import { chatterboxEngine, maya2Engine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody } from "./engines";
+import { chatterboxEngine, maya2Engine, elevenLabsPcmEngine, mulawAdapterAsPcm, mulawAdapterEngine, pocketMulawEngine, pocketPcmEngine, withProsody, withLiveProsody } from "./engines";
 import { MulawTo16k } from "./telephony-audio";
 import { expandServiceOverviewQuery, hindiToEnglishKeywords, relevantExcerpt, unknownPlanReply } from "./knowledge";
 import { languageNote, sessionLanguageRule } from "./language";
@@ -267,9 +267,12 @@ async function engineFor(voice: string, user: VoiceTokenClaims, say: Say, langua
   throw new Error("unknown voice");
 }
 
+const tuneMsg = z.object({ type: z.literal("tune"), speed: z.number().min(0.5).max(2).optional(), pitch: z.number().min(-6).max(6).optional() });
 const start = z.object({
   type: z.literal("start"), language: z.enum(["en", "hi", "en-hi"]).default("en"), voice: z.string().min(1).max(120), greeting: z.boolean().default(true),
   listen: z.enum(["close", "anyone", "push"]).default("close"),
+  /** Speed (1 = normal) and pitch (semitones) chosen on the Live page; can be changed again during the call with a "tune" message. */
+  speed: z.number().min(0.5).max(2).optional(), pitch: z.number().min(-6).max(6).optional(),
   /** Set when this is an outbound call to a lead: Do Not Disturb, consent and calling hours are checked before anything is spoken. */
   leadId: z.string().uuid().optional(),
 });
@@ -370,7 +373,7 @@ async function saveCall(convo: Conversation, r: SessionRecord | null): Promise<v
 }
 
 interface SessionRecord { user: AuthUser; callId: string; startedAt: Date; language: string; direction: "inbound" | "outbound"; leadId?: string; voiceProfileId?: string }
-interface StartParams { voice: string; language: "en" | "hi" | "en-hi"; greeting: boolean; listen: ListenMode; leadId?: string; opening?: string }
+interface StartParams { voice: string; language: "en" | "hi" | "en-hi"; greeting: boolean; listen: ListenMode; leadId?: string; opening?: string; speed?: number; pitch?: number }
 
 /** The call may not go ahead (not allowed, or on the Do Not Disturb list). `code` is the WebSocket close code, `event` what the client is told. */
 /**
@@ -402,7 +405,7 @@ class SessionRefused extends Error { constructor(public code: number, public eve
 async function buildSession(
   claims: VoiceTokenClaims, p: StartParams, io: { send: Say; sendAudio: (chunk: Uint8Array) => void },
   o: { phone: boolean; direction: "inbound" | "outbound"; callId?: string },
-): Promise<{ convo: Conversation; record: SessionRecord | null }> {
+): Promise<{ convo: Conversation; record: SessionRecord | null; tune: (x: { speed?: number; pitch?: number }) => void }> {
   const tag = claims.sub.slice(0, 8);
   const voice = p.voice || claims.voice || "pocket:alba";
   const user = env("DATABASE_URL") ? await loadAuthUser(getDb(), claims.org, claims.sub).catch(() => null) : null;
@@ -420,8 +423,11 @@ async function buildSession(
     }
   }
   await findWebBase();
-  const tts = await engineFor(voice, claims, io.send, p.language, o.phone);
-  tts.cacheKey = `${voice}|${p.language}|${o.phone ? "phone" : "web"}${tts.variant ? `|${tts.variant}` : ""}`;
+  const tts = withLiveProsody(await engineFor(voice, claims, io.send, p.language, o.phone));
+  tts.tune({ speed: p.speed, pitch: p.pitch });
+  const ttsCacheKey = () => `${voice}|${p.language}|${o.phone ? "phone" : "web"}${tts.variant ? `|${tts.variant}` : ""}`;
+  tts.cacheKey = ttsCacheKey();
+  const tune = (x: { speed?: number; pitch?: number }) => { tts.tune(x); tts.cacheKey = ttsCacheKey(); };
   if (env("ACK") !== "off") for (const w of p.language === "en" ? ["Sure."] : p.language === "hi" ? ["जी।"] : ["Sure.", "जी।"]) void primeAck(tts, w);
   // The organisation's own AI instruction and greeting (Settings), and its knowledge base, when this is a real signed-in user.
   let systemPrompt = systemPromptFor(p.language), greeting = GREETING, disclosure = "This call may be recorded.";
@@ -499,7 +505,7 @@ async function buildSession(
   const record: SessionRecord | null = user?.permissions.includes("calls.place")
     ? { user, callId, startedAt: new Date(), language: p.language, direction: o.direction, leadId: p.leadId, voiceProfileId: voice.startsWith("profile:") ? voice.slice(8) : undefined }
     : null;
-  return { convo, record };
+  return { convo, record, tune };
 }
 
 /** A finished call: stop the conversation, then save it. A call that fails to save is logged, never lost silently. */
@@ -514,6 +520,7 @@ function handle(ws: WebSocket, claims: VoiceTokenClaims) {
   let convo: Conversation | null = null;
   let record: SessionRecord | null = null;
   let live: LiveCall | null = null;
+  let tuneNow: ((x: { speed?: number; pitch?: number }) => void) | null = null;
   const send = (e: ServerEvent) => { if (ws.readyState === 1) ws.send(JSON.stringify(e)); };
   const startTimer = setTimeout(() => ws.close(4000, "no start message"), 5000);
   const limit = setTimeout(() => ws.close(4001, "call time limit"), MAX_CALL_MS);
@@ -525,13 +532,15 @@ function handle(ws: WebSocket, claims: VoiceTokenClaims) {
     if ((msg as { type?: string })?.type === "stop") return void ws.close(1000);
     // Keypad presses from the browser practice call are accepted and ignored for now: there is no menu to drive here, and the digit is deliberately not logged (it may be a PIN).
     if ((msg as { type?: string })?.type === "dtmf") return;
+    // Speed and pitch sliders on the Live page: heard from the next sentence on.
+    if ((msg as { type?: string })?.type === "tune") { const t = tuneMsg.safeParse(msg); if (t.success) tuneNow?.(t.data); return; }
     if (convo) return;
     const parsed = start.safeParse(msg);
     if (!parsed.success) { send({ type: "error", message: "invalid start message" }); return void ws.close(4002, "bad start"); }
     clearTimeout(startTimer);
     try {
       const built = await buildSession(claims, parsed.data, tapIo(() => live, { send, sendAudio: (chunk) => { if (ws.readyState === 1) ws.send(chunk); } }), { phone: false, direction: parsed.data.leadId ? "outbound" : "inbound" });
-      convo = built.convo; record = built.record;
+      convo = built.convo; record = built.record; tuneNow = built.tune;
       live = registerLive(record, convo);
       sessions.add(convo);
       await convo.start();
