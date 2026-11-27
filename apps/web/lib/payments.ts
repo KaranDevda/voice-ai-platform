@@ -4,6 +4,7 @@ import { createPayments } from "@voiceai/providers";
 const env = (k: string) => process.env[k]?.trim() || undefined;
 export const paymentGateways = () => createPayments({
   razorpay: env("RAZORPAY_KEY_ID") && env("RAZORPAY_KEY_SECRET") ? { keyId: env("RAZORPAY_KEY_ID")!, keySecret: env("RAZORPAY_KEY_SECRET")! } : undefined,
+  cashfree: env("CASHFREE_PG_APP_ID") && env("CASHFREE_PG_SECRET_KEY") ? { appId: env("CASHFREE_PG_APP_ID")!, secretKey: env("CASHFREE_PG_SECRET_KEY")!, env: env("CASHFREE_PG_ENV") === "production" ? "production" : "sandbox" } : undefined,
   stripeSecretKey: env("STRIPE_SECRET_KEY"),
   paypal: env("PAYPAL_CLIENT_ID") && env("PAYPAL_CLIENT_SECRET") ? { clientId: env("PAYPAL_CLIENT_ID")!, clientSecret: env("PAYPAL_CLIENT_SECRET")!, baseUrl: env("PAYPAL_BASE_URL") } : undefined,
   paystackSecretKey: env("PAYSTACK_SECRET_KEY"),
@@ -11,10 +12,11 @@ export const paymentGateways = () => createPayments({
   cryptomus: env("CRYPTOMUS_MERCHANT_ID") && env("CRYPTOMUS_API_KEY") ? { merchantId: env("CRYPTOMUS_MERCHANT_ID")!, apiKey: env("CRYPTOMUS_API_KEY")! } : undefined,
 });
 export const gatewayConfigured = () => ({
-  razorpay: !!(env("RAZORPAY_KEY_ID") && env("RAZORPAY_KEY_SECRET")), stripe: !!env("STRIPE_SECRET_KEY"),
+  razorpay: !!(env("RAZORPAY_KEY_ID") && env("RAZORPAY_KEY_SECRET")), cashfree: !!(env("CASHFREE_PG_APP_ID") && env("CASHFREE_PG_SECRET_KEY")), stripe: !!env("STRIPE_SECRET_KEY"),
   paypal: !!(env("PAYPAL_CLIENT_ID") && env("PAYPAL_CLIENT_SECRET")), paystack: !!env("PAYSTACK_SECRET_KEY"),
   flutterwave: !!env("FLUTTERWAVE_SECRET_KEY"), cryptomus: !!(env("CRYPTOMUS_MERCHANT_ID") && env("CRYPTOMUS_API_KEY")),
 });
+export const cashfreeSecretKey = () => env("CASHFREE_PG_SECRET_KEY") ?? "";
 export const razorpayWebhookSecret = () => env("RAZORPAY_WEBHOOK_SECRET") ?? "";
 export const stripeWebhookSecret = () => env("STRIPE_WEBHOOK_SECRET") ?? "";
 export const paypalWebhookId = () => env("PAYPAL_WEBHOOK_ID") ?? "";
@@ -31,6 +33,7 @@ export const appUrl = (req: Request) => (env("APP_URL") ?? new URL(req.url).orig
 export function gatewayStatus(base: string) {
   const defs: { id: string; label: string; keys: string[]; webhookKeys: string[]; path: string; note: string }[] = [
     { id: "razorpay", label: "Razorpay", keys: ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"], webhookKeys: ["RAZORPAY_WEBHOOK_SECRET"], path: "razorpay-webhook", note: "Webhook event: payment_link.paid" },
+    { id: "cashfree", label: "Cashfree Payments", keys: ["CASHFREE_PG_APP_ID", "CASHFREE_PG_SECRET_KEY"], webhookKeys: [], path: "cashfree-webhook", note: "Webhook events: PAYMENT_SUCCESS_WEBHOOK and REFUND_STATUS_WEBHOOK (signed with the secret key). Set CASHFREE_PG_ENV to production for real money; sandbox is the default." },
     { id: "stripe", label: "Stripe", keys: ["STRIPE_SECRET_KEY"], webhookKeys: ["STRIPE_WEBHOOK_SECRET"], path: "stripe-webhook", note: "Webhook events: checkout.session.completed, checkout.session.async_payment_succeeded, charge.refunded and charge.dispute.created (the last two take credit back automatically)" },
     { id: "paypal", label: "PayPal", keys: ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"], webhookKeys: ["PAYPAL_WEBHOOK_ID"], path: "paypal-webhook", note: "Webhook event: PAYMENT.CAPTURE.COMPLETED. Set PAYPAL_BASE_URL to the sandbox address while testing." },
     { id: "paystack", label: "Paystack", keys: ["PAYSTACK_SECRET_KEY"], webhookKeys: [], path: "paystack-webhook", note: "Webhook event: charge.success (signed with the secret key)" },

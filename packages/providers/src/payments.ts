@@ -47,13 +47,32 @@ export function verifyCryptomusSignature(body: Record<string, unknown>, apiKey: 
   return safeEqual(createHash("md5").update(Buffer.from(json).toString("base64") + apiKey).digest("hex"), sign.toLowerCase());
 }
 
+/**
+ * Cashfree signs "<x-webhook-timestamp><raw body>" with the Payment Gateway secret key (HMAC-SHA256, base64) and sends it in x-webhook-signature.
+ * Old timestamps are refused (replay).
+ */
+export function verifyCashfreeSignature(rawBody: string, signature: string | null | undefined, timestamp: string | null | undefined, secret: string, nowS = Math.floor(Date.now() / 1000), toleranceS = 600): boolean {
+  if (!signature || !timestamp || !secret) return false;
+  const t = Number(timestamp);
+  if (!Number.isFinite(t)) return false;
+  // Cashfree sends the time in milliseconds; accept seconds too.
+  const ts = t > 1e12 ? t / 1000 : t;
+  if (Math.abs(nowS - ts) > toleranceS) return false;
+  return safeEqual(createHmac("sha256", secret).update(`${timestamp}${rawBody}`).digest("base64"), signature.trim());
+}
+
 const major = (minor: number) => (minor / 100).toFixed(2);
 
 export interface PaymentsConfig {
   razorpay?: { keyId: string; keySecret: string }; stripeSecretKey?: string;
+  cashfree?: { appId: string; secretKey: string; env?: "sandbox" | "production" };
   paypal?: { clientId: string; clientSecret: string; baseUrl?: string }; paystackSecretKey?: string; flutterwaveSecretKey?: string; cryptomus?: { merchantId: string; apiKey: string };
   fetch?: typeof fetch;
 }
+
+const CASHFREE_API_VERSION = "2023-08-01";
+const cashfreeBase = (env: "sandbox" | "production") => (env === "production" ? "https://api.cashfree.com/pg" : "https://sandbox.cashfree.com/pg");
+const cashfreeHeaders = (c: { appId: string; secretKey: string }) => ({ "x-client-id": c.appId, "x-client-secret": c.secretKey, "x-api-version": CASHFREE_API_VERSION, "content-type": "application/json" });
 
 export function createPayments(config: PaymentsConfig) {
   const f = config.fetch ?? fetch;
@@ -131,6 +150,32 @@ export function createPayments(config: PaymentsConfig) {
       const r = await send("flutterwave", `https://api.flutterwave.com/v3/transactions/${encodeURIComponent(transactionId)}/verify`, { method: "GET", headers: { authorization: `Bearer ${config.flutterwaveSecretKey}` } });
       const d = r.data ?? {};
       return { successful: r.status === "success" && d.status === "successful", txRef: typeof d.tx_ref === "string" ? d.tx_ref : null, amountMinor: typeof d.amount === "number" ? Math.round(d.amount * 100) : null, currency: typeof d.currency === "string" ? d.currency : null, id: String(d.id ?? transactionId) };
+    },
+    /**
+     * Cashfree (UPI, cards, netbanking, wallets; rupees only): creates an order and returns its payment session. The browser then opens Cashfree's
+     * checkout with that session (a small page of ours does it). Our payment id is the order id, so the webhook matches straight back.
+     */
+    async cashfreeOrder(i: { amountMinor: number; paymentId: string; description: string; email: string; phone?: string; customerId: string; returnUrl: string; notifyUrl?: string }): Promise<{ id: string; sessionId: string; env: "sandbox" | "production" }> {
+      if (!config.cashfree) throw new ProviderError("Cashfree is not set up (CASHFREE_PG_APP_ID, CASHFREE_PG_SECRET_KEY)", 503, "cashfree");
+      const env = config.cashfree.env ?? "sandbox";
+      const r = await send("cashfree", `${cashfreeBase(env)}/orders`, {
+        method: "POST", headers: cashfreeHeaders(config.cashfree),
+        body: JSON.stringify({
+          order_id: i.paymentId, order_amount: Number(major(i.amountMinor)), order_currency: "INR", order_note: i.description.slice(0, 100),
+          customer_details: { customer_id: i.customerId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 50), customer_email: i.email, customer_phone: /^\d{10}$/.test(i.phone ?? "") ? i.phone : "9999999999" },
+          order_meta: { return_url: i.returnUrl, ...(i.notifyUrl ? { notify_url: i.notifyUrl } : {}) },
+        }),
+      });
+      if (!r.payment_session_id || !r.order_id) throw new ProviderError("Cashfree did not return a payment session", 502, "cashfree");
+      // Cashfree sometimes returns the session id with "payment" doubled at the end ("...paymentpayment"), which its own checkout refuses: drop the extra one.
+      const sessionId = String(r.payment_session_id).replace(/paymentpayment$/, "payment");
+      return { id: String(r.order_id), sessionId, env };
+    },
+    /** Asks Cashfree directly whether an order is paid (used to double-check a webhook before crediting). */
+    async cashfreeOrderStatus(orderId: string): Promise<{ paid: boolean; amountMinor: number | null; currency: string | null }> {
+      if (!config.cashfree) throw new ProviderError("Cashfree is not set up (CASHFREE_PG_APP_ID, CASHFREE_PG_SECRET_KEY)", 503, "cashfree");
+      const r = await send("cashfree", `${cashfreeBase(config.cashfree.env ?? "sandbox")}/orders/${encodeURIComponent(orderId)}`, { method: "GET", headers: cashfreeHeaders(config.cashfree) });
+      return { paid: r.order_status === "PAID", amountMinor: typeof r.order_amount === "number" ? Math.round(r.order_amount * 100) : null, currency: typeof r.order_currency === "string" ? r.order_currency : null };
     },
     /** Cryptomus: a crypto payment page for a fiat amount. The webhook carries the invoice uuid, which is what we keep. */
     async cryptomusInvoice(i: { amountMinor: number; currency: string; orderId: string; callbackUrl: string; returnUrl: string }): Promise<{ id: string; url: string }> {

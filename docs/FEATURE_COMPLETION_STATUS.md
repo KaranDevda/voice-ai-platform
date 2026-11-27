@@ -2,6 +2,11 @@
 
 This is an implementation audit of the supplied product list. “Implemented” means there is application code; it does not mean a production provider has been configured or tested. Recheck this file as integrations are added.
 
+## Update, 27 November 2026
+
+- **Cashfree Payments added as a wallet top-up gateway** (rupees: UPI, cards, netbanking). Create order (`POST /pg/orders`) then Cashfree's own checkout page (`/billing/cashfree`); `POST /api/billing/cashfree-webhook` checks the signature (HMAC-SHA256 of timestamp + body, base64), asks Cashfree whether the order is paid, then credits once; refunds take the credit back. Keys: `CASHFREE_PG_APP_ID`, `CASHFREE_PG_SECRET_KEY`, `CASHFREE_PG_ENV` (sandbox by default), settable under Platform > Provider keys. Migration `0053_cashfree_gateway.sql`. Unit-tested against mocked answers only: **not yet run against a Cashfree sandbox account**. The customer phone sent to Cashfree is a placeholder (9999999999) until the top-up form collects a real one. Separate from the Cashfree *Verification* keys used for KYC.
+- **Live page:** speed and pitch sliders (Maya 2 speed is done on its GPU server), plans shown as a table, answer-first prompt with the team call at the end of the conversation.
+
 ## Update, 24 November 2026
 
 - **Voice answers:** the system prompt was rewritten and cut from about 2,300–2,900 tokens to about 750–890 (answer only what was asked, only company-knowledge facts, one or two sentences, no repeated filler, honest about transfers, simple spoken Hindi, real Hinglish with English product words). Each turn's note now carries today's date and time in India and the caller's name exactly as first heard. `PROMPT_VERSION=legacy` brings the old prompt back for comparisons.

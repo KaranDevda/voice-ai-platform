@@ -4,7 +4,7 @@ import { toResponse } from "@/lib/api-errors";
 import { appUrl, paymentGateways } from "@/lib/payments";
 import { assertSameOrigin, getDb, requireUser } from "@/lib/server";
 
-const body = z.object({ gateway: z.enum(["razorpay", "stripe", "paypal", "paystack", "flutterwave", "cryptomus"]), amount: z.number().positive().max(10_000_000), currency: z.string().length(3).default("INR") });
+const body = z.object({ gateway: z.enum(["razorpay", "cashfree", "stripe", "paypal", "paystack", "flutterwave", "cryptomus"]), amount: z.number().positive().max(10_000_000), currency: z.string().length(3).default("INR") });
 
 /** Starts adding credit: returns the gateway's payment page. The credit arrives when the gateway's webhook confirms the payment, not here. */
 export async function POST(req: Request) {
@@ -21,6 +21,7 @@ export async function POST(req: Request) {
     const email = (await userEmail(getDb(), user)) ?? "billing@example.com";
     const made =
       b.gateway === "razorpay" ? await g.razorpayLink({ amountPaise: amountMinor, paymentId, description, callbackUrl: `${back}?paid=1` })
+      : b.gateway === "cashfree" ? await g.cashfreeOrder({ amountMinor, paymentId, description, email, customerId: user.id, returnUrl: `${back}?paid=1`, notifyUrl: base.startsWith("https://") ? `${base}/api/billing/cashfree-webhook` : undefined }).then((o) => ({ id: o.id, url: `${base}/billing/cashfree?s=${encodeURIComponent(o.sessionId)}&e=${o.env}` }))
       : b.gateway === "stripe" ? await g.stripeCheckout({ amountMinor, currency, paymentId, description, successUrl: `${back}?paid=1`, cancelUrl: `${back}?cancelled=1` })
       : b.gateway === "paypal" ? await g.paypalOrder({ amountMinor, currency, paymentId, description, returnUrl: `${base}/api/billing/paypal-return`, cancelUrl: `${back}?cancelled=1` })
       : b.gateway === "paystack" ? await g.paystackInit({ email, amountMinor, currency, reference: paymentId, callbackUrl: `${back}?paid=1` })
