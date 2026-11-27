@@ -105,12 +105,12 @@ export function createMaya2(config: Maya2Config) {
     return vid;
   }
 
-  async function request(text: string, voiceId: string, format: "wav" | "pcm", signal?: AbortSignal): Promise<Response> {
+  async function request(text: string, voiceId: string, format: "wav" | "pcm", signal?: AbortSignal, speed = 1): Promise<Response> {
     const vid = await ensureVoice(voiceId, signal);
     const t = maya2Text(text);
     const res = await doFetch(`${base}/v1/audio/speech`, {
       method: "POST", headers: headers({ "content-type": "application/json" }), signal,
-      body: JSON.stringify({ model: "maya3", input: t.text, voice: vid, language: t.language, response_format: format, normalize: true }),
+      body: JSON.stringify({ model: "maya3", input: t.text, voice: vid, language: t.language, response_format: format, normalize: true, ...(Math.abs(speed - 1) > 0.01 ? { speed } : {}) }),
     });
     if (res.status === 404 || res.status === 400) known.delete(vid); // the server restarted and lost the voice: register it again next time
     if (!res.ok) throw new Error(`Maya 2 failed: ${res.status} ${(await res.text().catch(() => "")).slice(0, 160)}`);
@@ -123,8 +123,8 @@ export function createMaya2(config: Maya2Config) {
       return new Uint8Array(await (await request(text, voiceId, "wav", signal)).arrayBuffer());
     },
     /** Raw 16-bit 24 kHz mono audio, yielded as it is generated: this is what makes the first sound start in about 0.13 s. */
-    async *pcm(text: string, voiceId: string, signal?: AbortSignal): AsyncGenerator<Uint8Array> {
-      const res = await request(text, voiceId, "pcm", signal);
+    async *pcm(text: string, voiceId: string, signal?: AbortSignal, speed = 1): AsyncGenerator<Uint8Array> {
+      const res = await request(text, voiceId, "pcm", signal, speed);
       if (!res.body) throw new Error("Maya 2 sent no audio");
       const reader = res.body.getReader();
       let odd: number | null = null; // a sample can be split across network chunks: only whole samples go out

@@ -90,12 +90,14 @@ export function chatterboxEngine(baseUrl: string, voiceId: string, opts: { token
  */
 export function maya2Engine(baseUrl: string, voiceId: string, opts: { token?: string; voicesDir?: string; loadRecording?: (voiceId: string) => Promise<Uint8Array | null | undefined>; doFetch?: typeof fetch } = {}): TtsEngine {
   const client = createMaya2({ baseUrl, token: opts.token, voicesDir: opts.voicesDir, loadRecording: opts.loadRecording, fetch: opts.doFetch });
+  let speed = 1;
   return {
     encoding: "linear16",
     rate: 24_000,
     cacheKey: "maya2",
+    setSpeed(s) { speed = Math.min(1.6, Math.max(0.6, s)); },
     async *speak(text, signal) {
-      for await (const chunk of client.pcm(text, voiceId, signal)) { if (signal.aborted) return; yield chunk; }
+      for await (const chunk of client.pcm(text, voiceId, signal, speed)) { if (signal.aborted) return; yield chunk; }
     },
   };
 }
@@ -133,7 +135,10 @@ export function withLiveProsody(engine: TtsEngine): TtsEngine & { tune(p: Partia
   let current: Prosody = clampProsody({});
   const wrapped: TtsEngine & { tune(p: Partial<Prosody>): void } = {
     ...engine,
-    tune(p) { current = clampProsody(p); wrapped.variant = `${engine.variant ?? ""}|live-s${current.speed.toFixed(2)}p${current.pitch.toFixed(1)}`; },
+    tune(p) {
+      // An engine that can change speed itself (Maya 2) does it cleanly while streaming; only pitch is left to the local stretch.
+      if (engine.setSpeed) { engine.setSpeed(p.speed ?? 1); current = clampProsody({ speed: 1, pitch: p.pitch }); wrapped.variant = `${engine.variant ?? ""}|live-s${(p.speed ?? 1).toFixed(2)}p${current.pitch.toFixed(1)}`; return; }
+      current = clampProsody(p); wrapped.variant = `${engine.variant ?? ""}|live-s${current.speed.toFixed(2)}p${current.pitch.toFixed(1)}`; },
     async *speak(text, signal) {
       if (isNeutralProsody(current)) { yield* engine.speak(text, signal); return; }
       const parts: Uint8Array[] = [];

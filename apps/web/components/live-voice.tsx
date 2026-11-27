@@ -34,7 +34,7 @@ export function LiveVoice({ voices, lead, initialVoice }: { voices: VoiceChoice[
   const [notice, setNotice] = useState("");
   const [voice, setVoice] = useState(voices.find((v) => v.ref === initialVoice)?.ref ?? voices.find((v) => v.group === "cloned")?.ref ?? "pocket:alba");
   const [language, setLanguage] = useState<"en" | "hi" | "en-hi">("en-hi");
-  const [speed, setSpeed] = useState(1); // voice speed (1 = as made); changes are heard from the next sentence, even mid-call
+  const [speed, setSpeed] = useState(1.15); // voice speed (1 = as made); changes are heard from the next sentence, even mid-call
   const [pitch, setPitch] = useState(0);     // semitones
   const [listen, setListen] = useState<"close" | "anyone" | "push">("close");
   const [talking, setTalking] = useState(false); // hold-to-talk button or Space is down
