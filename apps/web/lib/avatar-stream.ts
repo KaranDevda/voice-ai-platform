@@ -7,7 +7,7 @@
  * Frames are small rectangles (the lower face, which is all that moves) drawn over the photo the page already has.
  */
 
-interface Segment { id: number; startPerf: number; durMs: number; frames: (ImageBitmap | undefined)[]; count?: number }
+interface Segment { id: number; startPerf: number; durMs: number; env: Float32Array; frames: (ImageBitmap | undefined)[]; count?: number }
 interface Open { id: number; startAt: number; endAt: number; ctx: AudioContext; chunks: ArrayBuffer[]; samples: number; rate: number; first: boolean }
 export interface AvatarStats { fps: number; renderMs: number; audioMs: number; firstFrameMs: number | null; late: number }
 
@@ -109,7 +109,10 @@ export class AvatarStream {
     const dv = new DataView(bytes.buffer); dv.setUint32(0, c.id, true); dv.setUint32(4, c.rate, true);
     let o = 8; for (const b of c.chunks) { bytes.set(new Uint8Array(b), o); o += b.byteLength; }
     const durMs = (c.samples / c.rate) * 1000;
-    this.segs.set(c.id, { id: c.id, startPerf: this.toPerf(c.ctx, c.startAt), durMs, frames: [] });
+    const all = new Int16Array(bytes.buffer, 8, c.samples);
+    const win = Math.max(1, Math.round(c.rate * 0.05)), env = new Float32Array(Math.ceil(c.samples / win));
+    for (let k = 0; k < env.length; k++) { let e = 0; const a = k * win, b = Math.min(c.samples, a + win); for (let i = a; i < b; i++) e += all[i]! * all[i]!; env[k] = Math.sqrt(e / (b - a)) / 32768; }
+    this.segs.set(c.id, { id: c.id, startPerf: this.toPerf(c.ctx, c.startAt), durMs, env, frames: [] });
     this.sentAt.set(c.id, performance.now());
     this.lastEnd = c.endAt;
     this.ws.send(bytes);
@@ -122,8 +125,28 @@ export class AvatarStream {
     this.segs.clear(); this.drawIdle();
   }
 
-  private drawIdle() {
-    this.g.drawImage(this.idle, 0, 0, this.size.w, this.size.h); this.showing = "idle";
+  private drawIdle() { this.paint(undefined, 0); this.showing = "idle"; }
+
+  // Smoothed speech energy (0..1) and a slow-moving "gesture" phase: they drive head nods and sway so the person is never frozen.
+  private energy = 0; private lastT = 0; private nod = 0; private beat = 0;
+
+  /** Draws the photo (and the mouth patch) with natural motion: breathing, slow head sway, and nods that follow the voice. */
+  private paint(bm: ImageBitmap | undefined, target: number) {
+    const { w, h } = this.size, t = performance.now() / 1000, dt = Math.min(0.1, t - (this.lastT || t)); this.lastT = t;
+    this.energy += (target - this.energy) * Math.min(1, dt * 8);
+    const talk = Math.min(1, this.energy * 5);
+    if (target > 0.12 && this.beat < t - 0.5) { this.beat = t; this.nod = 1; }          // a stressed syllable: a small nod
+    this.nod = Math.max(0, this.nod - dt * 3);
+    const breathe = Math.sin(t * 1.3) * 0.004;
+    const rot = (Math.sin(t * 0.55) * 0.35 + Math.sin(t * 1.7) * 0.15 * talk) * Math.PI / 180;   // head tilt, degrees
+    const dx = Math.sin(t * 0.4) * w * 0.003 + Math.sin(t * 1.1) * w * 0.002 * talk;
+    const dy = Math.sin(t * 0.7) * h * 0.002 + this.nod * h * 0.006 * talk;
+    const sc = 1.04 + breathe + talk * 0.004;                                             // slight zoom hides the edges while moving
+    const g = this.g; g.save();
+    g.translate(w / 2 + dx, h / 2 + dy); g.rotate(rot); g.scale(sc, sc); g.translate(-w / 2, -h / 2);
+    g.drawImage(this.idle, 0, 0, w, h);
+    if (bm) g.drawImage(bm, this.patch.x, this.patch.y);
+    g.restore();
   }
 
   private frame = (now: number) => {
@@ -133,14 +156,14 @@ export class AvatarStream {
       if (now >= s.startPerf && now < s.startPerf + s.durMs + 80) active = s;
       else if (now > s.startPerf + s.durMs + 2500) { s.frames.forEach((b) => b?.close()); this.segs.delete(s.id); this.firstSeen.delete(s.id); this.sentAt.delete(s.id); }
     }
-    if (!active) { if (this.showing !== "idle") this.drawIdle(); return; }
+    if (!active) { this.paint(undefined, 0); this.showing = "idle"; return; }
     const want = Math.min(Math.floor(((now - active.startPerf) / 1000) * this.fps), (active.count ?? Infinity) - 1);
     let bm: ImageBitmap | undefined, i = want;
     while (i >= 0 && i > want - 6 && !(bm = active.frames[i])) i--;     // the newest frame that has arrived
+    const level = active.env[Math.min(active.env.length - 1, Math.max(0, Math.floor((now - active.startPerf) / 50)))] ?? 0;
     if (!bm) { this.lateFrames++; return; }
     if (i !== want) this.lateFrames++;
-    this.g.drawImage(this.idle, 0, 0, this.size.w, this.size.h);
-    this.g.drawImage(bm, this.patch.x, this.patch.y);
+    this.paint(bm, level);
     this.showing = "video";
   };
 
