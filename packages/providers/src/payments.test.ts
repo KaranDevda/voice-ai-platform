@@ -109,9 +109,9 @@ describe("Cashfree", () => {
     expect(sent).toMatchObject({ order_id: "pid-1", order_amount: 500, order_currency: "INR" });
     expect(h["x-client-id"]).toBe("APP"); expect(h["x-client-secret"]).toBe("SEC"); expect(h["x-api-version"]).toBeTruthy();
   });
-  it("repairs a session id that ends in a doubled 'payment'", async () => {
+  it("keeps the session id exactly as Cashfree returns it, even with a doubled 'payment'", async () => {
     const g = createPayments({ cashfree: { appId: "A", secretKey: "S" }, fetch: (async () => new Response(JSON.stringify({ order_id: "o1", payment_session_id: "session_abcpaymentpayment" }))) as unknown as typeof fetch });
-    expect((await g.cashfreeOrder({ amountMinor: 100, paymentId: "o1", description: "d", email: "e@e.co", customerId: "u", returnUrl: "https://x" })).sessionId).toBe("session_abcpayment");
+    expect((await g.cashfreeOrder({ amountMinor: 100, paymentId: "o1", description: "d", email: "e@e.co", customerId: "u", returnUrl: "https://x" })).sessionId).toBe("session_abcpaymentpayment");
   });
   it("uses the production address when asked, and says plainly when it is not set up", async () => {
     let url = "";

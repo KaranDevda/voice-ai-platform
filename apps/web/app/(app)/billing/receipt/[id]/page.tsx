@@ -31,7 +31,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   return (
     <>
       {/* Margin 0 also removes the browser's own date, address and page-number lines; the receipt supplies its own padding. */}
-      <style><T>{`@page { size: A4; margin: 0 } @media print { html, body { background: #fff !important; } }`}</T></style>
+      <style>{`@page { size: A4; margin: 0 } @media print { html, body { background: #fff !important; } }`}</style>
       <article className="mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-white text-slate-900 shadow-sm [print-color-adjust:exact] [-webkit-print-color-adjust:exact] print:max-w-none print:rounded-none print:border-0 print:shadow-none">
         <div className="h-2 bg-primary" />
         <div className="p-8 print:px-[18mm] print:py-[16mm]">

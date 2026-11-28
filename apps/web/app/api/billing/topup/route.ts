@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const email = (await userEmail(getDb(), user)) ?? "billing@example.com";
     const made =
       b.gateway === "razorpay" ? await g.razorpayLink({ amountPaise: amountMinor, paymentId, description, callbackUrl: `${back}?paid=1` })
-      : b.gateway === "cashfree" ? await g.cashfreeOrder({ amountMinor, paymentId, description, email, customerId: user.id, returnUrl: `${back}?paid=1`, notifyUrl: base.startsWith("https://") ? `${base}/api/billing/cashfree-webhook` : undefined }).then((o) => ({ id: o.id, url: `${base}/billing/cashfree?s=${encodeURIComponent(o.sessionId)}&e=${o.env}` }))
+      : b.gateway === "cashfree" ? await g.cashfreeOrder({ amountMinor, paymentId, description, email, customerId: user.id, returnUrl: `${base}/api/billing/cashfree-return?order_id={order_id}`, notifyUrl: base.startsWith("https://") ? `${base}/api/billing/cashfree-webhook` : undefined }).then((o) => ({ id: o.id, url: `${base}/billing/cashfree?s=${encodeURIComponent(o.sessionId)}&e=${o.env}` }))
       : b.gateway === "stripe" ? await g.stripeCheckout({ amountMinor, currency, paymentId, description, successUrl: `${back}?paid=1`, cancelUrl: `${back}?cancelled=1` })
       : b.gateway === "paypal" ? await g.paypalOrder({ amountMinor, currency, paymentId, description, returnUrl: `${base}/api/billing/paypal-return`, cancelUrl: `${back}?cancelled=1` })
       : b.gateway === "paystack" ? await g.paystackInit({ email, amountMinor, currency, reference: paymentId, callbackUrl: `${back}?paid=1` })

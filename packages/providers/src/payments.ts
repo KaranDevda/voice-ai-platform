@@ -167,8 +167,8 @@ export function createPayments(config: PaymentsConfig) {
         }),
       });
       if (!r.payment_session_id || !r.order_id) throw new ProviderError("Cashfree did not return a payment session", 502, "cashfree");
-      // Cashfree sometimes returns the session id with "payment" doubled at the end ("...paymentpayment"), which its own checkout refuses: drop the extra one.
-      const sessionId = String(r.payment_session_id).replace(/paymentpayment$/, "payment");
+      // Use the session id exactly as Cashfree returns it. It really does end in "paymentpayment"; trimming it makes Cashfree reject the session.
+      const sessionId = String(r.payment_session_id);
       return { id: String(r.order_id), sessionId, env };
     },
     /** Asks Cashfree directly whether an order is paid (used to double-check a webhook before crediting). */
