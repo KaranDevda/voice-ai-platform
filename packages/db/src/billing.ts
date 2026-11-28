@@ -53,9 +53,9 @@ export async function getBilling(db: Db, actor: AuthUser) {
   }));
 }
 
-export type Gateway = "razorpay" | "stripe" | "paypal" | "paystack" | "flutterwave" | "cryptomus";
+export type Gateway = "razorpay" | "cashfree" | "stripe" | "paypal" | "paystack" | "flutterwave" | "cryptomus";
 /** The currencies each gateway is offered in. Rupee gateways take rupees; the others need an exchange rate (set by platform staff). */
-export const GATEWAY_CURRENCIES: Record<Gateway, readonly string[]> = { razorpay: ["INR"], stripe: ["INR", "USD", "EUR", "GBP"], paypal: ["USD", "EUR", "GBP"], paystack: ["NGN", "GHS", "ZAR", "USD"], flutterwave: ["USD", "NGN", "GHS", "KES", "ZAR"], cryptomus: ["USD"] };
+export const GATEWAY_CURRENCIES: Record<Gateway, readonly string[]> = { razorpay: ["INR"], cashfree: ["INR"], stripe: ["INR", "USD", "EUR", "GBP"], paypal: ["USD", "EUR", "GBP"], paystack: ["NGN", "GHS", "ZAR", "USD"], flutterwave: ["USD", "NGN", "GHS", "KES", "ZAR"], cryptomus: ["USD"] };
 
 /**
  * Records that a top-up is starting (not yet paid, not yet credited). The amount is in the gateway's currency (`amountMinor`: paise or cents);

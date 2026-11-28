@@ -372,6 +372,13 @@
       "when": 1794821412005,
       "tag": "0052_crm_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1794821472005,
+      "tag": "0053_cashfree_gateway",
+      "breakpoints": true
     }
   ]
 }

@@ -29,7 +29,7 @@ export const payments = pgTable(
   {
     id: id(),
     orgId: uuid("org_id").notNull().references(() => organizations.id),
-    gateway: text("gateway", { enum: ["razorpay", "stripe", "paypal", "paystack", "flutterwave", "cryptomus"] }).notNull(),
+    gateway: text("gateway", { enum: ["razorpay", "cashfree", "stripe", "paypal", "paystack", "flutterwave", "cryptomus"] }).notNull(),
     /** The gateway's id for this payment link or checkout session. */
     gatewayRef: text("gateway_ref"),
     /** What the organisation is credited, in paise, at the exchange rate fixed when the payment started. */

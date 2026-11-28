@@ -9,9 +9,10 @@ import { Table, Td, Th, Tr } from "./ui/table";
 import { formatDateTime, titleCase } from "@/lib/utils";
 import { T, Tf, useLang } from "./t";
 
-type Gateway = "razorpay" | "stripe" | "paypal" | "paystack" | "flutterwave" | "cryptomus";
+type Gateway = "razorpay" | "cashfree" | "stripe" | "paypal" | "paystack" | "flutterwave" | "cryptomus";
 const GATEWAYS: { id: Gateway; label: string; currencies: string[] }[] = [
   { id: "razorpay", label: "Razorpay (UPI, cards, netbanking)", currencies: ["INR"] },
+  { id: "cashfree", label: "Cashfree (UPI, cards, netbanking)", currencies: ["INR"] },
   { id: "stripe", label: "Stripe (cards)", currencies: ["INR", "USD", "EUR", "GBP"] },
   { id: "paypal", label: "PayPal", currencies: ["USD", "EUR", "GBP"] },
   { id: "paystack", label: "Paystack", currencies: ["NGN", "GHS", "ZAR", "USD"] },

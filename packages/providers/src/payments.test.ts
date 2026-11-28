@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { createPayments, verifyCryptomusSignature, verifyFlutterwaveHash, verifyPaystackSignature, verifyRazorpaySignature, verifyStripeSignature } from "./payments";
+import { createPayments, verifyCashfreeSignature, verifyCryptomusSignature, verifyFlutterwaveHash, verifyPaystackSignature, verifyRazorpaySignature, verifyStripeSignature } from "./payments";
 
 const hmac = (secret: string, text: string) => createHmac("sha256", secret).update(text).digest("hex");
 
@@ -84,5 +84,40 @@ describe("more gateways", () => {
     expect(await reply({ status: "success", data: { id: 99, tx_ref: "pid-1", status: "successful", amount: 10.5, currency: "NGN" } }).flutterwaveVerify("99")).toEqual({ successful: true, txRef: "pid-1", amountMinor: 1050, currency: "NGN", id: "99" });
     expect(url).toBe("https://api.flutterwave.com/v3/transactions/99/verify"); expect(auth).toBe("Bearer FLWSECK_TEST-x");
     expect((await reply({ status: "success", data: { id: 99, tx_ref: "pid-1", status: "failed", amount: 10, currency: "NGN" } }).flutterwaveVerify("99")).successful).toBe(false);
+  });
+});
+
+describe("Cashfree", () => {
+  const sign = (secret: string, ts: string, body: string) => createHmac("sha256", secret).update(`${ts}${body}`).digest("base64");
+  const now = 1_800_000_000;
+  it("accepts the exact body and timestamp, refuses a changed body, a wrong secret or an old timestamp", () => {
+    const body = '{"type":"PAYMENT_SUCCESS_WEBHOOK"}', ts = String(now * 1000);
+    expect(verifyCashfreeSignature(body, sign("s", ts, body), ts, "s", now)).toBe(true);
+    expect(verifyCashfreeSignature(body + " ", sign("s", ts, body), ts, "s", now)).toBe(false);
+    expect(verifyCashfreeSignature(body, sign("s", ts, body), ts, "other", now)).toBe(false);
+    const old = String((now - 3600) * 1000);
+    expect(verifyCashfreeSignature(body, sign("s", old, body), old, "s", now)).toBe(false);
+    expect(verifyCashfreeSignature(body, null, ts, "s", now)).toBe(false);
+  });
+  it("creates an order in rupees with our payment id as the order id (sandbox by default)", async () => {
+    let url = "", init: RequestInit = {};
+    const g = createPayments({ cashfree: { appId: "APP", secretKey: "SEC" }, fetch: (async (u: string, i: RequestInit) => { url = u; init = i; return new Response(JSON.stringify({ order_id: "pid-1", payment_session_id: "session_abc" })); }) as unknown as typeof fetch });
+    const o = await g.cashfreeOrder({ amountMinor: 50000, paymentId: "pid-1", description: "Voice AI credit", email: "a@b.co", customerId: "user-1", returnUrl: "https://x/billing?paid=1" });
+    expect(o).toEqual({ id: "pid-1", sessionId: "session_abc", env: "sandbox" });
+    expect(url).toBe("https://sandbox.cashfree.com/pg/orders");
+    const sent = JSON.parse(String(init.body)), h = init.headers as Record<string, string>;
+    expect(sent).toMatchObject({ order_id: "pid-1", order_amount: 500, order_currency: "INR" });
+    expect(h["x-client-id"]).toBe("APP"); expect(h["x-client-secret"]).toBe("SEC"); expect(h["x-api-version"]).toBeTruthy();
+  });
+  it("keeps the session id exactly as Cashfree returns it, even with a doubled 'payment'", async () => {
+    const g = createPayments({ cashfree: { appId: "A", secretKey: "S" }, fetch: (async () => new Response(JSON.stringify({ order_id: "o1", payment_session_id: "session_abcpaymentpayment" }))) as unknown as typeof fetch });
+    expect((await g.cashfreeOrder({ amountMinor: 100, paymentId: "o1", description: "d", email: "e@e.co", customerId: "u", returnUrl: "https://x" })).sessionId).toBe("session_abcpaymentpayment");
+  });
+  it("uses the production address when asked, and says plainly when it is not set up", async () => {
+    let url = "";
+    const live = createPayments({ cashfree: { appId: "A", secretKey: "S", env: "production" }, fetch: (async (u: string) => { url = u; return new Response(JSON.stringify({ order_status: "PAID", order_amount: 12.5, order_currency: "INR" })); }) as unknown as typeof fetch });
+    expect(await live.cashfreeOrderStatus("pid-9")).toEqual({ paid: true, amountMinor: 1250, currency: "INR" });
+    expect(url).toBe("https://api.cashfree.com/pg/orders/pid-9");
+    await expect(createPayments({}).cashfreeOrder({ amountMinor: 100, paymentId: "p", description: "d", email: "e@e.co", customerId: "u", returnUrl: "https://x" })).rejects.toThrow(/Cashfree is not set up/);
   });
 });
